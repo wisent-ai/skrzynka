@@ -1,0 +1,568 @@
+use crate::{
+    error::AppError,
+    models::{Mailbox, Message, NewMessage, ReplyAttempt, ReplyStatus, SmtpSecurity},
+};
+use axum::http::StatusCode;
+use chrono::Utc;
+use rusqlite::{params, Connection, OptionalExtension, Row};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::{Arc, Mutex, MutexGuard},
+};
+use uuid::Uuid;
+
+pub const SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone)]
+pub struct MailboxConfig {
+    pub skarbiec_item_id: String,
+    pub display_name: String,
+    pub email: String,
+    pub imap_host: String,
+    pub imap_port: u16,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_security: SmtpSecurity,
+    pub poll_interval_seconds: u64,
+}
+
+#[derive(Clone)]
+pub struct Database {
+    path: PathBuf,
+    connection: Arc<Mutex<Connection>>,
+}
+
+impl Database {
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, AppError> {
+        let path = path.as_ref().to_path_buf();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                tracing::error!(error = %error, path = %parent.display(), "state directory creation failed");
+                AppError::internal("local state directory could not be created")
+            })?;
+        }
+        let connection = Connection::open(&path)?;
+        connection.pragma_update(None, "journal_mode", "WAL")?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version != 0 && version != SCHEMA_VERSION {
+            return Err(AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_SCHEMA_UNSUPPORTED",
+                format!(
+                    "database schema {version} is not supported by this build (expected {SCHEMA_VERSION})"
+                ),
+                false,
+            ));
+        }
+        connection.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS mailboxes (
+                id TEXT PRIMARY KEY,
+                skarbiec_item_id TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                imap_host TEXT NOT NULL,
+                imap_port INTEGER NOT NULL,
+                smtp_host TEXT NOT NULL,
+                smtp_port INTEGER NOT NULL,
+                smtp_security TEXT NOT NULL CHECK (smtp_security IN ('starttls', 'tls')),
+                poll_interval_seconds INTEGER NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_uid INTEGER NOT NULL DEFAULT 0,
+                last_sync_at TEXT,
+                last_error_code TEXT,
+                last_error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                mailbox_id TEXT NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                external_uid INTEGER NOT NULL,
+                provider_message_id TEXT,
+                in_reply_to TEXT,
+                references_header TEXT,
+                sender TEXT NOT NULL,
+                reply_to TEXT,
+                recipients TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                sent_at TEXT,
+                received_at TEXT NOT NULL,
+                body_text TEXT NOT NULL,
+                snippet TEXT NOT NULL,
+                UNIQUE(mailbox_id, external_uid)
+            );
+            CREATE INDEX IF NOT EXISTS messages_received_idx
+                ON messages(received_at DESC);
+            CREATE INDEX IF NOT EXISTS messages_mailbox_idx
+                ON messages(mailbox_id, received_at DESC);
+            CREATE TABLE IF NOT EXISTS reply_attempts (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                idempotency_key TEXT NOT NULL UNIQUE,
+                body TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'uncertain')),
+                provider_message_id TEXT,
+                error_code TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                sent_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS replies_message_idx
+                ON reply_attempts(message_id, created_at DESC);
+            ",
+        )?;
+        if version == 0 {
+            connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        }
+        let database = Self {
+            path,
+            connection: Arc::new(Mutex::new(connection)),
+        };
+        database.recover_interrupted_replies()?;
+        Ok(database)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn lock(&self) -> Result<MutexGuard<'_, Connection>, AppError> {
+        self.connection
+            .lock()
+            .map_err(|_| AppError::internal("local state lock was poisoned"))
+    }
+
+    pub fn create_mailbox(&self, config: &MailboxConfig) -> Result<Mailbox, AppError> {
+        let id = Uuid::new_v4();
+        let now = Utc::now().to_rfc3339();
+        let result = self.lock()?.execute(
+            "INSERT INTO mailboxes (
+                id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                smtp_host, smtp_port, smtp_security, poll_interval_seconds,
+                enabled, last_uid, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, 0, ?11, ?11)",
+            params![
+                id.to_string(),
+                config.skarbiec_item_id,
+                config.display_name,
+                config.email,
+                config.imap_host,
+                i64::from(config.imap_port),
+                config.smtp_host,
+                i64::from(config.smtp_port),
+                config.smtp_security.as_str(),
+                config.poll_interval_seconds as i64,
+                now,
+            ],
+        );
+        match result {
+            Ok(_) => self.get_mailbox(id),
+            Err(error) if is_unique_constraint(&error) => Err(AppError::conflict(
+                "MAILBOX_ALREADY_EXISTS",
+                "a mailbox already uses this Skarbiec item",
+            )),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn list_mailboxes(&self) -> Result<Vec<Mailbox>, AppError> {
+        let connection = self.lock()?;
+        let mut statement = connection.prepare(
+            "SELECT id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                    smtp_host, smtp_port, smtp_security, poll_interval_seconds,
+                    enabled, last_uid, last_sync_at, last_error_code,
+                    last_error_message, created_at, updated_at
+             FROM mailboxes ORDER BY display_name COLLATE NOCASE, email",
+        )?;
+        let rows = statement.query_map([], mailbox_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn get_mailbox(&self, id: Uuid) -> Result<Mailbox, AppError> {
+        self.lock()?
+            .query_row(
+                "SELECT id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                        smtp_host, smtp_port, smtp_security, poll_interval_seconds,
+                        enabled, last_uid, last_sync_at, last_error_code,
+                        last_error_message, created_at, updated_at
+                 FROM mailboxes WHERE id = ?1",
+                [id.to_string()],
+                mailbox_from_row,
+            )
+            .optional()?
+            .ok_or_else(|| AppError::not_found("mailbox"))
+    }
+
+    pub fn update_mailbox(&self, mailbox: &Mailbox) -> Result<Mailbox, AppError> {
+        let now = Utc::now().to_rfc3339();
+        let changed = self.lock()?.execute(
+            "UPDATE mailboxes SET display_name=?2, email=?3, imap_host=?4,
+                    imap_port=?5, smtp_host=?6, smtp_port=?7, smtp_security=?8,
+                    poll_interval_seconds=?9, enabled=?10, updated_at=?11
+             WHERE id=?1",
+            params![
+                mailbox.id.to_string(),
+                mailbox.display_name,
+                mailbox.email,
+                mailbox.imap_host,
+                i64::from(mailbox.imap_port),
+                mailbox.smtp_host,
+                i64::from(mailbox.smtp_port),
+                mailbox.smtp_security.as_str(),
+                mailbox.poll_interval_seconds as i64,
+                mailbox.enabled as i64,
+                now,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(AppError::not_found("mailbox"));
+        }
+        self.get_mailbox(mailbox.id)
+    }
+
+    pub fn delete_mailbox(&self, id: Uuid) -> Result<(), AppError> {
+        let changed = self
+            .lock()?
+            .execute("DELETE FROM mailboxes WHERE id=?1", [id.to_string()])?;
+        if changed == 0 {
+            return Err(AppError::not_found("mailbox"));
+        }
+        Ok(())
+    }
+
+    pub fn record_sync_success(&self, id: Uuid, last_uid: u32) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        self.lock()?.execute(
+            "UPDATE mailboxes SET last_uid=?2, last_sync_at=?3,
+                    last_error_code=NULL, last_error_message=NULL, updated_at=?3
+             WHERE id=?1",
+            params![id.to_string(), i64::from(last_uid), now],
+        )?;
+        Ok(())
+    }
+
+    pub fn record_sync_failure(&self, id: Uuid, code: &str, message: &str) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        self.lock()?.execute(
+            "UPDATE mailboxes SET last_error_code=?2, last_error_message=?3,
+                    updated_at=?4 WHERE id=?1",
+            params![id.to_string(), code, message, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_message(&self, mailbox_id: Uuid, message: &NewMessage) -> Result<bool, AppError> {
+        let id = Uuid::new_v4();
+        let received_at = Utc::now().to_rfc3339();
+        let changed = self.lock()?.execute(
+            "INSERT OR IGNORE INTO messages (
+                id, mailbox_id, external_uid, provider_message_id, in_reply_to,
+                references_header, sender, reply_to, recipients, subject,
+                sent_at, received_at, body_text, snippet
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                id.to_string(),
+                mailbox_id.to_string(),
+                i64::from(message.external_uid),
+                message.message_id,
+                message.in_reply_to,
+                message.references,
+                message.sender,
+                message.reply_to,
+                message.recipients,
+                message.subject,
+                message.sent_at,
+                received_at,
+                message.body_text,
+                message.snippet,
+            ],
+        )?;
+        Ok(changed == 1)
+    }
+
+    pub fn list_messages(
+        &self,
+        mailbox_id: Option<Uuid>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Message>, AppError> {
+        let connection = self.lock()?;
+        let sql = if mailbox_id.is_some() {
+            "SELECT id, mailbox_id, external_uid, provider_message_id, in_reply_to,
+                    references_header, sender, reply_to, recipients, subject,
+                    sent_at, received_at, body_text, snippet
+             FROM messages WHERE mailbox_id=?1
+             ORDER BY received_at DESC LIMIT ?2 OFFSET ?3"
+        } else {
+            "SELECT id, mailbox_id, external_uid, provider_message_id, in_reply_to,
+                    references_header, sender, reply_to, recipients, subject,
+                    sent_at, received_at, body_text, snippet
+             FROM messages ORDER BY received_at DESC LIMIT ?1 OFFSET ?2"
+        };
+        let mut statement = connection.prepare(sql)?;
+        let rows = if let Some(mailbox_id) = mailbox_id {
+            statement.query_map(
+                params![mailbox_id.to_string(), i64::from(limit), i64::from(offset)],
+                message_from_row,
+            )?
+        } else {
+            statement.query_map(
+                params![i64::from(limit), i64::from(offset)],
+                message_from_row,
+            )?
+        };
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn get_message(&self, id: Uuid) -> Result<Message, AppError> {
+        self.lock()?
+            .query_row(
+                "SELECT id, mailbox_id, external_uid, provider_message_id, in_reply_to,
+                        references_header, sender, reply_to, recipients, subject,
+                        sent_at, received_at, body_text, snippet
+                 FROM messages WHERE id=?1",
+                [id.to_string()],
+                message_from_row,
+            )
+            .optional()?
+            .ok_or_else(|| AppError::not_found("message"))
+    }
+
+    pub fn begin_reply(
+        &self,
+        message_id: Uuid,
+        idempotency_key: &str,
+        body: &str,
+    ) -> Result<(ReplyAttempt, bool), AppError> {
+        self.get_message(message_id)?;
+        if let Some(existing) = self.get_reply_by_key(idempotency_key)? {
+            if existing.message_id != message_id || existing.body != body {
+                return Err(AppError::conflict(
+                    "IDEMPOTENCY_KEY_REUSED",
+                    "idempotency key already belongs to a different reply request",
+                ));
+            }
+            return Ok((existing, false));
+        }
+        let id = Uuid::new_v4();
+        let now = Utc::now().to_rfc3339();
+        let result = self.lock()?.execute(
+            "INSERT INTO reply_attempts (
+                id, message_id, idempotency_key, body, status, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?5)",
+            params![
+                id.to_string(),
+                message_id.to_string(),
+                idempotency_key,
+                body,
+                now,
+            ],
+        );
+        match result {
+            Ok(_) => Ok((self.get_reply(id)?, true)),
+            Err(error) if is_unique_constraint(&error) => {
+                let existing = self.get_reply_by_key(idempotency_key)?.ok_or_else(|| {
+                    AppError::conflict("IDEMPOTENCY_CONFLICT", "reply request already exists")
+                })?;
+                Ok((existing, false))
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn update_reply(
+        &self,
+        id: Uuid,
+        status: ReplyStatus,
+        provider_message_id: Option<&str>,
+        error_code: Option<&str>,
+        error_message: Option<&str>,
+    ) -> Result<ReplyAttempt, AppError> {
+        let now = Utc::now().to_rfc3339();
+        let sent_at = (status == ReplyStatus::Sent).then_some(now.as_str());
+        self.lock()?.execute(
+            "UPDATE reply_attempts SET status=?2, provider_message_id=?3,
+                    error_code=?4, error_message=?5, updated_at=?6,
+                    sent_at=COALESCE(?7, sent_at) WHERE id=?1",
+            params![
+                id.to_string(),
+                status.as_str(),
+                provider_message_id,
+                error_code,
+                error_message,
+                now,
+                sent_at,
+            ],
+        )?;
+        self.get_reply(id)
+    }
+
+    pub fn get_reply(&self, id: Uuid) -> Result<ReplyAttempt, AppError> {
+        self.lock()?
+            .query_row(
+                "SELECT id, message_id, idempotency_key, body, status,
+                        provider_message_id, error_code, error_message,
+                        created_at, updated_at, sent_at
+                 FROM reply_attempts WHERE id=?1",
+                [id.to_string()],
+                reply_from_row,
+            )
+            .optional()?
+            .ok_or_else(|| AppError::not_found("reply attempt"))
+    }
+
+    pub fn list_replies(&self, message_id: Uuid) -> Result<Vec<ReplyAttempt>, AppError> {
+        self.get_message(message_id)?;
+        let connection = self.lock()?;
+        let mut statement = connection.prepare(
+            "SELECT id, message_id, idempotency_key, body, status,
+                    provider_message_id, error_code, error_message,
+                    created_at, updated_at, sent_at
+             FROM reply_attempts WHERE message_id=?1 ORDER BY created_at DESC",
+        )?;
+        let rows = statement.query_map([message_id.to_string()], reply_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    fn get_reply_by_key(&self, key: &str) -> Result<Option<ReplyAttempt>, AppError> {
+        self.lock()?
+            .query_row(
+                "SELECT id, message_id, idempotency_key, body, status,
+                        provider_message_id, error_code, error_message,
+                        created_at, updated_at, sent_at
+                 FROM reply_attempts WHERE idempotency_key=?1",
+                [key],
+                reply_from_row,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    fn recover_interrupted_replies(&self) -> Result<(), AppError> {
+        let now = Utc::now().to_rfc3339();
+        self.lock()?.execute(
+            "UPDATE reply_attempts SET status='uncertain',
+                    error_code='REPLY_UNCERTAIN',
+                    error_message='send was interrupted before terminal SMTP evidence was recorded',
+                    updated_at=?1 WHERE status='sending'",
+            [now],
+        )?;
+        Ok(())
+    }
+
+    pub fn counts(&self) -> Result<(usize, usize, usize), AppError> {
+        let connection = self.lock()?;
+        let mailboxes: usize =
+            connection.query_row("SELECT COUNT(*) FROM mailboxes", [], |r| r.get(0))?;
+        let enabled: usize =
+            connection.query_row("SELECT COUNT(*) FROM mailboxes WHERE enabled=1", [], |r| {
+                r.get(0)
+            })?;
+        let messages: usize =
+            connection.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
+        Ok((mailboxes, enabled, messages))
+    }
+}
+
+fn mailbox_from_row(row: &Row<'_>) -> rusqlite::Result<Mailbox> {
+    Ok(Mailbox {
+        id: parse_uuid(row.get::<_, String>(0)?)?,
+        skarbiec_item_id: row.get(1)?,
+        display_name: row.get(2)?,
+        email: row.get(3)?,
+        imap_host: row.get(4)?,
+        imap_port: checked_u16(row.get::<_, i64>(5)?, 5)?,
+        smtp_host: row.get(6)?,
+        smtp_port: checked_u16(row.get::<_, i64>(7)?, 7)?,
+        smtp_security: parse_enum(row.get::<_, String>(8)?, 8)?,
+        poll_interval_seconds: checked_u64(row.get::<_, i64>(9)?, 9)?,
+        enabled: row.get::<_, i64>(10)? != 0,
+        last_uid: checked_u32(row.get::<_, i64>(11)?, 11)?,
+        last_sync_at: row.get(12)?,
+        last_error_code: row.get(13)?,
+        last_error_message: row.get(14)?,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
+    })
+}
+
+fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
+    Ok(Message {
+        id: parse_uuid(row.get::<_, String>(0)?)?,
+        mailbox_id: parse_uuid(row.get::<_, String>(1)?)?,
+        external_uid: checked_u32(row.get::<_, i64>(2)?, 2)?,
+        message_id: row.get(3)?,
+        in_reply_to: row.get(4)?,
+        references: row.get(5)?,
+        sender: row.get(6)?,
+        reply_to: row.get(7)?,
+        recipients: row.get(8)?,
+        subject: row.get(9)?,
+        sent_at: row.get(10)?,
+        received_at: row.get(11)?,
+        body_text: row.get(12)?,
+        snippet: row.get(13)?,
+    })
+}
+
+fn reply_from_row(row: &Row<'_>) -> rusqlite::Result<ReplyAttempt> {
+    Ok(ReplyAttempt {
+        id: parse_uuid(row.get::<_, String>(0)?)?,
+        message_id: parse_uuid(row.get::<_, String>(1)?)?,
+        idempotency_key: row.get(2)?,
+        body: row.get(3)?,
+        status: parse_enum(row.get::<_, String>(4)?, 4)?,
+        provider_message_id: row.get(5)?,
+        error_code: row.get(6)?,
+        error_message: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+        sent_at: row.get(10)?,
+    })
+}
+
+fn parse_uuid(value: String) -> rusqlite::Result<Uuid> {
+    Uuid::parse_str(&value).map_err(|error| conversion_error(0, error))
+}
+
+fn parse_enum<T>(value: String, column: usize) -> rusqlite::Result<T>
+where
+    T: FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    value
+        .parse()
+        .map_err(|error| conversion_error(column, error))
+}
+
+fn checked_u16(value: i64, column: usize) -> rusqlite::Result<u16> {
+    u16::try_from(value).map_err(|error| conversion_error(column, error))
+}
+
+fn checked_u32(value: i64, column: usize) -> rusqlite::Result<u32> {
+    u32::try_from(value).map_err(|error| conversion_error(column, error))
+}
+
+fn checked_u64(value: i64, column: usize) -> rusqlite::Result<u64> {
+    u64::try_from(value).map_err(|error| conversion_error(column, error))
+}
+
+fn conversion_error(
+    column: usize,
+    error: impl std::error::Error + Send + Sync + 'static,
+) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(column, rusqlite::types::Type::Text, Box::new(error))
+}
+
+fn is_unique_constraint(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(code, _)
+            if code.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+    )
+}

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480" role="img" aria-labelledby="title description">
+  <title id="title">Skrzynka by Wisent</title>
+  <desc id="description">A calm dark banner showing several inboxes flowing into one shared reply queue.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#17263d"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="1" stop-color="#60a5fa"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="480" rx="32" fill="url(#background)"/>
+  <g opacity="0.16" stroke="#93c5fd" fill="none">
+    <path d="M90 95h330v220H90zM1180 62h300v200h-300zM1120 294h360v110h-360z"/>
+    <path d="m90 95 165 120L420 95m760-33 150 108 150-108m-360 232 180 72 180-72"/>
+  </g>
+  <g transform="translate(160 132)">
+    <rect width="248" height="168" rx="24" fill="#111f33" stroke="#4b6b91" stroke-width="3"/>
+    <path d="m28 43 96 72 96-72" fill="none" stroke="url(#accent)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m28 131 67-55m125 55-67-55" fill="none" stroke="#31506f" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="214" cy="26" r="24" fill="#22c55e"/>
+    <path d="m204 26 7 7 14-16" fill="none" stroke="#07140b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="480" y="220" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="104" font-weight="700" letter-spacing="-3">Skrzynka</text>
+  <text x="486" y="286" fill="#b9c8da" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="31">Many mailboxes. One dependable place to receive and reply.</text>
+  <rect x="486" y="324" width="250" height="5" rx="2.5" fill="url(#accent)"/>
+  <text x="486" y="374" fill="#78a9cf" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="23" letter-spacing="5">BY WISENT</text>
+</svg>
