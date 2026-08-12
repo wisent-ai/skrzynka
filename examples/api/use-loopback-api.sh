@@ -3,7 +3,7 @@
 # Status: Skrzynka development channel 0.1.x.
 # Risk: local mutation plus credentialed, read-only IMAP access.
 # Environment: a running loopback Skrzynka service, curl, and jq.
-# Usage: sh use-loopback-api.sh <skarbiec-item-id> [http://127.0.0.1:8787]
+# Usage: sh use-loopback-api.sh <skarbiec-item-id> [http://127.0.0.1:8788]
 # Creates: one local mailbox and normalized message rows; no provider mutation.
 set -eu
 
@@ -11,7 +11,7 @@ set -eu
 command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is required" >&2; exit 1; }
 ITEM_ID=$1
-API_URL=${2:-http://127.0.0.1:8787}
+API_URL=${2:-http://127.0.0.1:8788}
 case "$API_URL" in
   http://127.0.0.1:*|http://localhost:*) ;;
   *) echo "ERROR: API URL must be loopback HTTP" >&2; exit 1 ;;

@@ -1,6 +1,6 @@
 # Loopback JSON API
 
-The service listens on `http://127.0.0.1:8787` by default and refuses non-loopback bind addresses. All request and response bodies are JSON. Timestamps are RFC 3339 UTC strings. Errors use:
+The service listens on `http://127.0.0.1:8788` by default and refuses non-loopback bind addresses. All request and response bodies are JSON. Timestamps are RFC 3339 UTC strings. Errors use:
 
 ```json
 {

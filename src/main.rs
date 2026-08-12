@@ -24,7 +24,7 @@ use std::{
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
-const DEFAULT_CALLBACK_BASE_URL: &str = "http://127.0.0.1:8787";
+const DEFAULT_CALLBACK_BASE_URL: &str = "http://127.0.0.1:8788";
 
 #[derive(Parser)]
 #[command(
@@ -63,7 +63,7 @@ enum Command {
 
 #[derive(Args)]
 struct ServeArgs {
-    #[arg(long, default_value = "127.0.0.1:8787")]
+    #[arg(long, default_value = "127.0.0.1:8788")]
     bind: SocketAddr,
     #[arg(long, default_value_t = 60)]
     poll_seconds: u64,
