@@ -1,4 +1,5 @@
 mod api;
+mod auth;
 mod db;
 mod error;
 mod gmail;
@@ -25,6 +26,7 @@ use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 const DEFAULT_CALLBACK_BASE_URL: &str = "http://127.0.0.1:8788";
+const LOCAL_CLI_ORGANIZATION: &str = "legacy-local";
 
 #[derive(Parser)]
 #[command(
@@ -188,7 +190,7 @@ async fn run(cli: Cli) -> Result<(), AppError> {
         Command::Serve(args) => serve(database, resolver, args).await,
         Command::Status => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
-            print_json(&state.status().await?)
+            print_json(&state.status(LOCAL_CLI_ORGANIZATION).await?)
         }
         Command::Mailbox { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
@@ -201,8 +203,8 @@ async fn run(cli: Cli) -> Result<(), AppError> {
         Command::Sync { mailbox } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             match mailbox {
-                Some(id) => print_json(&state.sync_mailbox(id).await?),
-                None => print_json(&state.sync_all().await?),
+                Some(id) => print_json(&state.sync_mailbox(LOCAL_CLI_ORGANIZATION, id).await?),
+                None => print_json(&state.sync_all(LOCAL_CLI_ORGANIZATION).await?),
             }
         }
         Command::Version => unreachable!(),
@@ -251,11 +253,16 @@ async fn run_mailbox(state: AppState, command: MailboxCommand) -> Result<(), App
                 smtp_security: args.smtp_security.map(Into::into),
                 poll_interval_seconds: args.poll_seconds,
             };
-            print_json(&state.create_mailbox(request).await?)
+            print_json(
+                &state
+                    .create_mailbox(LOCAL_CLI_ORGANIZATION, request)
+                    .await?,
+            )
         }
-        MailboxCommand::List => print_json(&state.list_mailboxes()?),
-        MailboxCommand::Show { id } => print_json(&state.get_mailbox(id)?),
+        MailboxCommand::List => print_json(&state.list_mailboxes(LOCAL_CLI_ORGANIZATION)?),
+        MailboxCommand::Show { id } => print_json(&state.get_mailbox(LOCAL_CLI_ORGANIZATION, id)?),
         MailboxCommand::Enable { id } => print_json(&state.update_mailbox(
+            LOCAL_CLI_ORGANIZATION,
             id,
             crate::models::UpdateMailboxRequest {
                 enabled: Some(true),
@@ -263,6 +270,7 @@ async fn run_mailbox(state: AppState, command: MailboxCommand) -> Result<(), App
             },
         )?),
         MailboxCommand::Disable { id } => print_json(&state.update_mailbox(
+            LOCAL_CLI_ORGANIZATION,
             id,
             crate::models::UpdateMailboxRequest {
                 enabled: Some(false),
@@ -276,7 +284,7 @@ async fn run_mailbox(state: AppState, command: MailboxCommand) -> Result<(), App
                     "mailbox removal requires --confirm",
                 ));
             }
-            state.delete_mailbox(id)?;
+            state.delete_mailbox(LOCAL_CLI_ORGANIZATION, id)?;
             print_json(&json!({ "removed": id }))
         }
     }
@@ -288,8 +296,8 @@ async fn run_message(state: AppState, command: MessageCommand) -> Result<(), App
             mailbox,
             limit,
             offset,
-        } => print_json(&state.list_messages(mailbox, limit, offset)?),
-        MessageCommand::Show { id } => print_json(&state.get_message(id)?),
+        } => print_json(&state.list_messages(LOCAL_CLI_ORGANIZATION, mailbox, limit, offset)?),
+        MessageCommand::Show { id } => print_json(&state.get_message(LOCAL_CLI_ORGANIZATION, id)?),
         MessageCommand::Reply {
             id,
             body_file,
@@ -300,7 +308,7 @@ async fn run_message(state: AppState, command: MessageCommand) -> Result<(), App
                 idempotency_key: idempotency_key.unwrap_or_else(|| Uuid::new_v4().to_string()),
                 body,
             };
-            print_json(&state.reply(id, request).await?)
+            print_json(&state.reply(LOCAL_CLI_ORGANIZATION, id, request).await?)
         }
     }
 }

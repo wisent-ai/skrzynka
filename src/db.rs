@@ -12,10 +12,11 @@ use std::{
 };
 use uuid::Uuid;
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone)]
 pub struct MailboxConfig {
+    pub organization_id: String,
     pub skarbiec_item_id: String,
     pub display_name: String,
     pub email: String,
@@ -47,12 +48,12 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version != 0 && version != SCHEMA_VERSION {
+        if version > SCHEMA_VERSION {
             return Err(AppError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "DATABASE_SCHEMA_UNSUPPORTED",
                 format!(
-                    "database schema {version} is not supported by this build (expected {SCHEMA_VERSION})"
+                    "database schema {version} is not supported by this build (expected at most {SCHEMA_VERSION})"
                 ),
                 false,
             ));
@@ -61,6 +62,7 @@ impl Database {
             "
             CREATE TABLE IF NOT EXISTS mailboxes (
                 id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
                 skarbiec_item_id TEXT NOT NULL UNIQUE,
                 display_name TEXT NOT NULL,
                 email TEXT NOT NULL,
@@ -116,8 +118,16 @@ impl Database {
                 ON reply_attempts(message_id, created_at DESC);
             ",
         )?;
-        if version == 0 {
-            connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        match version {
+            0 => connection.pragma_update(None, "user_version", SCHEMA_VERSION)?,
+            1 => {
+                connection.execute(
+                    "ALTER TABLE mailboxes ADD COLUMN organization_id TEXT NOT NULL DEFAULT 'legacy-local'",
+                    [],
+                )?;
+                connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            }
+            _ => {}
         }
         let database = Self {
             path,
@@ -142,12 +152,13 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let result = self.lock()?.execute(
             "INSERT INTO mailboxes (
-                id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
                 smtp_host, smtp_port, smtp_security, poll_interval_seconds,
                 enabled, last_uid, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, 0, ?11, ?11)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, 0, ?12, ?12)",
             params![
                 id.to_string(),
+                config.organization_id,
                 config.skarbiec_item_id,
                 config.display_name,
                 config.email,
@@ -161,7 +172,7 @@ impl Database {
             ],
         );
         match result {
-            Ok(_) => self.get_mailbox(id),
+            Ok(_) => self.get_mailbox(&config.organization_id, id),
             Err(error) if is_unique_constraint(&error) => Err(AppError::conflict(
                 "MAILBOX_ALREADY_EXISTS",
                 "a mailbox already uses this Skarbiec item",
@@ -170,10 +181,24 @@ impl Database {
         }
     }
 
-    pub fn list_mailboxes(&self) -> Result<Vec<Mailbox>, AppError> {
+    pub fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
         let connection = self.lock()?;
         let mut statement = connection.prepare(
-            "SELECT id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+            "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                    smtp_host, smtp_port, smtp_security, poll_interval_seconds,
+                    enabled, last_uid, last_sync_at, last_error_code,
+                    last_error_message, created_at, updated_at
+             FROM mailboxes WHERE organization_id=?1
+             ORDER BY display_name COLLATE NOCASE, email",
+        )?;
+        let rows = statement.query_map([organization_id], mailbox_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn list_all_mailboxes(&self) -> Result<Vec<Mailbox>, AppError> {
+        let connection = self.lock()?;
+        let mut statement = connection.prepare(
+            "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
                     smtp_host, smtp_port, smtp_security, poll_interval_seconds,
                     enabled, last_uid, last_sync_at, last_error_code,
                     last_error_message, created_at, updated_at
@@ -183,10 +208,25 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    pub fn get_mailbox(&self, id: Uuid) -> Result<Mailbox, AppError> {
+    pub fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
         self.lock()?
             .query_row(
-                "SELECT id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                        smtp_host, smtp_port, smtp_security, poll_interval_seconds,
+                        enabled, last_uid, last_sync_at, last_error_code,
+                        last_error_message, created_at, updated_at
+                 FROM mailboxes WHERE id = ?1 AND organization_id = ?2",
+                params![id.to_string(), organization_id],
+                mailbox_from_row,
+            )
+            .optional()?
+            .ok_or_else(|| AppError::not_found("mailbox"))
+    }
+
+    pub fn get_mailbox_internal(&self, id: Uuid) -> Result<Mailbox, AppError> {
+        self.lock()?
+            .query_row(
+                "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
                         smtp_host, smtp_port, smtp_security, poll_interval_seconds,
                         enabled, last_uid, last_sync_at, last_error_code,
                         last_error_message, created_at, updated_at
@@ -201,12 +241,13 @@ impl Database {
     pub fn update_mailbox(&self, mailbox: &Mailbox) -> Result<Mailbox, AppError> {
         let now = Utc::now().to_rfc3339();
         let changed = self.lock()?.execute(
-            "UPDATE mailboxes SET display_name=?2, email=?3, imap_host=?4,
-                    imap_port=?5, smtp_host=?6, smtp_port=?7, smtp_security=?8,
-                    poll_interval_seconds=?9, enabled=?10, updated_at=?11
-             WHERE id=?1",
+            "UPDATE mailboxes SET display_name=?3, email=?4, imap_host=?5,
+                    imap_port=?6, smtp_host=?7, smtp_port=?8, smtp_security=?9,
+                    poll_interval_seconds=?10, enabled=?11, updated_at=?12
+             WHERE id=?1 AND organization_id=?2",
             params![
                 mailbox.id.to_string(),
+                mailbox.organization_id,
                 mailbox.display_name,
                 mailbox.email,
                 mailbox.imap_host,
@@ -222,13 +263,14 @@ impl Database {
         if changed == 0 {
             return Err(AppError::not_found("mailbox"));
         }
-        self.get_mailbox(mailbox.id)
+        self.get_mailbox(&mailbox.organization_id, mailbox.id)
     }
 
-    pub fn delete_mailbox(&self, id: Uuid) -> Result<(), AppError> {
-        let changed = self
-            .lock()?
-            .execute("DELETE FROM mailboxes WHERE id=?1", [id.to_string()])?;
+    pub fn delete_mailbox(&self, organization_id: &str, id: Uuid) -> Result<(), AppError> {
+        let changed = self.lock()?.execute(
+            "DELETE FROM mailboxes WHERE id=?1 AND organization_id=?2",
+            params![id.to_string(), organization_id],
+        )?;
         if changed == 0 {
             return Err(AppError::not_found("mailbox"));
         }
@@ -287,46 +329,62 @@ impl Database {
 
     pub fn list_messages(
         &self,
+        organization_id: &str,
         mailbox_id: Option<Uuid>,
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Message>, AppError> {
         let connection = self.lock()?;
         let sql = if mailbox_id.is_some() {
-            "SELECT id, mailbox_id, external_uid, provider_message_id, in_reply_to,
-                    references_header, sender, reply_to, recipients, subject,
-                    sent_at, received_at, body_text, snippet
-             FROM messages WHERE mailbox_id=?1
-             ORDER BY received_at DESC LIMIT ?2 OFFSET ?3"
+            "SELECT messages.id, messages.mailbox_id, messages.external_uid,
+                    messages.provider_message_id, messages.in_reply_to,
+                    messages.references_header, messages.sender, messages.reply_to,
+                    messages.recipients, messages.subject, messages.sent_at,
+                    messages.received_at, messages.body_text, messages.snippet
+             FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
+             WHERE messages.mailbox_id=?1 AND mailboxes.organization_id=?2
+             ORDER BY messages.received_at DESC LIMIT ?3 OFFSET ?4"
         } else {
-            "SELECT id, mailbox_id, external_uid, provider_message_id, in_reply_to,
-                    references_header, sender, reply_to, recipients, subject,
-                    sent_at, received_at, body_text, snippet
-             FROM messages ORDER BY received_at DESC LIMIT ?1 OFFSET ?2"
+            "SELECT messages.id, messages.mailbox_id, messages.external_uid,
+                    messages.provider_message_id, messages.in_reply_to,
+                    messages.references_header, messages.sender, messages.reply_to,
+                    messages.recipients, messages.subject, messages.sent_at,
+                    messages.received_at, messages.body_text, messages.snippet
+             FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
+             WHERE mailboxes.organization_id=?1
+             ORDER BY messages.received_at DESC LIMIT ?2 OFFSET ?3"
         };
         let mut statement = connection.prepare(sql)?;
         let rows = if let Some(mailbox_id) = mailbox_id {
             statement.query_map(
-                params![mailbox_id.to_string(), i64::from(limit), i64::from(offset)],
+                params![
+                    mailbox_id.to_string(),
+                    organization_id,
+                    i64::from(limit),
+                    i64::from(offset)
+                ],
                 message_from_row,
             )?
         } else {
             statement.query_map(
-                params![i64::from(limit), i64::from(offset)],
+                params![organization_id, i64::from(limit), i64::from(offset)],
                 message_from_row,
             )?
         };
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    pub fn get_message(&self, id: Uuid) -> Result<Message, AppError> {
+    pub fn get_message(&self, organization_id: &str, id: Uuid) -> Result<Message, AppError> {
         self.lock()?
             .query_row(
-                "SELECT id, mailbox_id, external_uid, provider_message_id, in_reply_to,
-                        references_header, sender, reply_to, recipients, subject,
-                        sent_at, received_at, body_text, snippet
-                 FROM messages WHERE id=?1",
-                [id.to_string()],
+                "SELECT messages.id, messages.mailbox_id, messages.external_uid,
+                        messages.provider_message_id, messages.in_reply_to,
+                        messages.references_header, messages.sender, messages.reply_to,
+                        messages.recipients, messages.subject, messages.sent_at,
+                        messages.received_at, messages.body_text, messages.snippet
+                 FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
+                 WHERE messages.id=?1 AND mailboxes.organization_id=?2",
+                params![id.to_string(), organization_id],
                 message_from_row,
             )
             .optional()?
@@ -335,12 +393,13 @@ impl Database {
 
     pub fn begin_reply(
         &self,
+        organization_id: &str,
         message_id: Uuid,
         idempotency_key: &str,
         body: &str,
     ) -> Result<(ReplyAttempt, bool), AppError> {
-        self.get_message(message_id)?;
-        if let Some(existing) = self.get_reply_by_key(idempotency_key)? {
+        self.get_message(organization_id, message_id)?;
+        if let Some(existing) = self.get_reply_by_key(organization_id, idempotency_key)? {
             if existing.message_id != message_id || existing.body != body {
                 return Err(AppError::conflict(
                     "IDEMPOTENCY_KEY_REUSED",
@@ -366,9 +425,11 @@ impl Database {
         match result {
             Ok(_) => Ok((self.get_reply(id)?, true)),
             Err(error) if is_unique_constraint(&error) => {
-                let existing = self.get_reply_by_key(idempotency_key)?.ok_or_else(|| {
-                    AppError::conflict("IDEMPOTENCY_CONFLICT", "reply request already exists")
-                })?;
+                let existing = self
+                    .get_reply_by_key(organization_id, idempotency_key)?
+                    .ok_or_else(|| {
+                        AppError::conflict("IDEMPOTENCY_CONFLICT", "reply request already exists")
+                    })?;
                 Ok((existing, false))
             }
             Err(error) => Err(error.into()),
@@ -416,27 +477,51 @@ impl Database {
             .ok_or_else(|| AppError::not_found("reply attempt"))
     }
 
-    pub fn list_replies(&self, message_id: Uuid) -> Result<Vec<ReplyAttempt>, AppError> {
-        self.get_message(message_id)?;
+    pub fn list_replies(
+        &self,
+        organization_id: &str,
+        message_id: Uuid,
+    ) -> Result<Vec<ReplyAttempt>, AppError> {
+        self.get_message(organization_id, message_id)?;
         let connection = self.lock()?;
         let mut statement = connection.prepare(
-            "SELECT id, message_id, idempotency_key, body, status,
-                    provider_message_id, error_code, error_message,
-                    created_at, updated_at, sent_at
-             FROM reply_attempts WHERE message_id=?1 ORDER BY created_at DESC",
+            "SELECT reply_attempts.id, reply_attempts.message_id,
+                    reply_attempts.idempotency_key, reply_attempts.body,
+                    reply_attempts.status, reply_attempts.provider_message_id,
+                    reply_attempts.error_code, reply_attempts.error_message,
+                    reply_attempts.created_at, reply_attempts.updated_at,
+                    reply_attempts.sent_at
+             FROM reply_attempts
+             JOIN messages ON messages.id=reply_attempts.message_id
+             JOIN mailboxes ON mailboxes.id=messages.mailbox_id
+             WHERE reply_attempts.message_id=?1 AND mailboxes.organization_id=?2
+             ORDER BY reply_attempts.created_at DESC",
         )?;
-        let rows = statement.query_map([message_id.to_string()], reply_from_row)?;
+        let rows = statement.query_map(
+            params![message_id.to_string(), organization_id],
+            reply_from_row,
+        )?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    fn get_reply_by_key(&self, key: &str) -> Result<Option<ReplyAttempt>, AppError> {
+    fn get_reply_by_key(
+        &self,
+        organization_id: &str,
+        key: &str,
+    ) -> Result<Option<ReplyAttempt>, AppError> {
         self.lock()?
             .query_row(
-                "SELECT id, message_id, idempotency_key, body, status,
-                        provider_message_id, error_code, error_message,
-                        created_at, updated_at, sent_at
-                 FROM reply_attempts WHERE idempotency_key=?1",
-                [key],
+                "SELECT reply_attempts.id, reply_attempts.message_id,
+                        reply_attempts.idempotency_key, reply_attempts.body,
+                        reply_attempts.status, reply_attempts.provider_message_id,
+                        reply_attempts.error_code, reply_attempts.error_message,
+                        reply_attempts.created_at, reply_attempts.updated_at,
+                        reply_attempts.sent_at
+                 FROM reply_attempts
+                 JOIN messages ON messages.id=reply_attempts.message_id
+                 JOIN mailboxes ON mailboxes.id=messages.mailbox_id
+                 WHERE reply_attempts.idempotency_key=?1 AND mailboxes.organization_id=?2",
+                params![key, organization_id],
                 reply_from_row,
             )
             .optional()
@@ -455,16 +540,25 @@ impl Database {
         Ok(())
     }
 
-    pub fn counts(&self) -> Result<(usize, usize, usize), AppError> {
+    pub fn counts(&self, organization_id: &str) -> Result<(usize, usize, usize), AppError> {
         let connection = self.lock()?;
-        let mailboxes: usize =
-            connection.query_row("SELECT COUNT(*) FROM mailboxes", [], |r| r.get(0))?;
-        let enabled: usize =
-            connection.query_row("SELECT COUNT(*) FROM mailboxes WHERE enabled=1", [], |r| {
-                r.get(0)
-            })?;
-        let messages: usize =
-            connection.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
+        let mailboxes: usize = connection.query_row(
+            "SELECT COUNT(*) FROM mailboxes WHERE organization_id=?1",
+            [organization_id],
+            |row| row.get(0),
+        )?;
+        let enabled: usize = connection.query_row(
+            "SELECT COUNT(*) FROM mailboxes WHERE organization_id=?1 AND enabled=1",
+            [organization_id],
+            |row| row.get(0),
+        )?;
+        let messages: usize = connection.query_row(
+            "SELECT COUNT(*) FROM messages
+             JOIN mailboxes ON mailboxes.id=messages.mailbox_id
+             WHERE mailboxes.organization_id=?1",
+            [organization_id],
+            |row| row.get(0),
+        )?;
         Ok((mailboxes, enabled, messages))
     }
 }
@@ -472,22 +566,23 @@ impl Database {
 fn mailbox_from_row(row: &Row<'_>) -> rusqlite::Result<Mailbox> {
     Ok(Mailbox {
         id: parse_uuid(row.get::<_, String>(0)?)?,
-        skarbiec_item_id: row.get(1)?,
-        display_name: row.get(2)?,
-        email: row.get(3)?,
-        imap_host: row.get(4)?,
-        imap_port: checked_u16(row.get::<_, i64>(5)?, 5)?,
-        smtp_host: row.get(6)?,
-        smtp_port: checked_u16(row.get::<_, i64>(7)?, 7)?,
-        smtp_security: parse_enum(row.get::<_, String>(8)?, 8)?,
-        poll_interval_seconds: checked_u64(row.get::<_, i64>(9)?, 9)?,
-        enabled: row.get::<_, i64>(10)? != 0,
-        last_uid: checked_u32(row.get::<_, i64>(11)?, 11)?,
-        last_sync_at: row.get(12)?,
-        last_error_code: row.get(13)?,
-        last_error_message: row.get(14)?,
-        created_at: row.get(15)?,
-        updated_at: row.get(16)?,
+        organization_id: row.get(1)?,
+        skarbiec_item_id: row.get(2)?,
+        display_name: row.get(3)?,
+        email: row.get(4)?,
+        imap_host: row.get(5)?,
+        imap_port: checked_u16(row.get::<_, i64>(6)?, 6)?,
+        smtp_host: row.get(7)?,
+        smtp_port: checked_u16(row.get::<_, i64>(8)?, 8)?,
+        smtp_security: parse_enum(row.get::<_, String>(9)?, 9)?,
+        poll_interval_seconds: checked_u64(row.get::<_, i64>(10)?, 10)?,
+        enabled: row.get::<_, i64>(11)? != 0,
+        last_uid: checked_u32(row.get::<_, i64>(12)?, 12)?,
+        last_sync_at: row.get(13)?,
+        last_error_code: row.get(14)?,
+        last_error_message: row.get(15)?,
+        created_at: row.get(16)?,
+        updated_at: row.get(17)?,
     })
 }
 

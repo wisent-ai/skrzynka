@@ -1,4 +1,5 @@
 use crate::{
+    auth::AuthVerifier,
     db::Database,
     error::AppError,
     gmail::{
@@ -22,6 +23,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub auth_verifier: AuthVerifier,
     pub database: Database,
     resolver: SkarbiecResolver,
     gmail_oauth: GmailOAuthBroker,
@@ -59,7 +61,9 @@ impl AppState {
             ));
         }
         let gmail_oauth = GmailOAuthBroker::new(resolver.clone(), callback_base_url)?;
+        let auth_verifier = AuthVerifier::from_environment()?;
         Ok(Self {
+            auth_verifier,
             database,
             resolver,
             gmail_oauth,
@@ -68,8 +72,9 @@ impl AppState {
         })
     }
 
-    pub async fn status(&self) -> Result<StatusResponse, AppError> {
-        let (mailbox_count, enabled_mailbox_count, message_count) = self.database.counts()?;
+    pub async fn status(&self, organization_id: &str) -> Result<StatusResponse, AppError> {
+        let (mailbox_count, enabled_mailbox_count, message_count) =
+            self.database.counts(organization_id)?;
         let skarbiec_available = self.resolver.is_available().await;
         Ok(StatusResponse {
             product: "skrzynka",
@@ -94,9 +99,10 @@ impl AppState {
 
     pub async fn start_gmail_oauth(
         &self,
+        organization_id: &str,
         request: StartGmailOAuthRequest,
     ) -> Result<StartGmailOAuthResponse, AppError> {
-        self.gmail_oauth.start(request).await
+        self.gmail_oauth.start(organization_id, request).await
     }
 
     pub async fn complete_gmail_oauth_callback(
@@ -109,9 +115,10 @@ impl AppState {
 
     pub async fn gmail_oauth_status(
         &self,
+        organization_id: &str,
         flow_id: Uuid,
     ) -> Result<GmailOAuthStatusResponse, AppError> {
-        let snapshot = self.gmail_oauth.status(flow_id).await?;
+        let snapshot = self.gmail_oauth.status(flow_id, organization_id).await?;
         self.gmail_status_response(snapshot).await
     }
 
@@ -152,51 +159,56 @@ impl AppState {
     ) -> Result<Mailbox, AppError> {
         if let Some(mailbox) = self
             .database
-            .list_mailboxes()?
+            .list_mailboxes(&authorization.organization_id)?
             .into_iter()
             .find(|mailbox| mailbox.skarbiec_item_id == authorization.credential_item_id)
         {
             return Ok(mailbox);
         }
-        self.create_mailbox(CreateMailboxRequest {
-            skarbiec_item_id: authorization.credential_item_id.clone(),
-            display_name: Some(authorization.email.clone()),
-            email: Some(authorization.email.clone()),
-            imap_host: None,
-            imap_port: None,
-            smtp_host: None,
-            smtp_port: None,
-            smtp_security: Some(SmtpSecurity::Starttls),
-            poll_interval_seconds: None,
-        })
+        self.create_mailbox(
+            &authorization.organization_id,
+            CreateMailboxRequest {
+                skarbiec_item_id: authorization.credential_item_id.clone(),
+                display_name: Some(authorization.email.clone()),
+                email: Some(authorization.email.clone()),
+                imap_host: None,
+                imap_port: None,
+                smtp_host: None,
+                smtp_port: None,
+                smtp_security: Some(SmtpSecurity::Starttls),
+                poll_interval_seconds: None,
+            },
+        )
         .await
     }
-
     pub async fn create_mailbox(
         &self,
+        organization_id: &str,
         mut request: CreateMailboxRequest,
     ) -> Result<Mailbox, AppError> {
         if request.poll_interval_seconds.is_none() {
             request.poll_interval_seconds = Some(self.poll_interval_seconds);
         }
-        let config = self.resolver.resolve_mailbox_config(&request).await?;
+        let mut config = self.resolver.resolve_mailbox_config(&request).await?;
+        config.organization_id = organization_id.to_string();
         self.database.create_mailbox(&config)
     }
 
-    pub fn list_mailboxes(&self) -> Result<Vec<Mailbox>, AppError> {
-        self.database.list_mailboxes()
+    pub fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
+        self.database.list_mailboxes(organization_id)
     }
 
-    pub fn get_mailbox(&self, id: Uuid) -> Result<Mailbox, AppError> {
-        self.database.get_mailbox(id)
+    pub fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
+        self.database.get_mailbox(organization_id, id)
     }
 
     pub fn update_mailbox(
         &self,
+        organization_id: &str,
         id: Uuid,
         request: UpdateMailboxRequest,
     ) -> Result<Mailbox, AppError> {
-        let mut mailbox = self.database.get_mailbox(id)?;
+        let mut mailbox = self.database.get_mailbox(organization_id, id)?;
         if let Some(value) = request.display_name {
             mailbox.display_name = value.trim().to_string();
         }
@@ -228,13 +240,22 @@ impl AppState {
         self.database.update_mailbox(&mailbox)
     }
 
-    pub fn delete_mailbox(&self, id: Uuid) -> Result<(), AppError> {
-        self.database.delete_mailbox(id)
+    pub fn delete_mailbox(&self, organization_id: &str, id: Uuid) -> Result<(), AppError> {
+        self.database.delete_mailbox(organization_id, id)
     }
 
-    pub async fn sync_mailbox(&self, id: Uuid) -> Result<SyncSummary, AppError> {
+    pub async fn sync_mailbox(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+    ) -> Result<SyncSummary, AppError> {
+        self.database.get_mailbox(organization_id, id)?;
+        self.sync_mailbox_internal(id).await
+    }
+
+    async fn sync_mailbox_internal(&self, id: Uuid) -> Result<SyncSummary, AppError> {
         let _guard = self.operation_lock.lock().await;
-        let mailbox = self.database.get_mailbox(id)?;
+        let mailbox = self.database.get_mailbox_internal(id)?;
         let credentials = match self
             .resolver
             .resolve_credentials(&mailbox.skarbiec_item_id)
@@ -276,10 +297,10 @@ impl AppState {
         result
     }
 
-    pub async fn sync_all(&self) -> Result<SyncAllSummary, AppError> {
+    pub async fn sync_all(&self, organization_id: &str) -> Result<SyncAllSummary, AppError> {
         let mailboxes = self
             .database
-            .list_mailboxes()?
+            .list_mailboxes(organization_id)?
             .into_iter()
             .filter(|mailbox| mailbox.enabled)
             .collect::<Vec<_>>();
@@ -290,7 +311,7 @@ impl AppState {
         let now = Utc::now();
         let mailboxes = self
             .database
-            .list_mailboxes()?
+            .list_all_mailboxes()?
             .into_iter()
             .filter(|mailbox| {
                 if !mailbox.enabled {
@@ -314,7 +335,7 @@ impl AppState {
     async fn sync_mailboxes(&self, mailboxes: Vec<Mailbox>) -> Result<SyncAllSummary, AppError> {
         let mut results = Vec::with_capacity(mailboxes.len());
         for mailbox in mailboxes {
-            match self.sync_mailbox(mailbox.id).await {
+            match self.sync_mailbox_internal(mailbox.id).await {
                 Ok(summary) => results.push(MailboxSyncResult {
                     mailbox_id: mailbox.id,
                     ok: true,
@@ -339,29 +360,36 @@ impl AppState {
 
     pub fn list_messages(
         &self,
+        organization_id: &str,
         mailbox_id: Option<Uuid>,
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Message>, AppError> {
         self.database
-            .list_messages(mailbox_id, limit.clamp(1, 500), offset)
+            .list_messages(organization_id, mailbox_id, limit.clamp(1, 500), offset)
     }
 
-    pub fn get_message(&self, id: Uuid) -> Result<Message, AppError> {
-        self.database.get_message(id)
+    pub fn get_message(&self, organization_id: &str, id: Uuid) -> Result<Message, AppError> {
+        self.database.get_message(organization_id, id)
     }
 
-    pub fn list_replies(&self, message_id: Uuid) -> Result<Vec<ReplyAttempt>, AppError> {
-        self.database.list_replies(message_id)
+    pub fn list_replies(
+        &self,
+        organization_id: &str,
+        message_id: Uuid,
+    ) -> Result<Vec<ReplyAttempt>, AppError> {
+        self.database.list_replies(organization_id, message_id)
     }
 
     pub async fn reply(
         &self,
+        organization_id: &str,
         message_id: Uuid,
         request: CreateReplyRequest,
     ) -> Result<ReplyAttempt, AppError> {
         validate_reply_request(&request)?;
         let (attempt, created) = self.database.begin_reply(
+            organization_id,
             message_id,
             request.idempotency_key.trim(),
             request.body.trim_end(),
@@ -372,8 +400,10 @@ impl AppState {
         let attempt =
             self.database
                 .update_reply(attempt.id, ReplyStatus::Sending, None, None, None)?;
-        let message = self.database.get_message(message_id)?;
-        let mailbox = self.database.get_mailbox(message.mailbox_id)?;
+        let message = self.database.get_message(organization_id, message_id)?;
+        let mailbox = self
+            .database
+            .get_mailbox(organization_id, message.mailbox_id)?;
         let credentials = match self
             .resolver
             .resolve_credentials(&mailbox.skarbiec_item_id)

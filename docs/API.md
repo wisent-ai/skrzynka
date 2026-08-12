@@ -1,6 +1,6 @@
 # Loopback JSON API
 
-The service listens on `http://127.0.0.1:8788` by default and refuses non-loopback bind addresses. All request and response bodies are JSON. Timestamps are RFC 3339 UTC strings. Errors use:
+The service listens on `http://127.0.0.1:8788` by default and refuses non-loopback bind addresses. Except for `GET /healthz` and the provider-owned Gmail callback, every route requires `Authorization: Bearer <wisent-session>` and `X-Wisent-Organization-ID: <organization-id>`. The core verifies both with centralized Wisent identity and rejects a selected organization without a matching membership. Durable resources are filtered by the verified organization. All request and response bodies are JSON. Timestamps are RFC 3339 UTC strings. Errors use:
 
 ```json
 {

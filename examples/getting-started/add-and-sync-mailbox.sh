@@ -1,6 +1,6 @@
 #!/bin/sh
 # Goal: add one mailbox by exact Skarbiec item ID and observe its provider mail.
-# Status: Skrzynka development channel 0.1.x.
+# Status: Skrzynka development channel 0.2.x.
 # Risk: local mutation plus credentialed, read-only IMAP access.
 # Environment: macOS or Linux, local Skarbiec owner, isolated state directory.
 # Usage: sh add-and-sync-mailbox.sh <skarbiec-item-id> <new-state-directory>

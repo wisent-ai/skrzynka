@@ -1,6 +1,6 @@
 #!/bin/sh
 # Goal: disable a mailbox, inspect it, then remove only its local Skrzynka state.
-# Status: Skrzynka development channel 0.1.x.
+# Status: Skrzynka development channel 0.2.x.
 # Risk: destructive local mutation; local messages and reply evidence are deleted.
 # Environment: stopped loopback service or a database not used by another process.
 # Usage: CONFIRM_REMOVE=yes sh remove-local-mailbox.sh <database> <mailbox-uuid>

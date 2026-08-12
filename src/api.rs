@@ -1,12 +1,14 @@
 use crate::{
+    auth::{require_auth, AuthContext},
     error::AppError,
     gmail::{GmailOAuthCallback, StartGmailOAuthRequest},
     models::{CreateMailboxRequest, CreateReplyRequest, HealthResponse, UpdateMailboxRequest},
     service::AppState,
 };
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
+    middleware,
     response::Html,
     routing::{get, post},
     Json, Router,
@@ -16,13 +18,11 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
-        .route("/healthz", get(health))
+    let protected = Router::new()
         .route("/v1/status", get(status))
         .route("/v1/skarbiec/items", get(list_skarbiec_items))
         .route("/v1/gmail/profiles", get(list_gmail_profiles))
         .route("/v1/gmail/oauth/start", post(start_gmail_oauth))
-        .route("/v1/gmail/oauth/callback", get(gmail_oauth_callback))
         .route("/v1/gmail/oauth/:flow_id", get(gmail_oauth_status))
         .route("/v1/mailboxes", get(list_mailboxes).post(create_mailbox))
         .route(
@@ -39,6 +39,15 @@ pub fn router(state: AppState) -> Router {
             "/v1/messages/:id/replies",
             get(list_replies).post(create_reply),
         )
+        .route_layer(middleware::from_fn_with_state(
+            state.auth_verifier.clone(),
+            require_auth,
+        ));
+
+    Router::new()
+        .route("/healthz", get(health))
+        .route("/v1/gmail/oauth/callback", get(gmail_oauth_callback))
+        .merge(protected)
         .with_state(state)
 }
 
@@ -51,23 +60,37 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
-async fn status(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.status().await?)))
+async fn status(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.status(&auth.organization_id).await?)))
 }
 
-async fn list_skarbiec_items(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+async fn list_skarbiec_items(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<AuthContext>,
+) -> Result<Json<Value>, AppError> {
     Ok(Json(json!(state.list_skarbiec_items().await?)))
 }
 
-async fn list_gmail_profiles(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+async fn list_gmail_profiles(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<AuthContext>,
+) -> Result<Json<Value>, AppError> {
     Ok(Json(json!(state.list_gmail_profiles().await?)))
 }
 
 async fn start_gmail_oauth(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(request): Json<StartGmailOAuthRequest>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.start_gmail_oauth(request).await?)))
+    Ok(Json(json!(
+        state
+            .start_gmail_oauth(&auth.organization_id, request)
+            .await?
+    )))
 }
 
 async fn gmail_oauth_callback(
@@ -88,40 +111,53 @@ async fn gmail_oauth_callback(
 
 async fn gmail_oauth_status(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(flow_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     Ok(Json(json!(
-        state.gmail_oauth_status(parse_uuid(&flow_id)?).await?
+        state
+            .gmail_oauth_status(&auth.organization_id, parse_uuid(&flow_id)?)
+            .await?
     )))
 }
 
-async fn list_mailboxes(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.list_mailboxes()?)))
+async fn list_mailboxes(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.list_mailboxes(&auth.organization_id)?)))
 }
 
 async fn create_mailbox(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(request): Json<CreateMailboxRequest>,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
-    let mailbox = state.create_mailbox(request).await?;
+    let mailbox = state.create_mailbox(&auth.organization_id, request).await?;
     Ok((StatusCode::CREATED, Json(json!(mailbox))))
 }
 
 async fn get_mailbox(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.get_mailbox(parse_uuid(&id)?)?)))
+    Ok(Json(json!(
+        state.get_mailbox(&auth.organization_id, parse_uuid(&id)?)?
+    )))
 }
 
 async fn update_mailbox(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
     Json(request): Json<UpdateMailboxRequest>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(
-        json!(state.update_mailbox(parse_uuid(&id)?, request)?),
-    ))
+    Ok(Json(json!(state.update_mailbox(
+        &auth.organization_id,
+        parse_uuid(&id)?,
+        request,
+    )?)))
 }
 
 #[derive(Deserialize)]
@@ -131,6 +167,7 @@ struct DeleteQuery {
 
 async fn delete_mailbox(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<StatusCode, AppError> {
@@ -140,19 +177,27 @@ async fn delete_mailbox(
             "mailbox removal requires confirm=true",
         ));
     }
-    state.delete_mailbox(parse_uuid(&id)?)?;
+    state.delete_mailbox(&auth.organization_id, parse_uuid(&id)?)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn sync_mailbox(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.sync_mailbox(parse_uuid(&id)?).await?)))
+    Ok(Json(json!(
+        state
+            .sync_mailbox(&auth.organization_id, parse_uuid(&id)?)
+            .await?
+    )))
 }
 
-async fn sync_all(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.sync_all().await?)))
+async fn sync_all(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.sync_all(&auth.organization_id).await?)))
 }
 
 #[derive(Deserialize)]
@@ -164,10 +209,12 @@ struct MessageQuery {
 
 async fn list_messages(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Query(query): Query<MessageQuery>,
 ) -> Result<Json<Value>, AppError> {
     let mailbox_id = query.mailbox_id.as_deref().map(parse_uuid).transpose()?;
     Ok(Json(json!(state.list_messages(
+        &auth.organization_id,
         mailbox_id,
         query.limit.unwrap_or(100),
         query.offset.unwrap_or(0),
@@ -176,24 +223,35 @@ async fn list_messages(
 
 async fn get_message(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.get_message(parse_uuid(&id)?)?)))
+    Ok(Json(json!(
+        state.get_message(&auth.organization_id, parse_uuid(&id)?)?
+    )))
 }
 
 async fn list_replies(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.list_replies(parse_uuid(&id)?)?)))
+    Ok(Json(json!(
+        state.list_replies(&auth.organization_id, parse_uuid(&id)?,)?
+    )))
 }
 
 async fn create_reply(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
     Json(request): Json<CreateReplyRequest>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.reply(parse_uuid(&id)?, request).await?)))
+    Ok(Json(json!(
+        state
+            .reply(&auth.organization_id, parse_uuid(&id)?, request)
+            .await?
+    )))
 }
 
 fn parse_uuid(value: &str) -> Result<Uuid, AppError> {

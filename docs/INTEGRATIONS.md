@@ -42,9 +42,11 @@
 
 **Runtime:** the core refreshes short-lived access tokens directly with Google, caches them in memory until shortly before expiry, and uses XOAUTH2 for both IMAP and SMTP. The OAuth client must be a Google **Desktop app** JSON with an `installed` object and Google's canonical endpoints. A missing or revoked client or refresh token affects only Gmail connection or the corresponding mailbox and requires reconnecting the same profile.
 
-## Desktop client
+## Desktop client, identity, and onboarding
 
-`skrzynka-desktop` uses only the loopback `/v1` JSON API. It never reads the SQLite database, invokes Skarbiec, or opens IMAP/SMTP directly. API unavailability leaves the core service and CLI usable and does not alter mailbox state.
+`skrzynka-desktop` restores user identity and organization selection through `wisent-desktop-auth`, then sends that short-lived bearer and organization ID only to the loopback `/v1` JSON API. The core independently verifies the session and membership before organization-scoped database access. The desktop never reads the SQLite database, invokes Skarbiec, or opens IMAP/SMTP directly. API or identity unavailability fails closed without altering mailbox state.
+
+The desktop runs its first-use journey through Echo's `WisentOnboarding` client. A configured Stado integration transport may read the exact published journey and collect bounded, idempotent onboarding events; a source-identical bundled definition keeps product activation local when that optional transport is unavailable. Neither path carries mailbox credentials or message content.
 
 ## Ownership
 

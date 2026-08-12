@@ -2,7 +2,7 @@
 
 ## First-success fact
 
-`message list` returns at least one provider message whose `mailbox_id` equals the mailbox added from the selected Skarbiec item. Installation, a healthy process, or a successful IMAP login alone is not first success.
+For the CLI, `message list` returns at least one provider message whose `mailbox_id` equals the mailbox added from the selected Skarbiec item. For Skrzynka Desktop, the shared journey records `first_mailbox_sync_completed` only after the authenticated core completes a provider-backed synchronization cycle. Installation, sign-in, a healthy process, explanatory navigation, or a successful IMAP login alone is not first success.
 
 ## Zero state
 
@@ -21,21 +21,16 @@ The CLI is noninteractive. Automation receives one JSON object on stdout and a n
 
 ## Human desktop journey
 
-The private `skrzynka-desktop` client owns a deterministic, resumable multi-screen journey:
+Shared Wisent authentication first restores or establishes a real identity and selected organization. The private `skrzynka-desktop` client then runs the Echo-owned, version-bound `skrzynka-desktop.first-use` journey:
 
 | Screen | Entry evidence | Completion evidence | Safe fallback |
 |---|---|---|---|
-| Welcome | No completed attempt | Operator chooses to manage existing mail | Exit without state change |
-| Service | API health unknown or unavailable | `/healthz` reports `ready` | Show exact local start command |
-| Skarbiec / Gmail | Service ready, no mailbox | A Google identity or exact generic item is selected | Gmail uses the discovered account list; generic setup filters metadata |
-| Authorization / profile | Selection made | Gmail OAuth completes or the generic profile is accepted | Preserve selection and show the normalized error without storing partial state |
-| First sync | Mailbox exists | At least one message is observed, or an empty provider inbox is explicitly acknowledged | Retry without duplicating rows |
-| Access boundary | Before normal inbox | Operator sees that the current internal desktop has no price, checkout, or paid entitlement and continues | Exit; core CLI remains usable |
-| Inbox | First-sync decision complete | Inbox is usable | Resume here on relaunch |
+| Welcome | Authenticated organization selected | Operator chooses the unified inbox workflow | Exit without mailbox state change |
+| Service | Product promise understood | Authenticated `/v1/status` succeeds for the selected organization | Retry without advancing |
+| Mailbox | Service ready | Core creates and reads back an organization-scoped mailbox from the chosen Skarbiec authority | Preserve selection and show the normalized error |
+| Synchronize | Mailbox exists | Provider-backed synchronization completes | Retry without duplicating rows or provider effects |
 
-The current product has no paid capability, price, checkout, or entitlement. The access-boundary screen states that truth instead of inventing a purchase. If a paid capability is introduced, the README and release contract change first and this node becomes an authoritative paywall before activation.
-
-The bundled journey is `skrzynka-desktop.first-success` version 1. Routing is deterministic from service reachability, mailbox count, selected item, and first-sync evidence. Progress is local and contains no credentials, message content, or unrestricted answers. There is no remote analytics or experiment assignment in version 1; the canonical control route is the only eligible variant, and analytics failure is therefore not a routing dependency.
+The canonical journey version is `2026-08-11.1`, immutable version ID `7f1d3482-fd49-4c7c-9fb2-22d57e2acb60`. The desktop runs it through Echo's shared `WisentOnboarding` package, persists version-bound progress and idempotent events locally, and uses the validated bundled definition when the central transport is unavailable. When the Stado integration transport is configured, bundle reads and event collection use the centralized Echo onboarding boundary. Analytics failure never blocks the core mailbox workflow.
 
 ## Common failures
 
@@ -46,6 +41,9 @@ The bundled journey is `skrzynka-desktop.first-success` version 1. Routing is de
 | `GMAIL_OAUTH_REJECTED` | Google or the operator rejected the bounded authorization | Start a fresh connection flow; no partial authorization is used |
 | `GMAIL_OAUTH_ACCOUNT_MISMATCH` | Google returned a different account than the selected Skarbiec identity | Authorize the exact selected address |
 | `GMAIL_AUTHORIZATION_EXPIRED` | Google revoked or rejected the saved refresh token | Reconnect the same Gmail profile; local messages remain readable |
+| `AUTHENTICATION_REQUIRED` | The Wisent session is absent or invalid | Return to shared sign-in; no organization data is returned |
+| `ORGANIZATION_ACCESS_DENIED` | The selected organization is not one of the signed-in account's memberships | Select an authorized organization; no mailbox state is read or changed |
+| `IDENTITY_UNAVAILABLE` | Central identity verification could not complete | Retry after the identity service recovers; the core fails closed |
 | `MAILBOX_PROFILE_INVALID` | Required host/address/security setting is absent or contradictory | Supply non-secret settings or update the bundle |
 | `IMAP_AUTHENTICATION_FAILED` | Provider refused the current credential | Rotate or correct the Skarbiec item, then retry sync |
 | `IMAP_UNAVAILABLE` | TLS, DNS, timeout, or provider failure | Inspect mailbox status and retry; other mailboxes continue |

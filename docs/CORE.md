@@ -4,7 +4,7 @@
 
 ### Mailbox
 
-A mailbox is identified by a generated UUID and contains an exact `skarbiec_item_id`, display name, sending address, IMAP/SMTP host and port, SMTP security mode, enabled state, last persisted IMAP UID, synchronization timestamps, and the latest normalized error. Authentication fields are never part of this resource.
+A mailbox is identified by a generated UUID and belongs to one verified organization namespace. It contains an exact `skarbiec_item_id`, display name, sending address, IMAP/SMTP host and port, SMTP security mode, enabled state, last persisted IMAP UID, synchronization timestamps, and the latest normalized error. Authentication fields are never part of this resource.
 
 Valid state changes are `enabled → disabled → enabled` and `present → removed`. Synchronization updates its cursor only after every selected message has been committed. Removing a mailbox cascades only through Skrzynka's local messages and reply attempts.
 
@@ -26,6 +26,8 @@ The same idempotency key returns its existing attempt and never sends twice. A r
 
 ## Invariants
 
+- Every API mailbox, message, and reply read or mutation is constrained by the centrally verified organization from the request.
+- A valid user session without membership in the selected organization cannot observe whether that organization's local resources exist.
 - One mailbox always replies through its own Skarbiec item and SMTP profile.
 - No API or database field accepts a mailbox password.
 - Secret resolution occurs immediately before IMAP/SMTP authentication and the value is dropped with the connection task.
@@ -45,7 +47,7 @@ Public errors contain a stable `code`, a safe `message`, whether retry may help,
 
 ## Retention and privacy
 
-Skrzynka retains normalized messages and reply bodies until their mailbox is removed or the database is removed. There is no automatic retention deletion in schema 1. Raw MIME, attachments, and remote HTML are not stored. Operators must treat the SQLite file and its backups as sensitive message data even though it contains no mailbox passwords.
+Skrzynka retains normalized messages and reply bodies until their mailbox is removed or the database is removed. There is no automatic retention deletion in schema 2. Raw MIME, attachments, remote HTML, Wisent sessions, and organization membership records are not stored. Operators must treat the SQLite file and its backups as sensitive message data even though it contains no mailbox passwords.
 
 ## Resource behavior
 

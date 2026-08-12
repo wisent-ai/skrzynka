@@ -44,6 +44,7 @@ pub struct GmailOAuthCallback {
 
 #[derive(Debug, Clone)]
 pub struct GmailAuthorization {
+    pub organization_id: String,
     pub credential_item_id: String,
     pub email: String,
 }
@@ -80,6 +81,7 @@ pub struct GmailOAuthBroker {
 
 #[derive(Clone)]
 struct PendingFlow {
+    organization_id: String,
     verifier: String,
     source_item_id: String,
     expected_email: String,
@@ -88,6 +90,7 @@ struct PendingFlow {
 
 #[derive(Clone)]
 struct FlowRecord {
+    organization_id: String,
     expires_at: chrono::DateTime<Utc>,
     status: GmailOAuthFlowStatus,
     pending: Option<PendingFlow>,
@@ -126,6 +129,7 @@ impl GmailOAuthBroker {
 
     pub async fn start(
         &self,
+        organization_id: &str,
         request: StartGmailOAuthRequest,
     ) -> Result<StartGmailOAuthResponse, AppError> {
         let email = self
@@ -170,9 +174,11 @@ impl GmailOAuthBroker {
         self.flows.lock().await.insert(
             flow_id,
             FlowRecord {
+                organization_id: organization_id.to_string(),
                 expires_at,
                 status: GmailOAuthFlowStatus::Pending,
                 pending: Some(PendingFlow {
+                    organization_id: organization_id.to_string(),
                     verifier,
                     source_item_id: request.skarbiec_item_id,
                     expected_email: email,
@@ -250,11 +256,18 @@ impl GmailOAuthBroker {
         }
     }
 
-    pub async fn status(&self, flow_id: Uuid) -> Result<GmailOAuthFlowSnapshot, AppError> {
+    pub async fn status(
+        &self,
+        flow_id: Uuid,
+        organization_id: &str,
+    ) -> Result<GmailOAuthFlowSnapshot, AppError> {
         let mut flows = self.flows.lock().await;
         let record = flows
             .get_mut(&flow_id)
             .ok_or_else(|| AppError::not_found("Gmail OAuth flow"))?;
+        if record.organization_id != organization_id {
+            return Err(AppError::not_found("Gmail OAuth flow"));
+        }
         if record.expires_at < Utc::now()
             && matches!(
                 record.status,
@@ -426,6 +439,7 @@ impl GmailOAuthBroker {
             .save_gmail_authorization(&pending.source_item_id, authorized_email, refresh_token)
             .await?;
         Ok(GmailAuthorization {
+            organization_id: pending.organization_id.clone(),
             credential_item_id,
             email: authorized_email.to_string(),
         })

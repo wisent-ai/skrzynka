@@ -1,6 +1,6 @@
 #!/bin/sh
 # Goal: send one plain-text reply through the mailbox that received a stored message.
-# Status: Skrzynka development channel 0.1.x.
+# Status: Skrzynka development channel 0.2.x.
 # Risk: provider-facing mutation; the SMTP server may deliver a real email.
 # Environment: existing isolated Skrzynka state with one imported message.
 # Usage: CONFIRM_SEND=yes sh reply-to-message.sh <database> <message-uuid> <body-file>

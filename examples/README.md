@@ -25,7 +25,7 @@ These examples cover the development-channel CLI outcomes documented by the root
 
 ## Shared prerequisites
 
-- Development source version `0.1.0` built as `target/debug/skrzynka`, or `SKRZYNKA_BIN` set to another exact build.
+- Development source version `0.2.0` built as `target/debug/skrzynka`, or `SKRZYNKA_BIN` set to another exact build.
 - A supported `skarbiec` executable on `PATH`.
 - For provider examples, a non-production mailbox item and an inbox with at least one known message.
 - A new state path chosen specifically for the example. Scripts refuse to reuse or overwrite it.

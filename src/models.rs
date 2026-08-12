@@ -8,6 +8,8 @@ pub struct ParseModelError(pub String);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mailbox {
     pub id: Uuid,
+    #[serde(skip_serializing)]
+    pub organization_id: String,
     pub skarbiec_item_id: String,
     pub display_name: String,
     pub email: String,

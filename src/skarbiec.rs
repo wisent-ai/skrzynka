@@ -345,6 +345,7 @@ impl SkarbiecResolver {
         }
 
         Ok(MailboxConfig {
+            organization_id: String::new(),
             skarbiec_item_id: request.skarbiec_item_id.clone(),
             display_name,
             email,

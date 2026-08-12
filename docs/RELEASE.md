@@ -4,7 +4,7 @@
 
 `Cargo.toml` is the only source of the Skrzynka version. `skrzynka version` reports that value. Versions follow Semantic Versioning with the Product Guidelines `0.x` rule: a breaking change advances the minor slot; additive and corrective changes advance the patch slot until the public contract is deliberately declared stable at `1.0.0`.
 
-Public contract includes CLI commands and machine JSON, `/v1` HTTP resources, the mailbox profile, SQLite schema semantics, loopback-only operation, integration capability declarations, and documented reply idempotency behavior.
+Public contract includes CLI commands and machine JSON, authenticated `/v1` HTTP resources, organization isolation, the mailbox profile, SQLite schema semantics, loopback-only operation, integration capability declarations, and documented reply idempotency behavior.
 
 ## Channels
 
@@ -17,8 +17,9 @@ Public contract includes CLI commands and machine JSON, `/v1` HTTP resources, th
 
 ## Compatibility
 
-- API major version is the `/v1` path segment.
-- Database schema is recorded with SQLite `PRAGMA user_version`; this release owns schema 1.
+- API major version is the `/v1` path segment. Every `/v1` route except the provider callback requires a Wisent bearer and selected organization header; `/healthz` remains unauthenticated.
+- Database schema is recorded with SQLite `PRAGMA user_version`; this release owns schema 2.
+- The schema 1 to 2 migration assigns existing resources to the explicit `legacy-local` CLI namespace because no prior row contains a defensible Wisent organization identity.
 - Same-minor `0.x` builds must read the existing schema or refuse startup with an actionable migration error.
 - A client must ignore additive JSON fields and must not assume enum values beyond those documented.
 - IMAP support is IMAP4rev1 with direct TLS. SMTP support is required STARTTLS or implicit TLS.

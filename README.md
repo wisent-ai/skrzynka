@@ -14,7 +14,7 @@
 
 Skrzynka is a self-hosted email operations service for people and local tools that need to receive mail from multiple IMAP mailboxes and send replies through the mailbox that received each message. Mailbox credentials stay in [Skarbiec](https://github.com/wisent-ai/skarbiec): Skrzynka stores exact item references and non-secret connection settings, resolves passwords or OAuth authorizations only while opening IMAP or SMTP, and never writes resolved secrets to its database or logs.
 
-The observable result is one local inbox with mailbox identity preserved on every message and reply. The service exposes the same state through a CLI and a loopback-only JSON API used by `skrzynka-desktop`.
+The observable result is one local inbox with mailbox identity preserved on every message and reply. The service exposes the same state through a CLI and an authenticated loopback-only JSON API used by `skrzynka-desktop`.
 
 ## What works now
 
@@ -26,8 +26,9 @@ The observable result is one local inbox with mailbox identity preserved on ever
 - Reply through the originating mailbox over SMTP with required TLS and preserved thread headers.
 - Record synchronization and reply state in a local SQLite database, including actionable mailbox errors and ambiguous-send protection.
 - Keep the HTTP surface on loopback; startup refuses a non-loopback bind address.
+- Authenticate every `/v1` API request through the shared Wisent identity service and scope durable mailbox, message, and reply access to the selected organization.
 
-Skrzynka does **not** currently manage provider-side folders, delete or mark messages, download attachments, render remote HTML, expose a shared multi-user server, generate reply text, or send automatic replies. Gmail OAuth is an authentication adapter; message transport remains IMAP and SMTP.
+Skrzynka does **not** currently manage provider-side folders, delete or mark messages, download attachments, render remote HTML, expose a remote shared server, generate reply text, or send automatic replies. Gmail OAuth is an authentication adapter; message transport remains IMAP and SMTP.
 
 ## First local result
 
@@ -94,15 +95,15 @@ The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret
 
 ## Operating model
 
-Skrzynka is an operated local product. Its SQLite database defaults to `~/.local/share/skrzynka/skrzynka.db`; it contains mailbox metadata, normalized message content, and reply status, but no mailbox passwords. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
+Skrzynka is an operated local product. Its SQLite database defaults to `~/.local/share/skrzynka/skrzynka.db`; it contains organization-scoped mailbox metadata, normalized message content, and reply status, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
 
 Back up the database while the service is stopped. Restoring the database restores local messages and mailbox references, but Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka does not delete its Skarbiec item or provider mailbox.
 
 ## Status and support
 
-- **Maturity:** development contract, version `0.1.0`; no stable release channel exists yet.
+- **Maturity:** development contract, version `0.2.0`; no stable release channel exists yet.
 - **Distribution:** source from this repository. A moving `main` branch is not an immutable release coordinate.
-- **Compatibility:** SQLite schema version 1; loopback API version 1; IMAP4rev1 over TLS and SMTP with STARTTLS or implicit TLS.
+- **Compatibility:** SQLite schema version 2; loopback API version 1; IMAP4rev1 over TLS and SMTP with STARTTLS or implicit TLS.
 - **Defects and proposals:** [GitHub Issues](https://github.com/wisent-ai/skrzynka/issues).
 - **Private security reports:** use GitHub's private vulnerability reporting for this repository; do not put credentials or message contents in an issue.
 - **Community:** [Wisent Discord](https://discord.gg/qRjpkthq54).
