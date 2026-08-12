@@ -1,6 +1,7 @@
 mod api;
 mod db;
 mod error;
+mod gmail;
 mod mail;
 mod models;
 mod service;
@@ -22,6 +23,8 @@ use std::{
 };
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
+
+const DEFAULT_CALLBACK_BASE_URL: &str = "http://127.0.0.1:8787";
 
 #[derive(Parser)]
 #[command(
@@ -184,19 +187,19 @@ async fn run(cli: Cli) -> Result<(), AppError> {
     match cli.command {
         Command::Serve(args) => serve(database, resolver, args).await,
         Command::Status => {
-            let state = AppState::new(database, resolver, 60)?;
+            let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             print_json(&state.status().await?)
         }
         Command::Mailbox { command } => {
-            let state = AppState::new(database, resolver, 60)?;
+            let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             run_mailbox(state, command).await
         }
         Command::Message { command } => {
-            let state = AppState::new(database, resolver, 60)?;
+            let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             run_message(state, command).await
         }
         Command::Sync { mailbox } => {
-            let state = AppState::new(database, resolver, 60)?;
+            let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             match mailbox {
                 Some(id) => print_json(&state.sync_mailbox(id).await?),
                 None => print_json(&state.sync_all().await?),
@@ -219,7 +222,8 @@ async fn serve(
             false,
         ));
     }
-    let state = AppState::new(database, resolver, args.poll_seconds)?;
+    let callback_base_url = format!("http://{}", args.bind);
+    let state = AppState::new(database, resolver, args.poll_seconds, &callback_base_url)?;
     state.clone().start_polling();
     let listener = tokio::net::TcpListener::bind(args.bind)
         .await

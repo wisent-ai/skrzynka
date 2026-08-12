@@ -21,6 +21,15 @@ The service listens on `http://127.0.0.1:8787` by default and refuses non-loopba
 
 - `GET /v1/skarbiec/items` — metadata returned by `skarbiec list`, limited to item ID, kind, tags, revision count, and state. No field values.
 
+## Gmail profiles and authorization
+
+- `GET /v1/gmail/profiles` — deduplicated Google account addresses and their source Skarbiec item IDs; passwords are never returned.
+- `POST /v1/gmail/oauth/start` with `{"skarbiec_item_id":"platform-admin-google"}` — create a ten-minute PKCE flow and return `flow_id`, a trusted Google `authorization_url`, and `expires_at`.
+- `GET /v1/gmail/oauth/callback?state=UUID&code=CODE` — provider callback on the same loopback listener. Google invokes it after consent; it consumes the flow, verifies the authorized address, stores the durable authorization in Skarbiec, creates or reuses the Gmail mailbox, and returns only a close-window HTML result.
+- `GET /v1/gmail/oauth/{flow_id}` — poll `pending`, `processing`, `completed`, or `failed`. A completed response contains the mailbox; a failed response contains the normalized error.
+
+The desktop app receives only the flow identifier and authorization URL, then polls status. OAuth codes, provider tokens, client secrets, and refresh tokens are never returned through JSON or stored in SQLite. Reconnecting the same account rotates its Skarbiec bundle and returns the existing mailbox.
+
 ## Mailboxes
 
 - `GET /v1/mailboxes`

@@ -1,11 +1,13 @@
 use crate::{
     error::AppError,
+    gmail::{GmailOAuthCallback, StartGmailOAuthRequest},
     models::{CreateMailboxRequest, CreateReplyRequest, HealthResponse, UpdateMailboxRequest},
     service::AppState,
 };
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
+    response::Html,
     routing::{get, post},
     Json, Router,
 };
@@ -18,6 +20,10 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(health))
         .route("/v1/status", get(status))
         .route("/v1/skarbiec/items", get(list_skarbiec_items))
+        .route("/v1/gmail/profiles", get(list_gmail_profiles))
+        .route("/v1/gmail/oauth/start", post(start_gmail_oauth))
+        .route("/v1/gmail/oauth/callback", get(gmail_oauth_callback))
+        .route("/v1/gmail/oauth/:flow_id", get(gmail_oauth_status))
         .route("/v1/mailboxes", get(list_mailboxes).post(create_mailbox))
         .route(
             "/v1/mailboxes/:id",
@@ -51,6 +57,42 @@ async fn status(State(state): State<AppState>) -> Result<Json<Value>, AppError> 
 
 async fn list_skarbiec_items(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     Ok(Json(json!(state.list_skarbiec_items().await?)))
+}
+
+async fn list_gmail_profiles(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.list_gmail_profiles().await?)))
+}
+
+async fn start_gmail_oauth(
+    State(state): State<AppState>,
+    Json(request): Json<StartGmailOAuthRequest>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.start_gmail_oauth(request).await?)))
+}
+
+async fn gmail_oauth_callback(
+    State(state): State<AppState>,
+    Query(callback): Query<GmailOAuthCallback>,
+) -> (StatusCode, Html<&'static str>) {
+    match state.complete_gmail_oauth_callback(callback).await {
+        Ok(_) => (
+            StatusCode::OK,
+            Html("<!doctype html><meta charset=utf-8><title>Gmail connected</title><p>Gmail is connected to Skrzynka. You can close this window and return to Skrzynka Desktop.</p>"),
+        ),
+        Err(_) => (
+            StatusCode::BAD_REQUEST,
+            Html("<!doctype html><meta charset=utf-8><title>Gmail connection failed</title><p>Gmail could not be connected. Return to Skrzynka Desktop for the exact error.</p>"),
+        ),
+    }
+}
+
+async fn gmail_oauth_status(
+    State(state): State<AppState>,
+    Path(flow_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(
+        state.gmail_oauth_status(parse_uuid(&flow_id)?).await?
+    )))
 }
 
 async fn list_mailboxes(State(state): State<AppState>) -> Result<Json<Value>, AppError> {

@@ -12,21 +12,22 @@
 
 # Skrzynka
 
-Skrzynka is a self-hosted email operations service for people and local tools that need to receive mail from multiple IMAP mailboxes and send replies through the mailbox that received each message. Mailbox credentials stay in [Skarbiec](https://github.com/wisent-ai/skarbiec): Skrzynka stores exact item references and non-secret connection settings, resolves secrets only while opening IMAP or SMTP, and never writes resolved passwords to its database or logs.
+Skrzynka is a self-hosted email operations service for people and local tools that need to receive mail from multiple IMAP mailboxes and send replies through the mailbox that received each message. Mailbox credentials stay in [Skarbiec](https://github.com/wisent-ai/skarbiec): Skrzynka stores exact item references and non-secret connection settings, resolves passwords or OAuth authorizations only while opening IMAP or SMTP, and never writes resolved secrets to its database or logs.
 
 The observable result is one local inbox with mailbox identity preserved on every message and reply. The service exposes the same state through a CLI and a loopback-only JSON API used by `skrzynka-desktop`.
 
 ## What works now
 
-- Add any number of mailboxes by exact Skarbiec item ID.
-- Read `login` items (`username`, `password`) with explicit server settings or `bundle` items that also contain the IMAP/SMTP profile.
+- Connect Google identities discovered in Skarbiec through Gmail OAuth; Skrzynka configures Gmail, stores the durable authorization back in Skarbiec, and performs IMAP/SMTP authentication with XOAUTH2.
+- Add any number of other mailboxes by exact Skarbiec item ID.
+- Read password-backed `login` items with explicit server settings or complete `bundle` profiles.
 - Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox and IMAP UID.
 - List mailboxes and messages without exposing credentials.
 - Reply through the originating mailbox over SMTP with required TLS and preserved thread headers.
 - Record synchronization and reply state in a local SQLite database, including actionable mailbox errors and ambiguous-send protection.
 - Keep the HTTP surface on loopback; startup refuses a non-loopback bind address.
 
-Skrzynka does **not** currently manage provider-side folders, delete or mark messages, download attachments, render remote HTML, expose a shared multi-user server, obtain OAuth tokens, generate reply text, or send automatic replies. Provider web APIs are outside the current contract; IMAP and SMTP are the supported integration boundary.
+Skrzynka does **not** currently manage provider-side folders, delete or mark messages, download attachments, render remote HTML, expose a shared multi-user server, generate reply text, or send automatic replies. Gmail OAuth is an authentication adapter; message transport remains IMAP and SMTP.
 
 ## First local result
 
@@ -36,6 +37,7 @@ Skrzynka does **not** currently manage provider-side folders, delete or mark mes
 - Rust 1.82 or newer for the development channel.
 - `skarbiec` on `PATH`, with a local owner key able to open the selected item.
 - A mailbox with IMAP over TLS and SMTP over STARTTLS or implicit TLS enabled.
+- For Gmail, one Google login identity in Skarbiec and the `skrzynka-google-oauth-desktop` item containing a Google **Desktop app** OAuth client JSON.
 
 Build the development source and inspect the zero-state guidance:
 
@@ -62,12 +64,12 @@ A successful sync prints a bounded JSON summary with `received`, `mailbox_id`, a
 
 ## Skarbiec mailbox contract
 
-Skrzynka persists the exact item ID selected by the operator; it never discovers mailboxes by parsing item names. The preferred item is a Skarbiec `bundle` with these fields:
+For password-backed providers, Skrzynka persists the exact item selected by the operator. A complete Skarbiec `bundle` uses these fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
 | `username` | yes | IMAP and SMTP authentication identity |
-| `password` | yes | App password or provider-issued mailbox secret |
+| `password` | password auth | App password or provider-issued mailbox secret |
 | `email` | yes | Address used in the outgoing `From` header |
 | `imap_host` | yes | IMAP TLS hostname |
 | `imap_port` | no | Defaults to `993` |
@@ -76,7 +78,9 @@ Skrzynka persists the exact item ID selected by the operator; it never discovers
 | `smtp_security` | no | `starttls` (default) or `tls` |
 | `display_name` | no | Human-readable mailbox name |
 
-Non-secret connection values supplied during `mailbox add` take precedence over values in the item. The authentication identity and password always come from Skarbiec and cannot be supplied through Skrzynka's API or command line.
+Non-secret connection values supplied during `mailbox add` take precedence over bundle values. Gmail is different: Skrzynka Desktop lists Google identities from Skarbiec and opens the authorization URL returned by the core; Google redirects the browser directly to the core's loopback callback. The core writes a dedicated `skrzynka-gmail-*` bundle containing the refresh token and automatic Gmail server profile. Passwords, OAuth codes, and provider tokens never cross the desktop API.
+
+The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret`, and one `value` field of type `oauth_client`; that value is the unmodified JSON downloaded for a Google OAuth client whose application type is **Desktop app**. Skrzynka accepts only the `installed` client shape and Google's canonical authorization and token endpoints.
 
 ## Product boundaries and contracts
 

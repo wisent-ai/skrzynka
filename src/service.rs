@@ -1,16 +1,21 @@
 use crate::{
     db::Database,
     error::AppError,
+    gmail::{
+        GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFlowSnapshot, GmailOAuthFlowStatus,
+        GmailProfile, StartGmailOAuthRequest, StartGmailOAuthResponse,
+    },
     mail,
     models::{
         CreateMailboxRequest, CreateReplyRequest, Mailbox, MailboxSyncResult, Message,
-        ReplyAttempt, ReplyStatus, SkarbiecItemMetadata, StatusResponse, SyncAllSummary,
-        SyncSummary, UpdateMailboxRequest,
+        ReplyAttempt, ReplyStatus, SkarbiecItemMetadata, SmtpSecurity, StatusResponse,
+        SyncAllSummary, SyncSummary, UpdateMailboxRequest,
     },
     skarbiec::SkarbiecResolver,
 };
 use chrono::Utc;
 use lettre::Address;
+use serde::Serialize;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -19,8 +24,25 @@ use uuid::Uuid;
 pub struct AppState {
     pub database: Database,
     resolver: SkarbiecResolver,
+    gmail_oauth: GmailOAuthBroker,
     pub poll_interval_seconds: u64,
     operation_lock: Arc<Mutex<()>>,
+}
+
+#[derive(Serialize)]
+pub struct GmailOAuthStatusResponse {
+    pub flow_id: Uuid,
+    pub status: &'static str,
+    pub expires_at: String,
+    pub mailbox: Option<Mailbox>,
+    pub error: Option<GmailOAuthStatusError>,
+}
+
+#[derive(Serialize)]
+pub struct GmailOAuthStatusError {
+    pub code: &'static str,
+    pub message: String,
+    pub retryable: bool,
 }
 
 impl AppState {
@@ -28,6 +50,7 @@ impl AppState {
         database: Database,
         resolver: SkarbiecResolver,
         poll_interval_seconds: u64,
+        callback_base_url: &str,
     ) -> Result<Self, AppError> {
         if !(15..=86_400).contains(&poll_interval_seconds) {
             return Err(AppError::invalid(
@@ -35,9 +58,11 @@ impl AppState {
                 "poll interval must be between 15 and 86400 seconds",
             ));
         }
+        let gmail_oauth = GmailOAuthBroker::new(resolver.clone(), callback_base_url)?;
         Ok(Self {
             database,
             resolver,
+            gmail_oauth,
             poll_interval_seconds,
             operation_lock: Arc::new(Mutex::new(())),
         })
@@ -61,6 +86,90 @@ impl AppState {
 
     pub async fn list_skarbiec_items(&self) -> Result<Vec<SkarbiecItemMetadata>, AppError> {
         self.resolver.list_items().await
+    }
+
+    pub async fn list_gmail_profiles(&self) -> Result<Vec<GmailProfile>, AppError> {
+        self.gmail_oauth.profiles().await
+    }
+
+    pub async fn start_gmail_oauth(
+        &self,
+        request: StartGmailOAuthRequest,
+    ) -> Result<StartGmailOAuthResponse, AppError> {
+        self.gmail_oauth.start(request).await
+    }
+
+    pub async fn complete_gmail_oauth_callback(
+        &self,
+        callback: GmailOAuthCallback,
+    ) -> Result<Mailbox, AppError> {
+        let authorization = self.gmail_oauth.complete_callback(callback).await?;
+        self.ensure_gmail_mailbox(&authorization).await
+    }
+
+    pub async fn gmail_oauth_status(
+        &self,
+        flow_id: Uuid,
+    ) -> Result<GmailOAuthStatusResponse, AppError> {
+        let snapshot = self.gmail_oauth.status(flow_id).await?;
+        self.gmail_status_response(snapshot).await
+    }
+
+    async fn gmail_status_response(
+        &self,
+        snapshot: GmailOAuthFlowSnapshot,
+    ) -> Result<GmailOAuthStatusResponse, AppError> {
+        let (status, mailbox, error) = match snapshot.status {
+            GmailOAuthFlowStatus::Pending => ("pending", None, None),
+            GmailOAuthFlowStatus::Processing => ("processing", None, None),
+            GmailOAuthFlowStatus::Completed(authorization) => (
+                "completed",
+                Some(self.ensure_gmail_mailbox(&authorization).await?),
+                None,
+            ),
+            GmailOAuthFlowStatus::Failed(failure) => (
+                "failed",
+                None,
+                Some(GmailOAuthStatusError {
+                    code: failure.code,
+                    message: failure.message,
+                    retryable: failure.retryable,
+                }),
+            ),
+        };
+        Ok(GmailOAuthStatusResponse {
+            flow_id: snapshot.flow_id,
+            status,
+            expires_at: snapshot.expires_at.to_rfc3339(),
+            mailbox,
+            error,
+        })
+    }
+
+    async fn ensure_gmail_mailbox(
+        &self,
+        authorization: &crate::gmail::GmailAuthorization,
+    ) -> Result<Mailbox, AppError> {
+        if let Some(mailbox) = self
+            .database
+            .list_mailboxes()?
+            .into_iter()
+            .find(|mailbox| mailbox.skarbiec_item_id == authorization.credential_item_id)
+        {
+            return Ok(mailbox);
+        }
+        self.create_mailbox(CreateMailboxRequest {
+            skarbiec_item_id: authorization.credential_item_id.clone(),
+            display_name: Some(authorization.email.clone()),
+            email: Some(authorization.email.clone()),
+            imap_host: None,
+            imap_port: None,
+            smtp_host: None,
+            smtp_port: None,
+            smtp_security: Some(SmtpSecurity::Starttls),
+            poll_interval_seconds: None,
+        })
+        .await
     }
 
     pub async fn create_mailbox(

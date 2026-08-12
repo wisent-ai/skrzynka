@@ -11,9 +11,9 @@
 ## Machine journey
 
 1. **Inspect:** `skrzynka status` reports database path, version, mailbox count, message count, and whether `skarbiec` can be found. It never resolves a credential.
-2. **Select authority:** choose one existing Skarbiec item by exact ID. Item-name parsing and implicit provider discovery are not used.
-3. **Add mailbox:** `skrzynka mailbox add --skarbiec-item ID` resolves the item once, validates the complete profile, and stores only non-secret fields plus the exact item reference.
-4. **Synchronize:** `skrzynka sync --mailbox MAILBOX_ID` opens IMAP over TLS and persists a bounded set of unseen UIDs.
+2. **Select authority:** for a generic mailbox, choose one existing Skarbiec item by exact ID; for Gmail, Skrzynka Desktop lists deduplicated Google identities resolved from Skarbiec login metadata.
+3. **Connect mailbox:** generic CLI setup validates the selected item and stores only non-secret fields plus its reference. Gmail setup runs a bounded PKCE authorization, writes a dedicated OAuth bundle to Skarbiec, creates the automatic Gmail profile, and stores only that bundle reference.
+4. **Synchronize:** `skrzynka sync --mailbox MAILBOX_ID` opens IMAP over TLS using password authentication or Gmail XOAUTH2 and persists a bounded set of unseen UIDs.
 5. **Observe success:** `skrzynka message list --mailbox MAILBOX_ID` shows the imported message.
 6. **Reply when intended:** `skrzynka message reply MESSAGE_ID --body-file PATH` presents the provider-facing side effect before sending and returns terminal or ambiguous state.
 
@@ -27,8 +27,8 @@ The private `skrzynka-desktop` client owns a deterministic, resumable multi-scre
 |---|---|---|---|
 | Welcome | No completed attempt | Operator chooses to manage existing mail | Exit without state change |
 | Service | API health unknown or unavailable | `/healthz` reports `ready` | Show exact local start command |
-| Skarbiec | Service ready, no selected item | Metadata list returns and one item is selected | Enter an exact item ID |
-| Mailbox profile | Item selected | Service accepts and reads back the mailbox | Preserve values and show normalized error |
+| Skarbiec / Gmail | Service ready, no mailbox | A Google identity or exact generic item is selected | Gmail uses the discovered account list; generic setup filters metadata |
+| Authorization / profile | Selection made | Gmail OAuth completes or the generic profile is accepted | Preserve selection and show the normalized error without storing partial state |
 | First sync | Mailbox exists | At least one message is observed, or an empty provider inbox is explicitly acknowledged | Retry without duplicating rows |
 | Access boundary | Before normal inbox | Operator sees that the current internal desktop has no price, checkout, or paid entitlement and continues | Exit; core CLI remains usable |
 | Inbox | First-sync decision complete | Inbox is usable | Resume here on relaunch |
@@ -43,6 +43,9 @@ The bundled journey is `skrzynka-desktop.first-success` version 1. Routing is de
 |---|---|---|
 | `SKARBIEC_UNAVAILABLE` | CLI missing or cannot run | Install/start the supported Skarbiec release and re-run status |
 | `SKARBIEC_ITEM_INVALID` | Item missing, unreadable, or lacks required credential fields | Correct the exact item or select another; no mailbox row is created |
+| `GMAIL_OAUTH_REJECTED` | Google or the operator rejected the bounded authorization | Start a fresh connection flow; no partial authorization is used |
+| `GMAIL_OAUTH_ACCOUNT_MISMATCH` | Google returned a different account than the selected Skarbiec identity | Authorize the exact selected address |
+| `GMAIL_AUTHORIZATION_EXPIRED` | Google revoked or rejected the saved refresh token | Reconnect the same Gmail profile; local messages remain readable |
 | `MAILBOX_PROFILE_INVALID` | Required host/address/security setting is absent or contradictory | Supply non-secret settings or update the bundle |
 | `IMAP_AUTHENTICATION_FAILED` | Provider refused the current credential | Rotate or correct the Skarbiec item, then retry sync |
 | `IMAP_UNAVAILABLE` | TLS, DNS, timeout, or provider failure | Inspect mailbox status and retry; other mailboxes continue |

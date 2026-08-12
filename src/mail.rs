@@ -5,7 +5,7 @@ use crate::{
 };
 use lettre::{
     message::{header::ContentType, Mailbox as LettreMailbox},
-    transport::smtp::authentication::Credentials,
+    transport::smtp::authentication::{Credentials, Mechanism},
     Message as OutgoingMessage, SmtpTransport, Transport,
 };
 use mailparse::{MailHeaderMap, ParsedMail};
@@ -23,6 +23,22 @@ pub struct FetchedMessages {
     pub last_uid: u32,
 }
 
+struct OAuth2Authenticator<'a> {
+    username: &'a str,
+    access_token: &'a str,
+}
+
+impl imap::Authenticator for OAuth2Authenticator<'_> {
+    type Response = String;
+
+    fn process(&self, _: &[u8]) -> Self::Response {
+        format!(
+            "user={}\u{1}auth=Bearer {}\u{1}\u{1}",
+            self.username, self.access_token
+        )
+    }
+}
+
 pub fn fetch_messages(
     mailbox: &Mailbox,
     credentials: &ResolvedCredentials,
@@ -38,15 +54,35 @@ pub fn fetch_messages(
                 true,
             )
         })?;
-    let mut session = client
-        .login(&credentials.username, &credentials.password)
-        .map_err(|_| {
-            dependency_error(
-                "IMAP_AUTHENTICATION_FAILED",
-                "IMAP authentication was refused; inspect the selected Skarbiec item",
-                false,
+    let mut session = match credentials {
+        ResolvedCredentials::Password { username, password } => {
+            client.login(username, password).map_err(|_| {
+                dependency_error(
+                    "IMAP_AUTHENTICATION_FAILED",
+                    "IMAP authentication was refused; inspect the selected Skarbiec item",
+                    false,
+                )
+            })?
+        }
+        ResolvedCredentials::OAuth2 {
+            username,
+            access_token,
+        } => client
+            .authenticate(
+                "XOAUTH2",
+                &OAuth2Authenticator {
+                    username,
+                    access_token,
+                },
             )
-        })?;
+            .map_err(|_| {
+                dependency_error(
+                    "IMAP_AUTHENTICATION_FAILED",
+                    "Google refused the saved Gmail authorization; reconnect the profile",
+                    false,
+                )
+            })?,
+    };
     session.select("INBOX").map_err(|_| {
         dependency_error(
             "IMAP_INBOX_UNAVAILABLE",
@@ -171,7 +207,7 @@ pub fn send_reply(
             "reply could not be encoded as an email message",
         )
     })?;
-    let transport = match mailbox.smtp_security {
+    let builder = match mailbox.smtp_security {
         SmtpSecurity::Starttls => SmtpTransport::starttls_relay(&mailbox.smtp_host),
         SmtpSecurity::Tls => SmtpTransport::relay(&mailbox.smtp_host),
     }
@@ -182,13 +218,19 @@ pub fn send_reply(
             false,
         )
     })?
-    .port(mailbox.smtp_port)
-    .credentials(Credentials::new(
-        credentials.username.clone(),
-        credentials.password.clone(),
-    ))
-    .timeout(Some(Duration::from_secs(30)))
-    .build();
+    .port(mailbox.smtp_port);
+    let builder = match credentials {
+        ResolvedCredentials::Password { username, password } => {
+            builder.credentials(Credentials::new(username.clone(), password.clone()))
+        }
+        ResolvedCredentials::OAuth2 {
+            username,
+            access_token,
+        } => builder
+            .credentials(Credentials::new(username.clone(), access_token.clone()))
+            .authentication(vec![Mechanism::Xoauth2]),
+    };
+    let transport = builder.timeout(Some(Duration::from_secs(30))).build();
     transport.send(&outgoing).map_err(|error| {
         if error.is_transient() || error.is_permanent() {
             dependency_error(
