@@ -12,7 +12,7 @@ use crate::{
         ReplyAttempt, ReplyStatus, SkarbiecItemMetadata, SmtpSecurity, StatusResponse,
         SyncAllSummary, SyncSummary, UpdateMailboxRequest,
     },
-    skarbiec::SkarbiecResolver,
+    skarbiec::{SkarbiecResolver, GOOGLE_ADMIN_DELEGATION_URL},
 };
 use chrono::Utc;
 use lettre::Address;
@@ -45,6 +45,15 @@ pub struct GmailOAuthStatusError {
     pub code: &'static str,
     pub message: String,
     pub retryable: bool,
+}
+
+#[derive(Serialize)]
+pub struct GmailDelegationStatus {
+    pub configured: bool,
+    pub service_account: Option<String>,
+    pub client_id: Option<String>,
+    pub scope: &'static str,
+    pub admin_console_url: &'static str,
 }
 
 impl AppState {
@@ -95,6 +104,69 @@ impl AppState {
 
     pub async fn list_gmail_profiles(&self) -> Result<Vec<GmailProfile>, AppError> {
         self.gmail_oauth.profiles().await
+    }
+
+    /// Delegation is reportable, never failing: a missing service-account item
+    /// is a state the Connect surface must render, not an error.
+    pub async fn gmail_delegation_status(&self) -> GmailDelegationStatus {
+        match self.resolver.google_service_account().await {
+            Ok(account) => GmailDelegationStatus {
+                configured: true,
+                service_account: Some(account.client_email),
+                client_id: Some(account.client_id),
+                scope: "https://mail.google.com/",
+                admin_console_url: GOOGLE_ADMIN_DELEGATION_URL,
+            },
+            Err(_) => GmailDelegationStatus {
+                configured: false,
+                service_account: None,
+                client_id: None,
+                scope: "https://mail.google.com/",
+                admin_console_url: GOOGLE_ADMIN_DELEGATION_URL,
+            },
+        }
+    }
+
+    /// Connect a Workspace mailbox through domain-wide delegation: prove the
+    /// grant by minting a token for the address, persist the credential bundle
+    /// in Skarbiec, then create or return the mailbox.
+    pub async fn connect_gmail_delegated(
+        &self,
+        organization_id: &str,
+        email: &str,
+        display_name: Option<String>,
+    ) -> Result<Mailbox, AppError> {
+        let email = email.trim();
+        Address::from_str(email).map_err(|_| {
+            AppError::invalid("GMAIL_PROFILE_INVALID", "email is not a valid address")
+        })?;
+        self.resolver
+            .delegated_access_token(&format!("delegation-probe:{email}"), email)
+            .await?;
+        let item_id = self.resolver.save_gmail_delegation(email).await?;
+        if let Some(mailbox) = self
+            .database
+            .list_mailboxes(organization_id)?
+            .into_iter()
+            .find(|mailbox| mailbox.skarbiec_item_id == item_id)
+        {
+            return Ok(mailbox);
+        }
+        self.create_mailbox(
+            organization_id,
+            CreateMailboxRequest {
+                skarbiec_item_id: item_id,
+                display_name: display_name.or_else(|| Some(email.to_string())),
+                email: Some(email.to_string()),
+                imap_host: None,
+                imap_port: None,
+                smtp_host: None,
+                smtp_port: None,
+                smtp_security: Some(SmtpSecurity::Starttls),
+                poll_interval_seconds: None,
+            },
+        )
+        .await
     }
 
     pub async fn start_gmail_oauth(

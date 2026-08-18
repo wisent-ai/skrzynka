@@ -53,6 +53,10 @@ enum Command {
         #[command(subcommand)]
         command: MailboxCommand,
     },
+    Gmail {
+        #[command(subcommand)]
+        command: GmailCommand,
+    },
     Message {
         #[command(subcommand)]
         command: MessageCommand,
@@ -69,6 +73,20 @@ struct ServeArgs {
     bind: SocketAddr,
     #[arg(long, default_value_t = 60)]
     poll_seconds: u64,
+}
+
+#[derive(Subcommand)]
+enum GmailCommand {
+    /// Report whether the delegated-mail service account is configured, and
+    /// which client ID the Workspace admin must grant.
+    Delegation,
+    /// Connect one Workspace mailbox through domain-wide delegation.
+    Delegate {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        display_name: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -195,6 +213,20 @@ async fn run(cli: Cli) -> Result<(), AppError> {
         Command::Mailbox { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             run_mailbox(state, command).await
+        }
+        Command::Gmail { command } => {
+            let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
+            match command {
+                GmailCommand::Delegation => print_json(&state.gmail_delegation_status().await),
+                GmailCommand::Delegate {
+                    email,
+                    display_name,
+                } => print_json(
+                    &state
+                        .connect_gmail_delegated(LOCAL_CLI_ORGANIZATION, &email, display_name)
+                        .await?,
+                ),
+            }
         }
         Command::Message { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;

@@ -19,6 +19,7 @@ The observable result is one local inbox with mailbox identity preserved on ever
 ## What works now
 
 - Connect Google identities discovered in Skarbiec through Gmail OAuth; Skrzynka configures Gmail, stores the durable authorization back in Skarbiec, and performs IMAP/SMTP authentication with XOAUTH2.
+- Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. `skrzynka gmail delegation` prints the client ID and grant URL.
 - Add any number of other mailboxes by exact Skarbiec item ID.
 - Read password-backed `login` items with explicit server settings or complete `bundle` profiles.
 - Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox and IMAP UID.

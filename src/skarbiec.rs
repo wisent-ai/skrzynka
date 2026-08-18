@@ -16,6 +16,11 @@ use tokio::{io::AsyncWriteExt, process::Command, sync::Mutex};
 
 const MAX_SKARBIEC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "skrzynka-google-oauth-desktop";
+const GOOGLE_SERVICE_ACCOUNT_ITEM_ID: &str = "skrzynka-google-service-account";
+const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
+const GMAIL_DELEGATION_SCOPE: &str = "https://mail.google.com/";
+pub const GOOGLE_ADMIN_DELEGATION_URL: &str =
+    "https://admin.google.com/ac/owl/domainwidedelegation";
 
 pub enum ResolvedCredentials {
     Password {
@@ -39,6 +44,18 @@ pub(crate) struct GoogleOAuthClient {
     pub client_id: String,
     pub client_secret: String,
     pub auth_uri: String,
+    pub token_uri: String,
+}
+
+/// The delegated-mail service account read from Skarbiec. `client_id` is the
+/// numeric OAuth2 client the Workspace admin must grant; `client_email` is the
+/// JWT issuer.
+#[derive(Clone)]
+pub(crate) struct GoogleServiceAccount {
+    pub client_email: String,
+    pub client_id: String,
+    pub private_key: String,
+    pub private_key_id: Option<String>,
     pub token_uri: String,
 }
 
@@ -225,6 +242,43 @@ impl SkarbiecResolver {
         Ok(item_id)
     }
 
+    /// Persist a delegated Workspace mailbox credential. The bundle carries no
+    /// secret of its own: access tokens are minted per connection from the
+    /// service-account key referenced by `service_account_item_id`.
+    pub async fn save_gmail_delegation(&self, email: &str) -> Result<String, AppError> {
+        Address::from_str(email)
+            .map_err(|_| invalid_item("delegated Google identity is not an email address"))?;
+        let digest = format!(
+            "{:x}",
+            Sha256::digest(email.to_ascii_lowercase().as_bytes())
+        );
+        let item_id = format!("skrzynka-gmail-{}", &digest[..20]);
+        let payload = json!({
+            "schema": "skarbiec.item.v2",
+            "kind": "bundle",
+            "fields": {
+                "username": email,
+                "email": email,
+                "auth_method": "oauth2_service_account",
+                "oauth_provider": "google",
+                "service_account_item_id": GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
+                "imap_host": "imap.gmail.com",
+                "imap_port": 993,
+                "smtp_host": "smtp.gmail.com",
+                "smtp_port": 587,
+                "smtp_security": "starttls"
+            },
+            "context": {
+                "source_kind": "gmail_delegation",
+                "source_item_id": GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
+                "account_ref": email
+            }
+        });
+        self.set_item(&item_id, "bundle", &payload).await?;
+        self.token_cache.lock().await.remove(&item_id);
+        Ok(item_id)
+    }
+
     pub async fn resolve_credentials(
         &self,
         item_id: &str,
@@ -256,6 +310,23 @@ impl SkarbiecResolver {
                 access_token,
             });
         }
+        if optional_text(fields.get("auth_method")).as_deref() == Some("oauth2_service_account") {
+            if optional_text(fields.get("oauth_provider")).as_deref() != Some("google") {
+                return Err(invalid_item("unsupported OAuth mail provider"));
+            }
+            if optional_text(fields.get("service_account_item_id")).as_deref()
+                != Some(GOOGLE_SERVICE_ACCOUNT_ITEM_ID)
+            {
+                return Err(invalid_item(
+                    "Gmail delegation does not reference Skrzynka's service account item",
+                ));
+            }
+            let access_token = self.delegated_access_token(item_id, &username).await?;
+            return Ok(ResolvedCredentials::OAuth2 {
+                username,
+                access_token,
+            });
+        }
         let password = required_text(fields.get("password"), "password")?;
         Ok(ResolvedCredentials::Password { username, password })
     }
@@ -278,10 +349,19 @@ impl SkarbiecResolver {
             .and_then(Value::as_object)
             .ok_or_else(|| invalid_item("item has no canonical fields object"))?;
         let username = required_text(fields.get("username"), "username")?;
-        if optional_text(fields.get("auth_method")).as_deref() == Some("oauth2") {
-            required_text(fields.get("refresh_token"), "refresh_token")?;
-        } else {
-            required_text(fields.get("password"), "password")?;
+        match optional_text(fields.get("auth_method")).as_deref() {
+            Some("oauth2") => {
+                required_text(fields.get("refresh_token"), "refresh_token")?;
+            }
+            Some("oauth2_service_account") => {
+                required_text(
+                    fields.get("service_account_item_id"),
+                    "service_account_item_id",
+                )?;
+            }
+            _ => {
+                required_text(fields.get("password"), "password")?;
+            }
         }
 
         let email = request
@@ -471,6 +551,156 @@ impl SkarbiecResolver {
             auth_uri,
             token_uri,
         })
+    }
+
+    pub(crate) async fn google_service_account(&self) -> Result<GoogleServiceAccount, AppError> {
+        let payload = self.get_item(GOOGLE_SERVICE_ACCOUNT_ITEM_ID).await?;
+        let wrapped = payload
+            .pointer("/fields/value")
+            .ok_or_else(|| invalid_item("Google service account item has no fields.value"))?;
+        let raw = wrapped
+            .get("value")
+            .and_then(Value::as_str)
+            .or_else(|| wrapped.as_str())
+            .ok_or_else(|| invalid_item("Google service account value is not text"))?;
+        let document: Value = serde_json::from_str(raw)
+            .map_err(|_| invalid_item("Google service account value is invalid JSON"))?;
+        if document.get("type").and_then(Value::as_str) != Some("service_account") {
+            return Err(invalid_item(
+                "Google service account JSON is not a service_account key",
+            ));
+        }
+        let token_uri = document
+            .get("token_uri")
+            .and_then(Value::as_str)
+            .unwrap_or(GOOGLE_TOKEN_URI)
+            .to_string();
+        if token_uri != GOOGLE_TOKEN_URI {
+            return Err(invalid_item(
+                "Google service account token endpoint is not canonical",
+            ));
+        }
+        let fields = document
+            .as_object()
+            .ok_or_else(|| invalid_item("Google service account JSON is not an object"))?;
+        Ok(GoogleServiceAccount {
+            client_email: required_text(fields.get("client_email"), "client_email")?,
+            client_id: required_text(fields.get("client_id"), "client_id")?,
+            private_key: required_text(fields.get("private_key"), "private_key")?,
+            private_key_id: optional_text(fields.get("private_key_id")),
+            token_uri,
+        })
+    }
+
+    /// Mint a delegated access token for `user_email` through the RFC 7523
+    /// JWT-bearer grant. Google authorizes it against the domain-wide
+    /// delegation table of the user's Workspace domain — there is no consent
+    /// screen and no refresh token; every token is minted from the key.
+    pub(crate) async fn delegated_access_token(
+        &self,
+        cache_key: &str,
+        user_email: &str,
+    ) -> Result<String, AppError> {
+        if let Some(cached) = self.token_cache.lock().await.get(cache_key).cloned() {
+            if cached.expires_at > Utc::now() + ChronoDuration::seconds(60) {
+                return Ok(cached.value);
+            }
+        }
+        let account = self.google_service_account().await?;
+        let now = Utc::now().timestamp();
+        let claims = json!({
+            "iss": account.client_email,
+            "sub": user_email,
+            "aud": account.token_uri,
+            "scope": GMAIL_DELEGATION_SCOPE,
+            "iat": now,
+            "exp": now + 3600,
+        });
+        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+        header.kid = account.private_key_id.clone();
+        let key = jsonwebtoken::EncodingKey::from_rsa_pem(account.private_key.as_bytes())
+            .map_err(|_| invalid_item("Google service account private key is not a valid RSA PEM"))?;
+        let assertion = jsonwebtoken::encode(&header, &claims, &key)
+            .map_err(|_| AppError::internal("delegation assertion could not be signed"))?;
+        let response = self
+            .client
+            .post(&account.token_uri)
+            .form(&[
+                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                ("assertion", assertion.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|_| {
+                AppError::dependency(
+                    "GOOGLE_TOKEN_UNAVAILABLE",
+                    "Google token service is unavailable",
+                    true,
+                )
+            })?;
+        let status = response.status();
+        let payload: Value = response.json().await.map_err(|_| {
+            AppError::dependency(
+                "GMAIL_TOKEN_RESPONSE_INVALID",
+                "Google token service returned invalid JSON",
+                false,
+            )
+        })?;
+        if !status.is_success() {
+            let code = payload.get("error").and_then(Value::as_str).unwrap_or("");
+            return Err(match code {
+                "unauthorized_client" | "access_denied" => AppError::dependency(
+                    "GOOGLE_DELEGATION_NOT_GRANTED",
+                    format!(
+                        "The Workspace admin has not granted domain-wide delegation to this \
+                         service account. Open {GOOGLE_ADMIN_DELEGATION_URL}, add client ID \
+                         {} with scope {GMAIL_DELEGATION_SCOPE}, then retry.",
+                        account.client_id
+                    ),
+                    false,
+                ),
+                "invalid_grant" => AppError::dependency(
+                    "GOOGLE_DELEGATION_REJECTED",
+                    format!(
+                        "Google refused delegated access for {user_email}; verify the address \
+                         is an active user in a Workspace domain that granted client ID {}.",
+                        account.client_id
+                    ),
+                    false,
+                ),
+                _ => AppError::dependency(
+                    "GMAIL_TOKEN_RESPONSE_INVALID",
+                    format!("Google rejected the delegation grant with HTTP {status}"),
+                    false,
+                ),
+            });
+        }
+        let access_token = payload
+            .get("access_token")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                AppError::dependency(
+                    "GMAIL_TOKEN_RESPONSE_INVALID",
+                    "Google token response contained no access token",
+                    false,
+                )
+            })?
+            .to_string();
+        let expires_in = payload
+            .get("expires_in")
+            .and_then(Value::as_i64)
+            .unwrap_or(3600)
+            .clamp(60, 86_400);
+        self.token_cache.lock().await.insert(
+            cache_key.to_string(),
+            CachedAccessToken {
+                value: access_token.clone(),
+                expires_at: Utc::now() + ChronoDuration::seconds(expires_in),
+            },
+        );
+        Ok(access_token)
     }
 
     async fn set_item(&self, item_id: &str, kind: &str, payload: &Value) -> Result<(), AppError> {

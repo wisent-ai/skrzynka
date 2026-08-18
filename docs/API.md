@@ -30,6 +30,13 @@ The service listens on `http://127.0.0.1:8788` by default and refuses non-loopba
 
 The desktop app receives only the flow identifier and authorization URL, then polls status. OAuth codes, provider tokens, client secrets, and refresh tokens are never returned through JSON or stored in SQLite. Reconnecting the same account rotates its Skarbiec bundle and returns the existing mailbox.
 
+## Workspace domain-wide delegation
+
+- `GET /v1/gmail/delegation` — whether the service-account item `skrzynka-google-service-account` is readable, plus the account's email, its numeric `client_id`, the delegated scope `https://mail.google.com/`, and the admin-console URL where the grant is made. `configured:false` is a state, not an error.
+- `POST /v1/gmail/delegate` with `{"email":"user@domain","display_name":null}` — mint a delegated access token for the address through the RFC 7523 JWT-bearer grant, persist the credential bundle in Skarbiec, and create or return the mailbox. No browser, no consent screen, no refresh token; every token is minted from the service-account key at connection time.
+
+Failure codes: `GOOGLE_DELEGATION_NOT_GRANTED` (the Workspace admin has not granted the client ID; the message carries the exact recovery), `GOOGLE_DELEGATION_REJECTED` (the address is not an active user of a granting Workspace domain — consumer `@gmail.com` addresses can never delegate), `GOOGLE_TOKEN_UNAVAILABLE` (retryable transport failure). Delegation reads mail of any user in the granting domain: the service-account key in Skarbiec is a domain-wide credential and shares the vault's protection boundary.
+
 ## Mailboxes
 
 - `GET /v1/mailboxes`

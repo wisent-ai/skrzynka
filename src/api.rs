@@ -24,6 +24,11 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/gmail/profiles", get(list_gmail_profiles))
         .route("/v1/gmail/oauth/start", post(start_gmail_oauth))
         .route("/v1/gmail/oauth/:flow_id", get(gmail_oauth_status))
+        .route(
+            "/v1/gmail/delegation",
+            get(gmail_delegation_status_handler),
+        )
+        .route("/v1/gmail/delegate", post(connect_gmail_delegated))
         .route("/v1/mailboxes", get(list_mailboxes).post(create_mailbox))
         .route(
             "/v1/mailboxes/:id",
@@ -89,6 +94,35 @@ async fn start_gmail_oauth(
     Ok(Json(json!(
         state
             .start_gmail_oauth(&auth.organization_id, request)
+            .await?
+    )))
+}
+
+async fn gmail_delegation_status_handler(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<AuthContext>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.gmail_delegation_status().await)))
+}
+
+#[derive(Deserialize)]
+struct DelegateGmailRequest {
+    email: String,
+    display_name: Option<String>,
+}
+
+async fn connect_gmail_delegated(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Json(request): Json<DelegateGmailRequest>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(
+        state
+            .connect_gmail_delegated(
+                &auth.organization_id,
+                &request.email,
+                request.display_name
+            )
             .await?
     )))
 }
