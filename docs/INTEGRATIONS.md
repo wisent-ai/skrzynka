@@ -22,7 +22,7 @@
 
 **Data:** Skrzynka sends hostname and authentication identity over TLS plus either a password or a short-lived Google access token, then receives bounded MIME messages. It stores selected headers and normalized text. IMAP UID is meaningful only within its mailbox and is namespaced accordingly.
 
-**Reliability:** connections have bounded timeouts. Authentication, TLS, protocol, malformed-message, and provider-unavailable errors are normalized. A message is skipped only when it cannot be parsed within bounds; the mailbox error names the failure without including provider content. The cursor advances only through committed UIDs.
+**Reliability:** the current IMAP client path does not configure a network timeout. Authentication, TLS, protocol, malformed-message, and provider-unavailable errors are normalized. Missing, oversized, or unparseable messages are counted as skipped without including provider content in an error. The cursor advances only after the selected batch is committed.
 
 ## SMTP
 

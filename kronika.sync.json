@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "documents": [
+    {
+      "output": "docs/what-is-skrzynka.md",
+      "sources": ["README.md", "src/service.rs", "src/mail.rs", "src/skarbiec.rs", "src/db.rs"],
+      "instruction": "Keep the three-part mental model exact: Skarbiec credential boundary, bounded IMAP-to-SQLite synchronization, and idempotency-keyed SMTP replies."
+    },
+    {
+      "output": "docs/quick-start.md",
+      "sources": ["README.md", "src/main.rs", "src/models.rs", "src/service.rs"],
+      "instruction": "Clone-to-first-mailbox path with only output captured from the isolated 0.2.0 CLI and HTTP run; never fabricate provider success."
+    },
+    {
+      "output": "docs/cli.md",
+      "sources": ["src/main.rs", "src/models.rs", "src/service.rs"],
+      "instruction": "Complete command, option, default, output, namespace, and exit-code reference for the Clap surface."
+    },
+    {
+      "output": "docs/API.md",
+      "sources": ["src/api.rs", "src/auth.rs", "src/models.rs", "src/service.rs", "src/gmail.rs"],
+      "instruction": "Every loopback route, authentication rule, body, bound, and response semantic must match the v1 router and public models."
+    },
+    {
+      "output": "docs/configuration.md",
+      "sources": ["src/main.rs", "src/auth.rs", "src/service.rs", "src/skarbiec.rs", "src/mail.rs"],
+      "instruction": "List every CLI knob, environment reader, mailbox key, Skarbiec field, fixed item ID, default, and compiled safety bound; never include a credential value."
+    },
+    {
+      "output": "docs/architecture.md",
+      "sources": ["README.md", "src/api.rs", "src/auth.rs", "src/db.rs", "src/service.rs", "src/mail.rs", "src/skarbiec.rs", "src/gmail.rs"],
+      "instruction": "State what Skrzynka owns and does not own, data flow, durable state, concurrency, and every trust boundary from source."
+    },
+    {
+      "output": "docs/runbook.md",
+      "sources": ["src"],
+      "instruction": "Symptom-first operations guide covering every stable public error family and exact source sentence, with safe recovery and no secrets."
+    },
+    {
+      "output": "docs/walkthrough-local-lifecycle.md",
+      "sources": ["src/main.rs", "src/service.rs", "src/db.rs", "src/skarbiec.rs", "src/mail.rs"],
+      "instruction": "Preserve the real isolated 0.2.0 CLI transcript for status, add, duplicate refusal, sync failure, state transitions, and confirmed removal."
+    },
+    {
+      "output": "docs/walkthrough-loopback-api.md",
+      "sources": ["src/main.rs", "src/api.rs", "src/auth.rs"],
+      "instruction": "Preserve the real isolated HTTP transcript proving loopback readiness, fail-closed authentication, identity failure, and generic callback errors."
+    },
+    {
+      "output": "docs/concepts/mailbox.md",
+      "sources": ["src/models.rs", "src/service.rs", "src/db.rs", "src/skarbiec.rs"],
+      "instruction": "Mailbox shape, precedence, lifecycle, organization ownership, validation, and exact refusals."
+    },
+    {
+      "output": "docs/concepts/message.md",
+      "sources": ["src/models.rs", "src/mail.rs", "src/db.rs", "src/service.rs"],
+      "instruction": "Message normalization shape, mailbox-UID identity, lifecycle, bounds, immutable behavior, and refusals."
+    },
+    {
+      "output": "docs/concepts/reply-attempt.md",
+      "sources": ["src/models.rs", "src/service.rs", "src/db.rs", "src/mail.rs"],
+      "instruction": "Reply attempt state machine, idempotency, SMTP acceptance boundary, recovery, message construction, and exact refusals."
+    },
+    {
+      "output": "docs/concepts/synchronization.md",
+      "sources": ["src/service.rs", "src/mail.rs", "src/db.rs"],
+      "instruction": "One-pass algorithm, scheduling, cursor semantics, all-vs-one output, limits, and actual lack of configured IMAP network timeout."
+    },
+    {
+      "output": "docs/concepts/skarbiec-item.md",
+      "sources": ["src/skarbiec.rs", "src/models.rs", "README.md"],
+      "instruction": "Canonical item shapes, child-process protocol, secret lifetime, bounds, lifecycle, and exact refusal families."
+    },
+    {
+      "output": "docs/concepts/organization-scope.md",
+      "sources": ["src/auth.rs", "src/api.rs", "src/db.rs", "src/main.rs"],
+      "instruction": "Bearer and organization verification, SQL isolation, legacy-local CLI namespace, fail-closed behavior, and exact errors."
+    },
+    {
+      "output": "docs/concepts/gmail-connection.md",
+      "sources": ["src/gmail.rs", "src/skarbiec.rs", "src/service.rs", "src/api.rs"],
+      "instruction": "OAuth and Workspace-delegation lifecycles, fixed items, endpoint trust, token lifetime, invariants, and refusal families."
+    },
+    {
+      "output": "docs/PRODUCT.md",
+      "sources": ["README.md", "src/models.rs", "src/service.rs", "src/db.rs"],
+      "instruction": "Product promise, actors, vocabulary, ownership boundaries, and current scope must remain true to implemented behavior."
+    },
+    {
+      "output": "docs/CORE.md",
+      "sources": ["src/models.rs", "src/service.rs", "src/db.rs", "src/mail.rs"],
+      "instruction": "Core resource and failure contract with exact limits; never claim an IMAP timeout unless the client path configures one."
+    },
+    {
+      "output": "docs/INTEGRATIONS.md",
+      "sources": ["src/skarbiec.rs", "src/mail.rs", "src/gmail.rs", "src/auth.rs"],
+      "instruction": "Skarbiec, IMAP, SMTP, Google, identity, desktop, and onboarding boundaries; capabilities and reliability must match source."
+    },
+    {
+      "output": "docs/ONBOARDING.md",
+      "sources": ["README.md", "src/main.rs", "src/api.rs", "src/service.rs"],
+      "instruction": "Zero state, first-success evidence, machine and desktop journeys, common failures, and destructive reset boundary."
+    },
+    {
+      "output": "docs/RELEASE.md",
+      "sources": ["Cargo.toml", "src/main.rs", "src/db.rs", "src/api.rs", "src/service.rs"],
+      "instruction": "Version authority, development channel, schema/API compatibility, stopped-service upgrade, rollback, and uncertain-send recovery."
+    },
+    {
+      "output": "examples/README.md",
+      "sources": ["examples", "src/main.rs", "src/api.rs"],
+      "instruction": "Index every runnable example, its side-effect risk, prerequisites, evidence boundary, cleanup, and next step."
+    },
+    {
+      "output": "examples/getting-started/add-and-sync-mailbox.sh",
+      "sources": ["src/main.rs", "src/service.rs", "src/mail.rs"],
+      "instruction": "Runnable isolated-state CLI sequence for add, bounded sync, and observation; never accept or print credentials."
+    },
+    {
+      "output": "examples/core/reply-to-message.sh",
+      "sources": ["src/main.rs", "src/service.rs", "src/mail.rs"],
+      "instruction": "Provider-facing reply example must require explicit confirmation, inspect the target first, and use one fresh idempotency key."
+    },
+    {
+      "output": "examples/operations/remove-local-mailbox.sh",
+      "sources": ["src/main.rs", "src/db.rs"],
+      "instruction": "Destructive local-only removal example must require confirmation, inspect before deletion, and state the recovery boundary."
+    },
+    {
+      "output": "examples/api/use-loopback-api.sh",
+      "sources": ["src/api.rs", "src/auth.rs", "src/models.rs"],
+      "instruction": "Authenticated loopback-only HTTP sequence with protected temporary headers, exact route bodies, and no credential field."
+    }
+  ]
+}

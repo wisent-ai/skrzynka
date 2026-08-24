@@ -90,13 +90,13 @@ The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret
 
 ## Product boundaries and contracts
 
-- [Product and ownership](docs/PRODUCT.md)
-- [Release, compatibility, and recovery](docs/RELEASE.md)
-- [Zero-state and first-success journey](docs/ONBOARDING.md)
-- [Core state and failure semantics](docs/CORE.md)
-- [Skarbiec, IMAP, and SMTP integrations](docs/INTEGRATIONS.md)
-- [Loopback JSON API](docs/API.md)
-- [Canonical examples](examples/README.md)
+- [What Skrzynka is](docs/what-is-skrzynka.md) and the [executed quick start](docs/quick-start.md)
+- [CLI reference](docs/cli.md) and [loopback JSON API](docs/API.md)
+- [Concepts](docs/concepts/mailbox.md), [architecture](docs/architecture.md), and [configuration](docs/configuration.md)
+- [Executed CLI](docs/walkthrough-local-lifecycle.md) and [HTTP](docs/walkthrough-loopback-api.md) walkthroughs
+- [Operations runbook](docs/runbook.md) and [canonical examples](examples/README.md)
+- [Product and ownership](docs/PRODUCT.md), [core state](docs/CORE.md), and [integrations](docs/INTEGRATIONS.md)
+- [Onboarding](docs/ONBOARDING.md) and [release/recovery](docs/RELEASE.md)
 
 ## Operating model
 

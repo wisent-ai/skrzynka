@@ -51,4 +51,4 @@ Skrzynka retains normalized messages and reply bodies until their mailbox is rem
 
 ## Resource behavior
 
-Each mailbox sync uses one blocking IMAP session with a 30-second network timeout and imports at most 200 messages. Polling defaults to 60 seconds and never overlaps a previous poll loop. API message lists default to 100 and cap at 500. Body and reply sizes are bounded at 2 MiB and 256 KiB respectively. Over-limit data is rejected or truncated at the documented boundary, never loaded without a limit.
+Each mailbox sync uses one blocking IMAP session and imports at most 200 messages. The current IMAP client path does not configure a network timeout; SMTP separately has a 30-second transport timeout. Polling defaults to 60 seconds and never overlaps a previous poll loop. API message lists default to 100 and cap at 500. Raw messages over 2 MiB are skipped, snippets are truncated to 240 characters, and reply bodies over 256 KiB are rejected.

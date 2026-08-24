@@ -46,7 +46,7 @@ The canonical journey version is `2026-08-11.1`, immutable version ID `7f1d3482-
 | `IDENTITY_UNAVAILABLE` | Central identity verification could not complete | Retry after the identity service recovers; the core fails closed |
 | `MAILBOX_PROFILE_INVALID` | Required host/address/security setting is absent or contradictory | Supply non-secret settings or update the bundle |
 | `IMAP_AUTHENTICATION_FAILED` | Provider refused the current credential | Rotate or correct the Skarbiec item, then retry sync |
-| `IMAP_UNAVAILABLE` | TLS, DNS, timeout, or provider failure | Inspect mailbox status and retry; other mailboxes continue |
+| `IMAP_UNAVAILABLE` | TLS, DNS, connection, or provider failure | Inspect mailbox status and retry; other mailboxes continue |
 | `SMTP_REJECTED` | Provider rejected the reply before acceptance | Correct the provider/account condition and use a new idempotency key |
 | `REPLY_UNCERTAIN` | Process stopped after send began without terminal evidence | Inspect provider Sent mail; no automatic resend occurs |
 
