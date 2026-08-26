@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "siteName": "Skrzynka",
+  "domain": "https://skrzynka.wisent.com",
+  "repository": "https://github.com/wisent-ai/skrzynka",
+  "sourceUrl": "https://github.com/wisent-ai/skrzynka",
+  "docsUrl": "https://skrzynka.wisent.com/docs",
+  "discordUrl": "https://discord.gg/qRjpkthq54",
+  "ogImageAlt": "Skrzynka by Wisent — one self-hosted local inbox across every mailbox, with credentials kept in Skarbiec",
+  "navLinks": [
+    {
+      "label": "Docs",
+      "href": "https://skrzynka.wisent.com/docs"
+    },
+    {
+      "label": "API",
+      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/API.md"
+    },
+    {
+      "label": "Source",
+      "href": "https://github.com/wisent-ai/skrzynka"
+    },
+    {
+      "label": "Discord",
+      "href": "https://discord.gg/qRjpkthq54"
+    }
+  ],
+  "footerLinks": [
+    {
+      "label": "Onboarding",
+      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/ONBOARDING.md"
+    },
+    {
+      "label": "Integrations",
+      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/INTEGRATIONS.md"
+    },
+    {
+      "label": "Core",
+      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/CORE.md"
+    },
+    {
+      "label": "Desktop app",
+      "href": "https://github.com/wisent-ai/skrzynka-desktop"
+    }
+  ]
+}

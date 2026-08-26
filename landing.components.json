@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "product": "Skrzynka",
+  "decidedBy": "Lukasz Bartoszcze (operator instruction, session 2026-08-26)",
+  "components": [
+    {
+      "id": "landing.header",
+      "export": "LandingHeader",
+      "zone": "chrome",
+      "description": "Product header with wordmark, navigation destinations, and an optional primary-action link.",
+      "content": "site.product, site.nav, site.primaryAction",
+      "status": "required",
+      "reason": "standard page chrome; conventional header with the documentation as the dominant action"
+    },
+    {
+      "id": "landing.hero",
+      "export": "LandingHero",
+      "zone": "thesis",
+      "description": "First-viewport component with headline plus optional eyebrow, subhead, actions, commitment note, and factual attribute row.",
+      "content": "plan.hero, site.primaryAction, site.secondaryAction, site.commitment",
+      "status": "required",
+      "reason": "the first screen must name Skrzynka, the one-local-inbox promise, and the Skarbiec credential boundary"
+    },
+    {
+      "id": "landing.recognition",
+      "export": "LandingRecognition",
+      "zone": "recognition",
+      "description": "Problem-recognition section that describes the visitor's current failure modes using claims approved in the product brief.",
+      "content": "recognition section heading, lede, and 2-4 items",
+      "status": "required",
+      "reason": "the product exists because multi-mailbox operations fragment state and copy provider credentials into every client; the visitor must recognise that problem first"
+    },
+    {
+      "id": "landing.mechanism",
+      "export": "LandingMechanism",
+      "zone": "mechanism",
+      "description": "Ordered explanation of how the product creates the promised outcome, with three to five concrete steps.",
+      "content": "mechanism section heading, lede, and numbered items",
+      "status": "required",
+      "reason": "the brief requires a concrete three-step workflow: Skarbiec mailbox identity -> IMAP synchronization -> reply through the originating SMTP identity"
+    },
+    {
+      "id": "landing.proof",
+      "export": "LandingProof",
+      "zone": "proof",
+      "description": "Evidence section rendering a real terminal transcript, code sample, or factual table backed by the brief's required proof.",
+      "content": "proof section heading, lede, and artifact",
+      "status": "required",
+      "reason": "the brief requires a real first-local-mailbox command sequence (skrzynka status, mailbox add, sync, message list); a terminal transcript is the honest artifact"
+    },
+    {
+      "id": "landing.objection",
+      "export": "LandingObjection",
+      "zone": "objection",
+      "description": "Question-and-answer section that resolves adoption, authorization, compatibility, pricing, or risk objections supported by approved claims.",
+      "content": "objection section heading and 3-5 question-answer items",
+      "status": "recommended",
+      "reason": "the boundaries are part of the product: no hosted shared server, no automatic replies, no HTML rendering, secrets never written to database or logs; stating them resolves adoption questions"
+    },
+    {
+      "id": "landing.decision",
+      "export": "LandingDecision",
+      "zone": "decision",
+      "description": "Closing decision section that restates the value after proof and repeats the same approved primary action without introducing a new promise.",
+      "content": "decision heading, lede, site.primaryAction, site.commitment",
+      "status": "required",
+      "reason": "one closing repeat of the documentation action with the lower-emphasis source action, per brand rules"
+    },
+    {
+      "id": "landing.footer",
+      "export": "LandingFooter",
+      "zone": "chrome",
+      "description": "Product footer with the approved product description and canonical legal, source, documentation, and community links.",
+      "content": "site.product, site.description, site.footer",
+      "status": "required",
+      "reason": "standard page chrome; links to docs, API, integrations, desktop app, and license"
+    }
+  ]
+}
