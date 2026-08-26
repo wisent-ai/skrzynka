@@ -2,6 +2,10 @@
   <img src="assets/readme-banner.svg" alt="Skrzynka by Wisent — many mailboxes in one reply queue" width="100%">
 </p>
 
+<!-- wisent-readme-signals:start -->
+[![Source](https://img.shields.io/badge/GitHub-Source-181717?logo=github)](https://github.com/wisent-ai/skrzynka) [![Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github)](https://github.com/wisent-ai/skrzynka/issues) [![Wisent](https://img.shields.io/badge/Wisent-Website-0B0B0B)](https://wisent.com) [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/wisent-ai/) [![X](https://img.shields.io/badge/X-Follow-000000?logo=x&logoColor=white)](https://x.com/wisentai) [![Enterprise](https://img.shields.io/badge/Enterprise-Book%20a%20call-0B0B0B?logo=calendly)](https://calendly.com/lbartoszcze)
+<!-- wisent-readme-signals:end -->
+
 <p align="center">
   <a href="https://github.com/wisent-ai/skrzynka"><img alt="Source" src="https://img.shields.io/badge/GitHub-Source-181717?logo=github"></a>
   <a href="docs/API.md"><img alt="Local API" src="https://img.shields.io/badge/API-loopback%20JSON-0f766e"></a>
@@ -86,13 +90,13 @@ The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret
 
 ## Product boundaries and contracts
 
-- [Product and ownership](docs/PRODUCT.md)
-- [Release, compatibility, and recovery](docs/RELEASE.md)
-- [Zero-state and first-success journey](docs/ONBOARDING.md)
-- [Core state and failure semantics](docs/CORE.md)
-- [Skarbiec, IMAP, and SMTP integrations](docs/INTEGRATIONS.md)
-- [Loopback JSON API](docs/API.md)
-- [Canonical examples](examples/README.md)
+- [What Skrzynka is](docs/what-is-skrzynka.md) and the [executed quick start](docs/quick-start.md)
+- [CLI reference](docs/cli.md) and [loopback JSON API](docs/API.md)
+- [Concepts](docs/concepts/mailbox.md), [architecture](docs/architecture.md), and [configuration](docs/configuration.md)
+- [Executed CLI](docs/walkthrough-local-lifecycle.md) and [HTTP](docs/walkthrough-loopback-api.md) walkthroughs
+- [Operations runbook](docs/runbook.md) and [canonical examples](examples/README.md)
+- [Product and ownership](docs/PRODUCT.md), [core state](docs/CORE.md), and [integrations](docs/INTEGRATIONS.md)
+- [Onboarding](docs/ONBOARDING.md) and [release/recovery](docs/RELEASE.md)
 
 ## Operating model
 
