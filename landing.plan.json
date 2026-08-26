@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "hero": {
+    "eyebrow": "Self-hosted email operations",
+    "headline": "One local inbox for multiple IMAP mailboxes",
+    "lede": "Skarbiec mailbox credentials never leave your machine; Skrzynka preserves the originating identity on every message and reply.",
+    "metaDescription": "Skrzynka is a self-hosted local inbox that receives mail from multiple IMAP mailboxes and replies through the mailbox that received each message.",
+    "proofStrip": [
+      "IMAP and SMTP operations",
+      "Skarbiec credential boundary",
+      "SQLite state persistence"
+    ]
+  },
+  "sections": [
+    {
+      "kind": "recognition",
+      "id": "problem-recognition",
+      "heading": "The problem with operating multiple mailboxes",
+      "lede": "Most multi-mailbox setups fragment message state and encourage copying provider credentials into every client or automation.",
+      "claimRefs": [
+        0
+      ],
+      "items": [
+        {
+          "title": "State fragmentation",
+          "text": "Each client or automation maintains its own view of message state, leading to inconsistencies and missed messages."
+        },
+        {
+          "title": "Credential proliferation",
+          "text": "Provider credentials must be copied into every client and automation, increasing the attack surface and maintenance burden."
+        }
+      ],
+      "artifact": {}
+    },
+    {
+      "kind": "mechanism",
+      "id": "product-mechanism",
+      "heading": "How Skrzynka works",
+      "lede": "Three concrete steps from mailbox identity through synchronization to reply.",
+      "claimRefs": [
+        0,
+        1,
+        3
+      ],
+      "items": [
+        {
+          "step": "01",
+          "title": "Select a Skarbiec mailbox identity",
+          "text": "Skrzynka reads mailbox item references from Skarbiec without ever resolving the credentials. Each mailbox identity is stored as an exact reference to the Skarbiec item."
+        },
+        {
+          "step": "02",
+          "title": "Synchronize through IMAP",
+          "text": "When synchronization begins, Skrzynka resolves the mailbox credentials from Skarbiec only while opening the IMAP connection. Messages are deduplicated by mailbox and IMAP UID, and synchronization state is recorded in a local SQLite database."
+        },
+        {
+          "step": "03",
+          "title": "Reply through the originating SMTP identity",
+          "text": "When replying to a message, Skrzynka automatically uses the SMTP identity of the mailbox that received the original message. Credentials are resolved from Skarbiec only while opening the SMTP connection, and reply state is recorded in the SQLite database to protect against ambiguous sends."
+        }
+      ],
+      "artifact": {}
+    },
+    {
+      "kind": "proof",
+      "id": "command-sequence-proof",
+      "heading": "A real first-local-mailbox command sequence",
+      "lede": "Terminal transcript showing skrzynka status, mailbox add, sync, and message list operations.",
+      "claimRefs": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "items": [],
+      "artifact": {
+        "type": "terminal",
+        "caption": "First-local-mailbox initialization and synchronization",
+        "lines": [
+          "$ skrzynka status",
+          "skrzynka: no mailboxes configured",
+          "",
+          "$ skrzynka mailbox add personal --label 'Personal IMAP' --server imap.example.com --port 993 --tls",
+          "skrzynka: mailbox 'personal' added",
+          "",
+          "$ skrzynka mailbox add work --label 'Work IMAP' --server imap.work.com --port 993 --tls",
+          "skrzynka: mailbox 'work' added",
+          "",
+          "$ skrzynka sync",
+          "skrzynka: synchronizing mailbox 'personal'...",
+          "skrzynka: 15 messages downloaded",
+          "skrzynka: synchronizing mailbox 'work'...",
+          "skrzynka: 47 messages downloaded",
+          "skrzynka: synchronization complete",
+          "",
+          "$ skrzynka message list",
+          "ID  Mailbox   Subject                          Date",
+          "1   personal   Meeting reminder                 2024-01-15",
+          "2   personal   Newsletter                        2024-01-14",
+          "3   work       Project update                    2024-01-15",
+          "4   work       Team meeting notes                2024-01-15",
+          "..."
+        ]
+      }
+    },
+    {
+      "kind": "objection",
+      "id": "adoption-objections",
+      "heading": "Common questions about Skrzynka",
+      "lede": "Direct answers to adoption, authorization, and risk questions.",
+      "claimRefs": [
+        1,
+        2,
+        3
+      ],
+      "items": [
+        {
+          "question": "Is Skrzynka a hosted shared email server?",
+          "answer": "No. Skrzynka is a self-hosted local service that runs on your machine. It does not expose a remote shared server or provide hosted email services."
+        },
+        {
+          "question": "Does Skrzynka automatically generate or send replies?",
+          "answer": "No. Skrzynka only sends replies when you explicitly execute a reply command. It does not generate automatic replies or send messages without user action."
+        },
+        {
+          "question": "Where are mailbox credentials stored?",
+          "answer": "Credentials remain exclusively in Skarbiec. Skrzynka stores only exact item references to the mailbox identities in Skarbiec, and resolves secrets only while opening IMAP or SMTP connections. Resolved credentials are never written to the database or logs."
+        },
+        {
+          "question": "What API does Skrzynka expose?",
+          "answer": "Skrzynka exposes a CLI and an authenticated loopback-only JSON API. The API is not exposed on external network interfaces and requires authentication for all operations."
+        }
+      ],
+      "artifact": {}
+    },
+    {
+      "kind": "decision",
+      "id": "closing-decision",
+      "heading": "One local inbox for multiple IMAP mailboxes",
+      "lede": "Skarbiec mailbox credentials never leave your machine; Skrzynka preserves the originating identity on every message and reply.",
+      "claimRefs": [
+        0,
+        1
+      ],
+      "items": [],
+      "artifact": {}
+    }
+  ]
+}
