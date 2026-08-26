@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/wisent-ai/skrzynka"><img alt="Source" src="https://img.shields.io/badge/GitHub-Source-181717?logo=github"></a>
-  <a href="docs/API.md"><img alt="Local API" src="https://img.shields.io/badge/API-loopback%20JSON-0f766e"></a>
+  <a href="https://skrzynka.wisent.com/docs/api"><img alt="Local API" src="https://img.shields.io/badge/API-loopback%20JSON-0f766e"></a>
   <a href="https://www.rust-lang.org"><img alt="Rust" src="https://img.shields.io/badge/Rust-1.82%2B-000000?logo=rust"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-blue"></a>
   <a href="https://discord.gg/qRjpkthq54"><img alt="Wisent Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white"></a>
@@ -66,7 +66,7 @@ cargo run -- sync
 cargo run -- message list
 ```
 
-A successful sync prints a bounded JSON summary with `received`, `mailbox_id`, and `last_uid`; `message list` then shows normalized message metadata and body text from the local database. A `login` item can be added by also supplying `--email`, `--imap-host`, `--smtp-host`, and the applicable ports/security mode. See the executable [examples](examples/README.md) and the [onboarding contract](docs/ONBOARDING.md).
+A successful sync prints a bounded JSON summary with `received`, `mailbox_id`, and `last_uid`; `message list` then shows normalized message metadata and body text from the local database. A `login` item can be added by also supplying `--email`, `--imap-host`, `--smtp-host`, and the applicable ports/security mode. See the [executable examples](https://skrzynka.wisent.com/docs/examples) and the [onboarding contract](https://skrzynka.wisent.com/docs/onboarding).
 
 ## Skarbiec mailbox contract
 
@@ -90,13 +90,13 @@ The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret
 
 ## Product boundaries and contracts
 
-- [What Skrzynka is](docs/what-is-skrzynka.md) and the [executed quick start](docs/quick-start.md)
-- [CLI reference](docs/cli.md) and [loopback JSON API](docs/API.md)
-- [Concepts](docs/concepts/mailbox.md), [architecture](docs/architecture.md), and [configuration](docs/configuration.md)
-- [Executed CLI](docs/walkthrough-local-lifecycle.md) and [HTTP](docs/walkthrough-loopback-api.md) walkthroughs
-- [Operations runbook](docs/runbook.md) and [canonical examples](examples/README.md)
-- [Product and ownership](docs/PRODUCT.md), [core state](docs/CORE.md), and [integrations](docs/INTEGRATIONS.md)
-- [Onboarding](docs/ONBOARDING.md) and [release/recovery](docs/RELEASE.md)
+- [What Skrzynka is](https://skrzynka.wisent.com/docs) and the [executed quick start](https://skrzynka.wisent.com/docs/quick-start)
+- [CLI reference](https://skrzynka.wisent.com/docs/cli) and [loopback JSON API](https://skrzynka.wisent.com/docs/api)
+- [Concepts](https://skrzynka.wisent.com/docs/concept-mailbox), [architecture](https://skrzynka.wisent.com/docs/architecture), and [configuration](https://skrzynka.wisent.com/docs/configuration)
+- [Executed CLI](https://skrzynka.wisent.com/docs/walkthrough-local-lifecycle) and [HTTP](https://skrzynka.wisent.com/docs/walkthrough-loopback-api) walkthroughs
+- [Operations runbook](https://skrzynka.wisent.com/docs/runbook) and [canonical examples](https://skrzynka.wisent.com/docs/examples)
+- [Product and ownership](https://skrzynka.wisent.com/docs/product), [core state](https://skrzynka.wisent.com/docs/core), and [integrations](https://skrzynka.wisent.com/docs/integrations)
+- [Onboarding](https://skrzynka.wisent.com/docs/onboarding) and [release/recovery](https://skrzynka.wisent.com/docs/release)
 
 ## Operating model
 

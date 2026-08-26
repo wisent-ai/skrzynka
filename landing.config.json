@@ -14,7 +14,7 @@
     },
     {
       "label": "API",
-      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/API.md"
+      "href": "https://skrzynka.wisent.com/docs/api"
     },
     {
       "label": "Source",
@@ -28,15 +28,15 @@
   "footerLinks": [
     {
       "label": "Onboarding",
-      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/ONBOARDING.md"
+      "href": "https://skrzynka.wisent.com/docs/onboarding"
     },
     {
       "label": "Integrations",
-      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/INTEGRATIONS.md"
+      "href": "https://skrzynka.wisent.com/docs/integrations"
     },
     {
       "label": "Core",
-      "href": "https://github.com/wisent-ai/skrzynka/blob/main/docs/CORE.md"
+      "href": "https://skrzynka.wisent.com/docs/core"
     },
     {
       "label": "Desktop app",
