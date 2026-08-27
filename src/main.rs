@@ -11,6 +11,7 @@ mod skarbiec;
 use crate::{
     db::Database,
     error::AppError,
+    gmail::StartGmailOAuthRequest,
     models::{CreateMailboxRequest, CreateReplyRequest, SmtpSecurity},
     service::AppState,
     skarbiec::SkarbiecResolver,
@@ -80,12 +81,23 @@ enum GmailCommand {
     /// Report whether the delegated-mail service account is configured, and
     /// which client ID the Workspace admin must grant.
     Delegation,
+    /// Authorize one Google identity through the loopback OAuth callback.
+    Authorize {
+        #[arg(long)]
+        skarbiec_item: String,
+        #[arg(long, default_value = "127.0.0.1:8790")]
+        bind: SocketAddr,
+    },
     /// Connect one Workspace mailbox through domain-wide delegation.
     Delegate {
         #[arg(long)]
         email: String,
         #[arg(long)]
         display_name: Option<String>,
+        /// Perform the one-time Workspace admin-console grant through Weles on
+        /// this machine if Google reports the client is not authorized yet.
+        #[arg(long)]
+        authorize: bool,
     },
 }
 
@@ -214,20 +226,33 @@ async fn run(cli: Cli) -> Result<(), AppError> {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             run_mailbox(state, command).await
         }
-        Command::Gmail { command } => {
-            let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
-            match command {
-                GmailCommand::Delegation => print_json(&state.gmail_delegation_status().await),
-                GmailCommand::Delegate {
-                    email,
-                    display_name,
-                } => print_json(
-                    &state
-                        .connect_gmail_delegated(LOCAL_CLI_ORGANIZATION, &email, display_name)
-                        .await?,
-                ),
+        Command::Gmail { command } => match command {
+            GmailCommand::Authorize {
+                skarbiec_item,
+                bind,
+            } => authorize_gmail(database, resolver, skarbiec_item, bind).await,
+            GmailCommand::Delegation => {
+                let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
+                print_json(&state.gmail_delegation_status().await)
             }
-        }
+            GmailCommand::Delegate {
+                email,
+                display_name,
+                authorize,
+            } => {
+                let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
+                print_json(
+                    &state
+                        .connect_gmail_delegated(
+                            LOCAL_CLI_ORGANIZATION,
+                            &email,
+                            display_name,
+                            authorize,
+                        )
+                        .await?,
+                )
+            }
+        },
         Command::Message { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             run_message(state, command).await
@@ -240,6 +265,62 @@ async fn run(cli: Cli) -> Result<(), AppError> {
             }
         }
         Command::Version => unreachable!(),
+    }
+}
+
+async fn authorize_gmail(
+    database: Database,
+    resolver: SkarbiecResolver,
+    skarbiec_item: String,
+    bind: SocketAddr,
+) -> Result<(), AppError> {
+    if !bind.ip().is_loopback() {
+        return Err(AppError::new(
+            StatusCode::BAD_REQUEST,
+            "NON_LOOPBACK_BIND_REFUSED",
+            "Skrzynka serves OAuth callbacks only on loopback addresses",
+            false,
+        ));
+    }
+    let callback_base_url = format!("http://{bind}");
+    let state = AppState::new(database, resolver, 60, &callback_base_url)?;
+    let listener = tokio::net::TcpListener::bind(bind)
+        .await
+        .map_err(|_| AppError::internal("loopback OAuth callback address could not be bound"))?;
+    let flow = state
+        .start_gmail_oauth(
+            LOCAL_CLI_ORGANIZATION,
+            StartGmailOAuthRequest {
+                skarbiec_item_id: skarbiec_item,
+            },
+        )
+        .await?;
+    print_json(&flow)?;
+
+    let callback_state = state.clone();
+    let server =
+        tokio::spawn(async move { axum::serve(listener, api::router(callback_state)).await });
+    loop {
+        let status = state
+            .gmail_oauth_status(LOCAL_CLI_ORGANIZATION, flow.flow_id)
+            .await?;
+        if status.status == "completed" {
+            server.abort();
+            print_json(&status)?;
+            return Ok(());
+        }
+        if status.status == "failed" {
+            server.abort();
+            let error = status.error.as_ref();
+            return Err(AppError::dependency(
+                "GMAIL_OAUTH_FAILED",
+                error
+                    .map(|error| format!("{}: {}", error.code, error.message))
+                    .unwrap_or_else(|| "Gmail authorization failed".to_string()),
+                error.map(|error| error.retryable).unwrap_or(false),
+            ));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
 }
 

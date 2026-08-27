@@ -68,6 +68,21 @@ cargo run -- message list
 
 A successful sync prints a bounded JSON summary with `received`, `mailbox_id`, and `last_uid`; `message list` then shows normalized message metadata and body text from the local database. A `login` item can be added by also supplying `--email`, `--imap-host`, `--smtp-host`, and the applicable ports/security mode. See the [executable examples](https://skrzynka.wisent.com/docs/examples) and the [onboarding contract](https://skrzynka.wisent.com/docs/onboarding).
 
+For a Gmail identity, run the loopback OAuth receiver instead of adding the
+password-backed login directly:
+
+```sh
+cargo run -- gmail authorize --skarbiec-item kimi-lukasz-google-sso
+```
+
+The command prints Google's authorization URL, waits on `127.0.0.1:8790`, and
+exits only after the callback has stored a dedicated `skrzynka-gmail-*` OAuth
+bundle and created the mailbox. `--bind 127.0.0.1:<port>` selects another
+loopback port when `8790` is occupied. A browser on a Stado-selected Weles host
+can reach that callback through `stado host forward-local`; no provider
+password is used for IMAP.
+
+
 ## Skarbiec mailbox contract
 
 For password-backed providers, Skrzynka persists the exact item selected by the operator. A complete Skarbiec `bundle` uses these fields:
