@@ -19,8 +19,10 @@ use axum::http::StatusCode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 use std::{
+    io::Write,
     net::SocketAddr,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -77,6 +79,12 @@ struct ServeArgs {
 
 #[derive(Subcommand)]
 enum GmailCommand {
+    /// Authorize one Google identity, store its refresh token in Skarbiec,
+    /// and create the Gmail mailbox after the loopback callback arrives.
+    Authorize {
+        #[arg(long)]
+        skarbiec_item: String,
+    },
     /// Report whether the delegated-mail service account is configured, and
     /// which client ID the Workspace admin must grant.
     Delegation,
@@ -226,6 +234,9 @@ async fn run(cli: Cli) -> Result<(), AppError> {
                         .connect_gmail_delegated(LOCAL_CLI_ORGANIZATION, &email, display_name)
                         .await?,
                 ),
+                GmailCommand::Authorize { skarbiec_item } => {
+                    authorize_gmail(state, skarbiec_item).await
+                }
             }
         }
         Command::Message { command } => {
@@ -269,6 +280,66 @@ async fn serve(
         })
         .await
         .map_err(|_| AppError::internal("loopback API stopped unexpectedly"))
+}
+
+async fn authorize_gmail(state: AppState, skarbiec_item: String) -> Result<(), AppError> {
+    let bind: SocketAddr = "127.0.0.1:8788"
+        .parse()
+        .map_err(|_| AppError::internal("Gmail OAuth callback address is invalid"))?;
+    let listener = tokio::net::TcpListener::bind(bind)
+        .await
+        .map_err(|_| AppError::internal("Gmail OAuth callback address could not be bound"))?;
+    let flow = state
+        .start_gmail_oauth(
+            LOCAL_CLI_ORGANIZATION,
+            crate::gmail::StartGmailOAuthRequest {
+                skarbiec_item_id: skarbiec_item,
+            },
+        )
+        .await?;
+    print_json(&flow)?;
+    std::io::stdout()
+        .flush()
+        .map_err(|_| AppError::internal("Gmail authorization URL could not be flushed"))?;
+
+    let server_state = state.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, api::router(server_state))
+            .await
+            .map_err(|_| AppError::internal("Gmail OAuth callback server stopped unexpectedly"))
+    });
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(600);
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            server.abort();
+            return Err(AppError::dependency(
+                "GMAIL_OAUTH_TIMEOUT",
+                "Google authorization did not return within ten minutes",
+                true,
+            ));
+        }
+        let status = state
+            .gmail_oauth_status(LOCAL_CLI_ORGANIZATION, flow.flow_id)
+            .await?;
+        if let Some(mailbox) = status.mailbox {
+            server.abort();
+            return print_json(&mailbox);
+        }
+        if let Some(error) = status.error {
+            server.abort();
+            return Err(AppError::dependency(
+                error.code,
+                error.message,
+                error.retryable,
+            ));
+        }
+        if server.is_finished() {
+            return server
+                .await
+                .map_err(|_| AppError::internal("Gmail OAuth callback server failed"))?;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
 }
 
 async fn run_mailbox(state: AppState, command: MailboxCommand) -> Result<(), AppError> {

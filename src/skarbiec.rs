@@ -15,7 +15,7 @@ use std::{
 use tokio::{io::AsyncWriteExt, process::Command, sync::Mutex};
 
 const MAX_SKARBIEC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
-const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "skrzynka-google-oauth-desktop";
+const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "google-oauth-gmail-installed";
 const GOOGLE_SERVICE_ACCOUNT_ITEM_ID: &str = "skrzynka-google-service-account";
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
 const GMAIL_DELEGATION_SCOPE: &str = "https://mail.google.com/";
