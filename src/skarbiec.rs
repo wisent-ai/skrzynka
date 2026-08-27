@@ -45,6 +45,7 @@ pub(crate) struct GoogleOAuthClient {
     pub client_secret: String,
     pub auth_uri: String,
     pub token_uri: String,
+    pub redirect_uri: String,
 }
 
 /// The delegated-mail service account read from Skarbiec. `client_id` is the
@@ -530,10 +531,18 @@ impl SkarbiecResolver {
             .map_err(|_| invalid_item("Google OAuth client value is invalid JSON"))?;
         let profile = document
             .get("installed")
+            .or_else(|| document.get("web"))
             .and_then(Value::as_object)
-            .ok_or_else(|| {
-                invalid_item("Google OAuth client is not a desktop application client")
-            })?;
+            .ok_or_else(|| invalid_item("Google OAuth client has no installed or web profile"))?;
+        let redirect_uri = profile
+            .get("redirect_uris")
+            .and_then(Value::as_array)
+            .and_then(|values| values.iter().filter_map(Value::as_str).find(|value| {
+                *value == "http://127.0.0.1:8788/v1/gmail/oauth/callback"
+                    || *value == "https://auth.enterprise.wisent.com/auth/v1/callback"
+            }))
+            .ok_or_else(|| invalid_item("Google OAuth client has no trusted Skrzynka redirect URI"))?
+            .to_string();
         let auth_uri = optional_text(profile.get("auth_uri"))
             .unwrap_or_else(|| "https://accounts.google.com/o/oauth2/auth".to_string());
         let token_uri = optional_text(profile.get("token_uri"))
@@ -550,6 +559,7 @@ impl SkarbiecResolver {
             client_secret: required_text(profile.get("client_secret"), "client_secret")?,
             auth_uri,
             token_uri,
+            redirect_uri,
         })
     }
 

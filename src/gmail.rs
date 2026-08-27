@@ -76,7 +76,6 @@ pub struct GmailOAuthBroker {
     resolver: SkarbiecResolver,
     client: Client,
     flows: Arc<Mutex<HashMap<Uuid, FlowRecord>>>,
-    callback_url: Url,
 }
 
 #[derive(Clone)]
@@ -119,7 +118,6 @@ impl GmailOAuthBroker {
             resolver,
             client: Client::new(),
             flows: Arc::new(Mutex::new(HashMap::new())),
-            callback_url,
         })
     }
 
@@ -160,7 +158,7 @@ impl GmailOAuthBroker {
         authorization_url
             .query_pairs_mut()
             .append_pair("client_id", &oauth_client.client_id)
-            .append_pair("redirect_uri", self.callback_url.as_str())
+            .append_pair("redirect_uri", &oauth_client.redirect_uri)
             .append_pair("response_type", "code")
             .append_pair("scope", GMAIL_SCOPES)
             .append_pair("access_type", "offline")
@@ -334,7 +332,7 @@ impl GmailOAuthBroker {
                 ("client_secret", pending.oauth_client.client_secret.as_str()),
                 ("code", code),
                 ("code_verifier", pending.verifier.as_str()),
-                ("redirect_uri", self.callback_url.as_str()),
+                ("redirect_uri", pending.oauth_client.redirect_uri.as_str()),
                 ("grant_type", "authorization_code"),
             ])
             .send()
