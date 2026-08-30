@@ -17,6 +17,7 @@ use crate::{
 use chrono::Utc;
 use lettre::Address;
 use serde::Serialize;
+use serde_json::Value;
 use std::{str::FromStr, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -135,14 +136,38 @@ impl AppState {
         organization_id: &str,
         email: &str,
         display_name: Option<String>,
+        authorize: bool,
     ) -> Result<Mailbox, AppError> {
         let email = email.trim();
         Address::from_str(email).map_err(|_| {
             AppError::invalid("GMAIL_PROFILE_INVALID", "email is not a valid address")
         })?;
-        self.resolver
-            .delegated_access_token(&format!("delegation-probe:{email}"), email)
-            .await?;
+        let probe_key = format!("delegation-probe:{email}");
+        match self.resolver.delegated_access_token(&probe_key, email).await {
+            Ok(_) => {}
+            // The grant is the one step that lives in a browser. When the
+            // operator asks for it, Weles performs it on this machine and the
+            // mint is retried once; propagation at Google is not instant.
+            Err(failure) if authorize && failure.code == "GOOGLE_DELEGATION_NOT_GRANTED" => {
+                self.grant_delegation_through_weles().await?;
+                self.resolver
+                    .delegated_access_token(&probe_key, email)
+                    .await
+                    .map_err(|retry| {
+                        if retry.code == "GOOGLE_DELEGATION_NOT_GRANTED" {
+                            AppError::dependency(
+                                "GOOGLE_DELEGATION_NOT_PROPAGATED",
+                                "Weles granted the delegation and Google has not applied it \
+                                 yet; retry in a minute.",
+                                true,
+                            )
+                        } else {
+                            retry
+                        }
+                    })?;
+            }
+            Err(failure) => return Err(failure),
+        }
         let item_id = self.resolver.save_gmail_delegation(email).await?;
         if let Some(mailbox) = self
             .database
@@ -167,6 +192,61 @@ impl AppState {
             },
         )
         .await
+    }
+
+    /// Run the checked-in Weles journey that authorizes this service account in
+    /// the Workspace admin console. Weles owns browser work; Skrzynka only
+    /// states which client and scope, and reads back the terminal state.
+    async fn grant_delegation_through_weles(&self) -> Result<(), AppError> {
+        let account = self.resolver.google_service_account().await?;
+        let binary = std::env::var("SKRZYNKA_WELES_BIN").unwrap_or_else(|_| "weles".to_string());
+        let output = tokio::time::timeout(
+            Duration::from_secs(900),
+            tokio::process::Command::new(&binary)
+                .args([
+                    "google-admin",
+                    "grant-delegation",
+                    "--client-id",
+                    &account.client_id,
+                    "--scope",
+                    "https://mail.google.com/",
+                    "--login-item",
+                    &std::env::var("SKRZYNKA_WORKSPACE_ADMIN_ITEM")
+                        .unwrap_or_else(|_| "claude-wisent-google-sso".to_string()),
+                ])
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .map_err(|_| {
+            AppError::dependency(
+                "WELES_GRANT_TIMEOUT",
+                "the Weles delegation journey did not finish within fifteen minutes",
+                true,
+            )
+        })?
+        .map_err(|_| {
+            AppError::dependency(
+                "WELES_UNAVAILABLE",
+                format!("the Weles CLI could not be started from {binary}"),
+                false,
+            )
+        })?;
+        if output.status.success() {
+            return Ok(());
+        }
+        // Weles states its terminal reason on stdout as one JSON line; repeat it
+        // verbatim so the operator sees what the console actually did.
+        let reason = serde_json::from_slice::<Value>(&output.stdout)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "the Weles delegation journey reported no reason".to_string());
+        Err(AppError::dependency("WELES_GRANT_FAILED", reason, false))
     }
 
     pub async fn start_gmail_oauth(

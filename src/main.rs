@@ -312,6 +312,23 @@ async fn authorize_gmail(
         if status.status == "failed" {
             server.abort();
             let error = status.error.as_ref();
+            // A flow that expired without a callback is the shape an
+            // unregistered redirect URI takes here: Google refuses inside the
+            // browser, nothing ever reaches this listener, and the ten-minute
+            // lifetime runs out saying only that it expired. Ask Google why
+            // before reporting that, so the operator gets the cause instead of
+            // the symptom.
+            if error.map(|error| error.code) == Some("GMAIL_OAUTH_FLOW_EXPIRED") {
+                if gmail::diagnose_authorization(&flow.authorization_url).await.as_deref()
+                    == Some("redirect_uri_mismatch")
+                {
+                    if let Some((client_id, redirect_uri)) =
+                        gmail::authorization_operands(&flow.authorization_url)
+                    {
+                        return Err(gmail::redirect_not_registered(&client_id, &redirect_uri));
+                    }
+                }
+            }
             return Err(AppError::dependency(
                 "GMAIL_OAUTH_FAILED",
                 error
