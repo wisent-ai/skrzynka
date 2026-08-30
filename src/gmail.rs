@@ -13,6 +13,91 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 const GMAIL_SCOPES: &str = "openid email https://mail.google.com/";
+/// The OAuth error code Google put in the landing URL it sent a browser to,
+/// or `None` when that URL carries none.
+///
+/// Google encodes it as base64url in `authError`, so the code an operator needs
+/// is unreadable without decoding. Split out from the request that fetched the
+/// URL so the decode is exercised against a real captured error rather than a
+/// stubbed server.
+pub fn oauth_error_code(landing_url: &str) -> Option<String> {
+    let parsed = Url::parse(landing_url).ok()?;
+    let encoded = parsed
+        .query_pairs()
+        .find(|(name, _)| name == "authError")
+        .map(|(_, value)| value.into_owned())?;
+    if encoded.is_empty() {
+        return None;
+    }
+    let decoded = URL_SAFE_NO_PAD.decode(encoded.trim_end_matches('=')).ok()?;
+    // The payload is an undocumented blob whose first field is the code as
+    // plain text, so the code is the leading run of code-shaped bytes rather
+    // than the result of parsing a format Google does not publish.
+    let text = String::from_utf8_lossy(&decoded);
+    let code: String = text
+        .chars()
+        .skip_while(|character| !character.is_ascii_alphabetic())
+        .take_while(|character| character.is_ascii_alphabetic() || *character == '_')
+        .collect();
+    (!code.is_empty()).then_some(code)
+}
+
+/// The refusal an unregistered loopback redirect deserves.
+///
+/// Google refuses the authorization inside the browser, so no callback ever
+/// reaches this process and the flow spends its whole ten-minute lifetime
+/// saying nothing. The client id, the redirect URI presented and the one
+/// setting that fixes it are the sentence an operator needs, and none of them
+/// were anywhere in this product's output.
+pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError {
+    AppError::dependency(
+        "GMAIL_OAUTH_REDIRECT_NOT_REGISTERED",
+        format!(
+            "the OAuth client {client_id} has no loopback redirect URI registered, so Google \
+             refused this authorization with redirect_uri_mismatch before showing any consent \
+             screen; it was presented {redirect_uri}. Register a loopback redirect URI for that \
+             client in the Google Cloud Console, or issue a Desktop app client which accepts any \
+             loopback port, and retry"
+        ),
+        false,
+    )
+}
+
+/// The `client_id` and `redirect_uri` an authorization URL carries, for the
+/// refusal above. Read back from the URL that was actually handed out rather
+/// than recomputed, so the sentence names what Google was really given.
+pub fn authorization_operands(authorization_url: &str) -> Option<(String, String)> {
+    let parsed = Url::parse(authorization_url).ok()?;
+    let mut client_id = None;
+    let mut redirect_uri = None;
+    for (name, value) in parsed.query_pairs() {
+        match name.as_ref() {
+            "client_id" => client_id = Some(value.into_owned()),
+            "redirect_uri" => redirect_uri = Some(value.into_owned()),
+            _ => {}
+        }
+    }
+    Some((client_id?, redirect_uri?))
+}
+
+/// Ask Google what it says about this authorization, for use only AFTER a flow
+/// has already failed.
+///
+/// Never a pre-flight gate: Google shows a sign-in page before validating the
+/// redirect for some forms, so a response that is not an error page does not
+/// mean the redirect is registered. This only explains a failure that has
+/// already happened.
+pub async fn diagnose_authorization(authorization_url: &str) -> Option<String> {
+    let response = Client::new()
+        .get(authorization_url)
+        .header("user-agent", "Mozilla/5.0")
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await
+        .ok()?;
+    oauth_error_code(response.url().as_str())
+}
+
 const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 const FLOW_LIFETIME_MINUTES: i64 = 10;
 
@@ -455,5 +540,66 @@ impl GmailOAuthBroker {
             });
             record.pending = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A REAL landing URL captured from Google while authorizing client
+    /// 903183433368-...ap3l9 against a loopback redirect it does not have
+    /// registered. Not a stubbed server: the bytes Google actually sent.
+    const CAPTURED_ERROR: &str = "https://accounts.google.com/signin/oauth/error?authError=\
+                                  ChVyZWRpcmVjdF91cmlfbWlzbWF0Y2gSsAEKWW91IGNhbid0IHNpZ24gaW4gdG8gdGhpcyBhcHA";
+
+    #[test]
+    fn the_captured_google_error_decodes_to_its_code() {
+        assert_eq!(
+            oauth_error_code(CAPTURED_ERROR).as_deref(),
+            Some("redirect_uri_mismatch")
+        );
+    }
+
+    #[test]
+    fn a_landing_url_without_an_error_carries_no_code() {
+        // A completed flow must never be reported as a registration problem.
+        assert!(oauth_error_code("http://127.0.0.1:8788/v1/gmail/oauth/callback?code=x&state=y")
+            .is_none());
+        assert!(oauth_error_code("https://accounts.google.com/signin/oauth/consent").is_none());
+        assert!(oauth_error_code("https://accounts.google.com/x?authError=").is_none());
+        assert!(oauth_error_code("not a url").is_none());
+    }
+
+    #[test]
+    fn the_operands_come_from_the_url_that_was_handed_out() {
+        let url = "https://accounts.google.com/o/oauth2/auth?client_id=abc.apps.googleusercontent.com\
+                   &redirect_uri=http%3A%2F%2F127.0.0.1%3A8788%2Fv1%2Fgmail%2Foauth%2Fcallback\
+                   &response_type=code";
+        let (client_id, redirect_uri) = authorization_operands(url).expect("operands");
+        assert_eq!(client_id, "abc.apps.googleusercontent.com");
+        assert_eq!(redirect_uri, "http://127.0.0.1:8788/v1/gmail/oauth/callback");
+        // A URL missing either operand yields nothing rather than half a
+        // sentence naming an empty client.
+        assert!(authorization_operands("https://accounts.google.com/o/oauth2/auth").is_none());
+    }
+
+    #[test]
+    fn the_refusal_names_the_client_the_uri_and_the_setting() {
+        let error = redirect_not_registered(
+            "903183433368-5nt0jdbqtli8rm39oh2s0limiljap3l9.apps.googleusercontent.com",
+            "http://127.0.0.1:8788/v1/gmail/oauth/callback",
+        );
+        assert_eq!(error.code, "GMAIL_OAUTH_REDIRECT_NOT_REGISTERED");
+        assert!(!error.retryable, "registering a redirect URI is not a retry");
+        assert_eq!(
+            error.message,
+            "the OAuth client 903183433368-5nt0jdbqtli8rm39oh2s0limiljap3l9.apps.googleusercontent.com \
+has no loopback redirect URI registered, so Google refused this authorization with \
+redirect_uri_mismatch before showing any consent screen; it was presented \
+http://127.0.0.1:8788/v1/gmail/oauth/callback. Register a loopback redirect URI for that client \
+in the Google Cloud Console, or issue a Desktop app client which accepts any loopback port, and \
+retry"
+        );
     }
 }

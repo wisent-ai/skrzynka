@@ -109,6 +109,9 @@ async fn gmail_delegation_status_handler(
 struct DelegateGmailRequest {
     email: String,
     display_name: Option<String>,
+    /// Perform the one-time admin-console grant through Weles on this machine
+    /// when Google reports the client is not yet authorized.
+    authorize: Option<bool>,
 }
 
 async fn connect_gmail_delegated(
@@ -121,7 +124,8 @@ async fn connect_gmail_delegated(
             .connect_gmail_delegated(
                 &auth.organization_id,
                 &request.email,
-                request.display_name
+                request.display_name,
+                request.authorize.unwrap_or(false)
             )
             .await?
     )))
