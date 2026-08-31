@@ -76,16 +76,7 @@ pub fn google_imap_password_rejected(
     AppError::dependency(
         "GMAIL_IMAP_PASSWORD_REJECTED",
         format!(
-            "mailbox {mailbox_email} tried to authenticate to imap.gmail.com with the password from \
-             Skarbiec item '{skarbiec_item_id}', but Google will not accept an ordinary account \
-             password over IMAP; it requires either (1) OAuth authorization or (2) an app-specific \
-             password. Use `skrzynka gmail authorize --skarbiec-item {skarbiec_item_id}` to enable \
-             OAuth, which is the most reliable path. To use an app-specific password instead: create \
-             one in your Google Account security settings, then update the password field in Skarbiec \
-             item '{skarbiec_item_id}' (the credential store will replace the entire item, so preserve \
-             all other fields). You can use `skarbiec set '{skarbiec_item_id}' password=<new-app-password>` \
-             if your Skarbiec supports field-level updates, otherwise retrieve the full item, edit the \
-             password field, and write it back via `skarbiec set-json`"
+            "mailbox {mailbox_email} could not authenticate to imap.gmail.com with the password in Skarbiec item '{skarbiec_item_id}': Google does not accept an ordinary account password over IMAP. Authorize with `skrzynka gmail authorize --skarbiec-item {skarbiec_item_id}`, or store a Google app-specific password in that item — note that `skarbiec set-json {skarbiec_item_id}` reads the whole payload from stdin and replaces it, so supply the complete item."
         ),
         false,
     )
@@ -639,12 +630,14 @@ retry"
         );
         assert_eq!(error.code, "GMAIL_IMAP_PASSWORD_REJECTED");
         assert!(!error.retryable, "fixing a password with OAuth or app password is not a retry");
-        // Message must name the mailbox, the credential item, and reference both solutions
-        assert!(error.message.contains("user@gmail.com"), "message must name the mailbox");
-        assert!(error.message.contains("gmail-personal"), "message must name the credential item");
-        assert!(error.message.contains("imap.gmail.com"), "message must name the Google host");
-        assert!(error.message.contains("skrzynka gmail authorize --skarbiec-item"), "message must give the correct authorize command");
-        assert!(error.message.contains("app-specific password"), "message must mention app-specific password solution");
+        // Message must be exactly as specified, with operands interpolated
+        assert_eq!(
+            error.message,
+            "mailbox user@gmail.com could not authenticate to imap.gmail.com with the password in Skarbiec item 'gmail-personal': Google does not accept an ordinary account password over IMAP. Authorize with `skrzynka gmail authorize --skarbiec-item gmail-personal`, or store a Google app-specific password in that item — note that `skarbiec set-json gmail-personal` reads the whole payload from stdin and replaces it, so supply the complete item."
+        );
+        // Reject any argv-secret patterns: password= or =< constructions must never appear
+        assert!(!error.message.contains("password="), "message must not suggest password= argv form; secrets cannot be passed on command line");
+        assert!(!error.message.contains("=<"), "message must not contain =< placeholder; all guidance must be concrete");
     }
 
     #[test]
