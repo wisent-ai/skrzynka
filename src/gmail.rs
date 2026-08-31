@@ -78,10 +78,14 @@ pub fn google_imap_password_rejected(
         format!(
             "mailbox {mailbox_email} tried to authenticate to imap.gmail.com with the password from \
              Skarbiec item '{skarbiec_item_id}', but Google will not accept an ordinary account \
-             password over IMAP. Use either (1) the app's OAuth authorization flow with `skrzynka \
-             gmail authorize --skarbiec-item {skarbiec_item_id}`, or (2) an app-specific password: \
-             create one in your Google Account security settings, then update it in Skarbiec via \
-             `skarbiec set-json '{skarbiec_item_id}' --type bundle --` with the new password value"
+             password over IMAP; it requires either (1) OAuth authorization or (2) an app-specific \
+             password. Use `skrzynka gmail authorize --skarbiec-item {skarbiec_item_id}` to enable \
+             OAuth, which is the most reliable path. To use an app-specific password instead: create \
+             one in your Google Account security settings, then update the password field in Skarbiec \
+             item '{skarbiec_item_id}' (the credential store will replace the entire item, so preserve \
+             all other fields). You can use `skarbiec set '{skarbiec_item_id}' password=<new-app-password>` \
+             if your Skarbiec supports field-level updates, otherwise retrieve the full item, edit the \
+             password field, and write it back via `skarbiec set-json`"
         ),
         false,
     )
