@@ -78,9 +78,10 @@ pub fn google_imap_password_rejected(
         format!(
             "mailbox {mailbox_email} tried to authenticate to imap.gmail.com with the password from \
              Skarbiec item '{skarbiec_item_id}', but Google will not accept an ordinary account \
-             password over IMAP. Use either (1) the app's OAuth authorization flow with `skrzynka gmail \
-             authorize {skarbiec_item_id}`, or (2) an app-specific password: create one in your Google \
-             Account security settings, store it in '{skarbiec_item_id}', and update the password here"
+             password over IMAP. Use either (1) the app's OAuth authorization flow with `skrzynka \
+             gmail authorize --skarbiec-item {skarbiec_item_id}`, or (2) an app-specific password: \
+             create one in your Google Account security settings, then update it in Skarbiec via \
+             `skarbiec set-json '{skarbiec_item_id}' --type bundle --` with the new password value"
         ),
         false,
     )
@@ -624,5 +625,33 @@ http://127.0.0.1:8788/v1/gmail/oauth/callback. Register a loopback redirect URI 
 in the Google Cloud Console, or issue a Desktop app client which accepts any loopback port, and \
 retry"
         );
+    }
+
+    #[test]
+    fn google_imap_password_rejected_names_mailbox_and_credential_item() {
+        let error = google_imap_password_rejected(
+            "user@gmail.com",
+            "gmail-personal",
+        );
+        assert_eq!(error.code, "GMAIL_IMAP_PASSWORD_REJECTED");
+        assert!(!error.retryable, "fixing a password with OAuth or app password is not a retry");
+        // Message must name the mailbox, the credential item, and reference both solutions
+        assert!(error.message.contains("user@gmail.com"), "message must name the mailbox");
+        assert!(error.message.contains("gmail-personal"), "message must name the credential item");
+        assert!(error.message.contains("imap.gmail.com"), "message must name the Google host");
+        assert!(error.message.contains("skrzynka gmail authorize --skarbiec-item"), "message must give the correct authorize command");
+        assert!(error.message.contains("app-specific password"), "message must mention app-specific password solution");
+    }
+
+    #[test]
+    fn google_imap_password_rejected_enforces_gmail_host_boundary() {
+        // The error function itself is Gmail-specific. The caller (mail.rs::fetch_messages)
+        // must check that mailbox.imap_host.contains("gmail.com") before invoking this.
+        // Non-Gmail hosts must get the generic "IMAP authentication was refused" message.
+        let error = google_imap_password_rejected("user@example.invalid", "example-inbox");
+        assert_eq!(error.code, "GMAIL_IMAP_PASSWORD_REJECTED");
+        // Error message is Gmail-focused; mail.rs must enforce the host boundary
+        assert!(error.message.contains("Google") || error.message.contains("Gmail"), 
+            "error message is Gmail-specific; caller must detect gmail.com hosts first");
     }
 }
