@@ -63,6 +63,29 @@ pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError 
     )
 }
 
+/// The refusal when Google IMAP receives an ordinary password instead of OAuth or an app password.
+///
+/// Google disabled ordinary password IMAP access in May 2022. When IMAP authentication fails
+/// for a Gmail account with a Password credential, the operator needs to know they must use
+/// either the app's OAuth flow or an app-specific password. The mailbox email, credential
+/// item name, and the two paths forward are the sentence an operator needs.
+pub fn google_imap_password_rejected(
+    mailbox_email: &str,
+    skarbiec_item_id: &str,
+) -> AppError {
+    AppError::dependency(
+        "GMAIL_IMAP_PASSWORD_REJECTED",
+        format!(
+            "mailbox {mailbox_email} tried to authenticate to imap.gmail.com with the password from \
+             Skarbiec item '{skarbiec_item_id}', but Google will not accept an ordinary account \
+             password over IMAP. Use either (1) the app's OAuth authorization flow with `skrzynka gmail \
+             authorize {skarbiec_item_id}`, or (2) an app-specific password: create one in your Google \
+             Account security settings, store it in '{skarbiec_item_id}', and update the password here"
+        ),
+        false,
+    )
+}
+
 /// The `client_id` and `redirect_uri` an authorization URL carries, for the
 /// refusal above. Read back from the URL that was actually handed out rather
 /// than recomputed, so the sentence names what Google was really given.

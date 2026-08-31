@@ -1,5 +1,6 @@
 use crate::{
     error::AppError,
+    gmail,
     models::{Mailbox, Message, NewMessage, SmtpSecurity},
     skarbiec::ResolvedCredentials,
 };
@@ -57,11 +58,15 @@ pub fn fetch_messages(
     let mut session = match credentials {
         ResolvedCredentials::Password { username, password } => {
             client.login(username, password).map_err(|_| {
-                dependency_error(
-                    "IMAP_AUTHENTICATION_FAILED",
-                    "IMAP authentication was refused; inspect the selected Skarbiec item",
-                    false,
-                )
+                if mailbox.imap_host.contains("gmail.com") {
+                    gmail::google_imap_password_rejected(&mailbox.email, &mailbox.skarbiec_item_id)
+                } else {
+                    dependency_error(
+                        "IMAP_AUTHENTICATION_FAILED",
+                        "IMAP authentication was refused; inspect the selected Skarbiec item",
+                        false,
+                    )
+                }
             })?
         }
         ResolvedCredentials::OAuth2 {
