@@ -1,5 +1,5 @@
 use crate::{
-    auth::{require_auth, AuthContext},
+    auth::{require_auth, AuthContext, OrganizationRole},
     error::AppError,
     gmail::{GmailOAuthCallback, StartGmailOAuthRequest},
     models::{CreateMailboxRequest, CreateReplyRequest, HealthResponse, UpdateMailboxRequest},
@@ -91,6 +91,7 @@ async fn start_gmail_oauth(
     Extension(auth): Extension<AuthContext>,
     Json(request): Json<StartGmailOAuthRequest>,
 ) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
     Ok(Json(json!(
         state
             .start_gmail_oauth(&auth.organization_id, request)
@@ -119,6 +120,7 @@ async fn connect_gmail_delegated(
     Extension(auth): Extension<AuthContext>,
     Json(request): Json<DelegateGmailRequest>,
 ) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
     Ok(Json(json!(
         state
             .connect_gmail_delegated(
@@ -171,6 +173,7 @@ async fn create_mailbox(
     Extension(auth): Extension<AuthContext>,
     Json(request): Json<CreateMailboxRequest>,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
     let mailbox = state.create_mailbox(&auth.organization_id, request).await?;
     Ok((StatusCode::CREATED, Json(json!(mailbox))))
 }
@@ -191,6 +194,7 @@ async fn update_mailbox(
     Path(id): Path<String>,
     Json(request): Json<UpdateMailboxRequest>,
 ) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
     Ok(Json(json!(state.update_mailbox(
         &auth.organization_id,
         parse_uuid(&id)?,
@@ -209,6 +213,7 @@ async fn delete_mailbox(
     Path(id): Path<String>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<StatusCode, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
     if query.confirm != Some(true) {
         return Err(AppError::invalid(
             "CONFIRMATION_REQUIRED",
@@ -224,6 +229,7 @@ async fn sync_mailbox(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Member)?;
     Ok(Json(json!(
         state
             .sync_mailbox(&auth.organization_id, parse_uuid(&id)?)
@@ -235,6 +241,7 @@ async fn sync_all(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
 ) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Member)?;
     Ok(Json(json!(state.sync_all(&auth.organization_id).await?)))
 }
 
@@ -285,6 +292,7 @@ async fn create_reply(
     Path(id): Path<String>,
     Json(request): Json<CreateReplyRequest>,
 ) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Member)?;
     Ok(Json(json!(
         state
             .reply(&auth.organization_id, parse_uuid(&id)?, request)

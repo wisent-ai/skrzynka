@@ -115,6 +115,12 @@ That client belongs in Wisent's own Google Cloud project `wisent-480400` (projec
 - [Product and ownership](https://skrzynka.wisent.com/docs/product), [core state](https://skrzynka.wisent.com/docs/core), and [integrations](https://skrzynka.wisent.com/docs/integrations)
 - [Onboarding](https://skrzynka.wisent.com/docs/onboarding) and [release/recovery](https://skrzynka.wisent.com/docs/release)
 
+### Organization authentication
+
+Every `/v1` request except the Gmail provider callback must carry both `Authorization: Bearer <Supabase JWT>` and `X-Wisent-Organization-ID: <uuid>`. Skrzynka forwards the unchanged bearer token and parsed organization UUID to `authorize_organization(target_org_id)` at the canonical Supabase project (`https://alvaewvbyxpgwdpugnxy.supabase.co`) and builds its request context only from the RPC's verified `user_id`, `organization_id`, and `owner`/`admin`/`member` role. It does not query membership tables itself, accept identity or role from a request payload, or log the bearer token.
+
+All three roles can read organization resources, synchronize mailboxes, and send replies. Mailbox configuration, including Gmail OAuth, delegated mailbox connection, and mailbox create/update/delete, requires `owner` or `admin`. Missing or invalid bearer authentication returns `401`; a missing or malformed organization header returns `400`; missing membership or an unsupported role returns `403`; unavailable central identity verification returns `503`. Workload and service tokens are not human login credentials and receive no synthetic organization context.
+
 ## Operating model
 
 Skrzynka is an operated local product. Its SQLite database defaults to `~/.local/share/skrzynka/skrzynka.db`; it contains organization-scoped mailbox metadata, normalized message content, and reply status, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
