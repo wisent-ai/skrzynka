@@ -163,6 +163,12 @@ pub async fn require_auth(
     next: Next,
 ) -> Result<Response, AppError> {
     let context = verifier.verify(request.headers()).await?;
+    tracing::debug!(
+        user_id = %context.user_id,
+        organization_id = %context.organization_id,
+        role = ?context.role,
+        "authorized organization request"
+    );
     request.extensions_mut().insert(context);
     Ok(next.run(request).await)
 }
@@ -188,8 +194,6 @@ fn single_header_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str
     }
     value.to_str().ok()
 }
-
-
 
 fn invalid_organization() -> AppError {
     AppError::invalid(
