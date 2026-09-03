@@ -561,6 +561,12 @@ impl AppState {
     /// A selector is either the mailbox id or the address itself. Operators
     /// know the address they send from; nothing should make them look up a
     /// UUID before they can use it.
+    ///
+    /// Two mailboxes can legitimately carry one address — the same account
+    /// reached through a different Skarbiec item, say a provider relay beside a
+    /// delegated Gmail row. Picking the first of them would send from whichever
+    /// one sorted earlier, so an address that names more than one mailbox is
+    /// refused with both ids instead.
     pub fn resolve_mailbox(
         &self,
         organization_id: &str,
@@ -570,11 +576,24 @@ impl AppState {
         if let Ok(id) = Uuid::parse_str(selector) {
             return self.database.get_mailbox(organization_id, id);
         }
-        self.database
+        let mut matches = self
+            .database
             .list_mailboxes(organization_id)?
             .into_iter()
-            .find(|mailbox| mailbox.email.eq_ignore_ascii_case(selector))
-            .ok_or_else(|| AppError::not_found("mailbox"))
+            .filter(|mailbox| mailbox.email.eq_ignore_ascii_case(selector))
+            .collect::<Vec<_>>();
+        if matches.len() > 1 {
+            let ids = matches
+                .iter()
+                .map(|mailbox| mailbox.id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(AppError::conflict(
+                "MAILBOX_SELECTOR_AMBIGUOUS",
+                format!("{selector} names {} mailboxes ({ids}); select one by id", matches.len()),
+            ));
+        }
+        matches.pop().ok_or_else(|| AppError::not_found("mailbox"))
     }
 
     /// Originate mail from one mailbox. The row is claimed by its idempotency
