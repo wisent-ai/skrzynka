@@ -16,7 +16,7 @@
 
 # Skrzynka
 
-Skrzynka is a self-hosted email operations service for people and local tools that need to receive mail from multiple IMAP mailboxes and send replies through the mailbox that received each message. Mailbox credentials stay in [Skarbiec](https://github.com/wisent-ai/skarbiec): Skrzynka stores exact item references and non-secret connection settings, resolves passwords or OAuth authorizations only while opening IMAP or SMTP, and never writes resolved secrets to its database or logs.
+Skrzynka is a self-hosted email operations service for people and local tools that need to receive mail from multiple IMAP mailboxes, send replies through the mailbox that received each message, and originate new mail from any of those mailboxes. Mailbox credentials stay in [Skarbiec](https://github.com/wisent-ai/skarbiec): Skrzynka stores exact item references and non-secret connection settings, resolves passwords or OAuth authorizations only while opening IMAP or SMTP, and never writes resolved secrets to its database or logs.
 
 The observable result is one local inbox with mailbox identity preserved on every message and reply. The service exposes the same state through a CLI and an authenticated loopback-only JSON API used by `skrzynka-desktop`.
 
@@ -29,7 +29,8 @@ The observable result is one local inbox with mailbox identity preserved on ever
 - Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox and IMAP UID.
 - List mailboxes and messages without exposing credentials.
 - Reply through the originating mailbox over SMTP with required TLS and preserved thread headers.
-- Record synchronization and reply state in a local SQLite database, including actionable mailbox errors and ambiguous-send protection.
+- Originate mail from a connected mailbox with `skrzynka message send --mailbox <id-or-address> --to <address> --subject <text> --body-file <path>` (or `POST /v1/mailboxes/:id/outbound`). An outbound message carries its own recipients, cc and subject, walks the same delivery states as a reply, and is claimed by its idempotency key before anything reaches the provider, so a repeated call returns the first attempt instead of sending twice. `skrzynka message outbound` reads what went out.
+- Record synchronization, reply, and outbound state in a local SQLite database, including actionable mailbox errors, the provider's own SMTP refusal text, and ambiguous-send protection.
 - Keep the HTTP surface on loopback; startup refuses a non-loopback bind address.
 - Authenticate every `/v1` API request through the shared Wisent identity service and scope durable mailbox, message, and reply access to the selected organization.
 
@@ -82,6 +83,25 @@ loopback port when `8790` is occupied. A browser on a Stado-selected Weles host
 can reach that callback through `stado host forward-local`; no provider
 password is used for IMAP.
 
+Send a first message from a connected mailbox, addressing it by the mailbox's
+own address rather than its id:
+
+```sh
+cargo run -- message send \
+  --mailbox team@example.com \
+  --to buyer@example.net \
+  --subject "Quote request" \
+  --body-file ./request.txt
+cargo run -- message outbound --mailbox team@example.com
+```
+
+`send` prints the stored outbound row: `sent` with the provider message id,
+`failed` with the SMTP refusal the server itself returned, or `uncertain` when
+the process lost terminal SMTP evidence. `uncertain` is never resent
+automatically; a retry needs a new `--idempotency-key`, which is a deliberate
+new mutation.
+
+
 
 ## Skarbiec mailbox contract
 
@@ -131,7 +151,7 @@ Back up the database while the service is stopped. Restoring the database restor
 
 - **Maturity:** development contract, version `0.2.0`; no stable release channel exists yet.
 - **Distribution:** source from this repository. A moving `main` branch is not an immutable release coordinate.
-- **Compatibility:** SQLite schema version 2; loopback API version 1; IMAP4rev1 over TLS and SMTP with STARTTLS or implicit TLS.
+- **Compatibility:** SQLite schema version 3; loopback API version 1; IMAP4rev1 over TLS and SMTP with STARTTLS or implicit TLS.
 - **Defects and proposals:** [GitHub Issues](https://github.com/wisent-ai/skrzynka/issues).
 - **Private security reports:** use GitHub's private vulnerability reporting for this repository; do not put credentials or message contents in an issue.
 - **Community:** [Wisent Discord](https://discord.gg/qRjpkthq54).

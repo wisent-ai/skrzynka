@@ -293,16 +293,22 @@ fn deliver(
     };
     let transport = builder.timeout(Some(Duration::from_secs(30))).build();
     transport.send(outgoing).map_err(|error| {
+        // The server's own sentence is the only thing that says why it
+        // refused. A fixed message sends the operator hunting through logs
+        // Skrzynka does not keep for a reason the provider already stated.
         if error.is_transient() || error.is_permanent() {
             dependency_error(
                 "SMTP_REJECTED",
-                "SMTP explicitly rejected the message; inspect mailbox status before retrying",
+                format!("SMTP explicitly rejected the message: {error}"),
                 error.is_transient(),
             )
         } else {
             dependency_error(
                 "SMTP_UNCERTAIN",
-                "SMTP acceptance is uncertain; inspect provider Sent mail before another attempt",
+                format!(
+                    "SMTP acceptance is uncertain ({error}); inspect provider Sent mail before \
+                     another attempt"
+                ),
                 false,
             )
         }
