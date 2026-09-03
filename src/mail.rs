@@ -1,7 +1,7 @@
 use crate::{
     error::AppError,
     gmail,
-    models::{Mailbox, Message, NewMessage, SmtpSecurity},
+    models::{Mailbox, Message, NewMessage, OutboundMessage, SmtpSecurity},
     skarbiec::ResolvedCredentials,
 };
 use lettre::{
@@ -14,7 +14,7 @@ use std::{str::FromStr, time::Duration};
 use uuid::Uuid;
 
 const MAX_RAW_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
-const MAX_REPLY_BYTES: usize = 256 * 1024;
+const MAX_BODY_BYTES: usize = 256 * 1024;
 const MAX_MESSAGES_PER_SYNC: usize = 200;
 
 #[derive(Debug)]
@@ -156,18 +156,7 @@ pub fn send_reply(
     inbound: &Message,
     body: &str,
 ) -> Result<String, AppError> {
-    if body.trim().is_empty() {
-        return Err(AppError::invalid(
-            "REPLY_BODY_INVALID",
-            "reply body must not be empty",
-        ));
-    }
-    if body.len() > MAX_REPLY_BYTES {
-        return Err(AppError::invalid(
-            "REPLY_BODY_TOO_LARGE",
-            "reply body exceeds the 256 KiB limit",
-        ));
-    }
+    validate_body(body, "REPLY_BODY_INVALID", "REPLY_BODY_TOO_LARGE")?;
     let from_address = mailbox.email.parse().map_err(|_| {
         AppError::invalid(
             "MAILBOX_PROFILE_INVALID",
@@ -212,6 +201,73 @@ pub fn send_reply(
             "reply could not be encoded as an email message",
         )
     })?;
+    deliver(mailbox, credentials, &outgoing)?;
+    Ok(provider_message_id)
+}
+
+/// Mail this mailbox originates. Recipients and subject come from the stored
+/// outbound row rather than an inbound message, and no threading headers are
+/// written: there is no thread to join yet.
+pub fn send_outbound(
+    mailbox: &Mailbox,
+    credentials: &ResolvedCredentials,
+    outbound: &OutboundMessage,
+) -> Result<String, AppError> {
+    validate_body(
+        &outbound.body,
+        "OUTBOUND_BODY_INVALID",
+        "OUTBOUND_BODY_TOO_LARGE",
+    )?;
+    let recipients = split_addresses(&outbound.recipients);
+    if recipients.is_empty() {
+        return Err(AppError::invalid(
+            "OUTBOUND_RECIPIENT_INVALID",
+            "outbound message must name at least one recipient",
+        ));
+    }
+    let from_address = mailbox.email.parse().map_err(|_| {
+        AppError::invalid(
+            "MAILBOX_PROFILE_INVALID",
+            "mailbox sending address is invalid",
+        )
+    })?;
+    let provider_message_id = format!("<{}@skrzynka.local>", Uuid::new_v4());
+    let mut builder = OutgoingMessage::builder()
+        .from(LettreMailbox::new(
+            Some(mailbox.display_name.clone()),
+            from_address,
+        ))
+        .subject(outbound.subject.clone())
+        .message_id(Some(provider_message_id.clone()))
+        .header(ContentType::TEXT_PLAIN);
+    for recipient in recipients {
+        builder = builder.to(parse_recipient(recipient)?);
+    }
+    for recipient in outbound
+        .cc
+        .as_deref()
+        .map(split_addresses)
+        .unwrap_or_default()
+    {
+        builder = builder.cc(parse_recipient(recipient)?);
+    }
+    let outgoing = builder.body(outbound.body.clone()).map_err(|_| {
+        AppError::invalid(
+            "OUTBOUND_MESSAGE_INVALID",
+            "outbound message could not be encoded as an email message",
+        )
+    })?;
+    deliver(mailbox, credentials, &outgoing)?;
+    Ok(provider_message_id)
+}
+
+/// One transport for every send: the mailbox's own host, port, security mode
+/// and the secret resolved for this one operation.
+fn deliver(
+    mailbox: &Mailbox,
+    credentials: &ResolvedCredentials,
+    outgoing: &OutgoingMessage,
+) -> Result<(), AppError> {
     let builder = match mailbox.smtp_security {
         SmtpSecurity::Starttls => SmtpTransport::starttls_relay(&mailbox.smtp_host),
         SmtpSecurity::Tls => SmtpTransport::relay(&mailbox.smtp_host),
@@ -236,11 +292,11 @@ pub fn send_reply(
             .authentication(vec![Mechanism::Xoauth2]),
     };
     let transport = builder.timeout(Some(Duration::from_secs(30))).build();
-    transport.send(&outgoing).map_err(|error| {
+    transport.send(outgoing).map_err(|error| {
         if error.is_transient() || error.is_permanent() {
             dependency_error(
                 "SMTP_REJECTED",
-                "SMTP explicitly rejected the reply; inspect mailbox status before retrying",
+                "SMTP explicitly rejected the message; inspect mailbox status before retrying",
                 error.is_transient(),
             )
         } else {
@@ -251,7 +307,41 @@ pub fn send_reply(
             )
         }
     })?;
-    Ok(provider_message_id)
+    Ok(())
+}
+
+fn validate_body(
+    body: &str,
+    empty_code: &'static str,
+    too_large_code: &'static str,
+) -> Result<(), AppError> {
+    if body.trim().is_empty() {
+        return Err(AppError::invalid(empty_code, "message body must not be empty"));
+    }
+    if body.len() > MAX_BODY_BYTES {
+        return Err(AppError::invalid(
+            too_large_code,
+            "message body exceeds the 256 KiB limit",
+        ));
+    }
+    Ok(())
+}
+
+fn split_addresses(value: &str) -> Vec<&str> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .collect()
+}
+
+fn parse_recipient(value: &str) -> Result<LettreMailbox, AppError> {
+    LettreMailbox::from_str(value).map_err(|_| {
+        AppError::invalid(
+            "OUTBOUND_RECIPIENT_INVALID",
+            "outbound recipient is not a valid email address",
+        )
+    })
 }
 
 fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, AppError> {

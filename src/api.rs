@@ -2,7 +2,10 @@ use crate::{
     auth::{require_auth, AuthContext, OrganizationRole},
     error::AppError,
     gmail::{GmailOAuthCallback, StartGmailOAuthRequest},
-    models::{CreateMailboxRequest, CreateReplyRequest, HealthResponse, UpdateMailboxRequest},
+    models::{
+        CreateMailboxRequest, CreateOutboundRequest, CreateReplyRequest, HealthResponse,
+        UpdateMailboxRequest,
+    },
     service::AppState,
 };
 use axum::{
@@ -44,6 +47,12 @@ pub fn router(state: AppState) -> Router {
             "/v1/messages/:id/replies",
             get(list_replies).post(create_reply),
         )
+        .route(
+            "/v1/mailboxes/:id/outbound",
+            get(list_mailbox_outbound).post(create_outbound),
+        )
+        .route("/v1/outbound", get(list_outbound))
+        .route("/v1/outbound/:id", get(get_outbound))
         .route_layer(middleware::from_fn_with_state(
             state.auth_verifier.clone(),
             require_auth,
@@ -296,6 +305,65 @@ async fn create_reply(
     Ok(Json(json!(
         state
             .reply(&auth.organization_id, parse_uuid(&id)?, request)
+            .await?
+    )))
+}
+
+#[derive(Deserialize)]
+struct OutboundQuery {
+    mailbox_id: Option<String>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+async fn list_outbound(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Query(query): Query<OutboundQuery>,
+) -> Result<Json<Value>, AppError> {
+    let mailbox_id = query.mailbox_id.as_deref().map(parse_uuid).transpose()?;
+    Ok(Json(json!(state.list_outbound(
+        &auth.organization_id,
+        mailbox_id,
+        query.limit.unwrap_or(100),
+        query.offset.unwrap_or(0),
+    )?)))
+}
+
+async fn list_mailbox_outbound(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<String>,
+    Query(query): Query<OutboundQuery>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(state.list_outbound(
+        &auth.organization_id,
+        Some(parse_uuid(&id)?),
+        query.limit.unwrap_or(100),
+        query.offset.unwrap_or(0),
+    )?)))
+}
+
+async fn get_outbound(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(
+        state.get_outbound(&auth.organization_id, parse_uuid(&id)?)?
+    )))
+}
+
+async fn create_outbound(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<String>,
+    Json(request): Json<CreateOutboundRequest>,
+) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Member)?;
+    Ok(Json(json!(
+        state
+            .send_outbound(&auth.organization_id, parse_uuid(&id)?, request)
             .await?
     )))
 }

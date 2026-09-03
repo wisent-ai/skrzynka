@@ -8,9 +8,9 @@ use crate::{
     },
     mail,
     models::{
-        CreateMailboxRequest, CreateReplyRequest, Mailbox, MailboxSyncResult, Message,
-        ReplyAttempt, ReplyStatus, SkarbiecItemMetadata, SmtpSecurity, StatusResponse,
-        SyncAllSummary, SyncSummary, UpdateMailboxRequest,
+        CreateMailboxRequest, CreateOutboundRequest, CreateReplyRequest, DeliveryStatus, Mailbox,
+        MailboxSyncResult, Message, OutboundMessage, ReplyAttempt, SkarbiecItemMetadata,
+        SmtpSecurity, StatusResponse, SyncAllSummary, SyncSummary, UpdateMailboxRequest,
     },
     skarbiec::{SkarbiecResolver, GOOGLE_ADMIN_DELEGATION_URL},
 };
@@ -551,7 +551,7 @@ impl AppState {
         }
         let attempt =
             self.database
-                .update_reply(attempt.id, ReplyStatus::Sending, None, None, None)?;
+                .update_reply(attempt.id, DeliveryStatus::Sending, None, None, None)?;
         let message = self.database.get_message(organization_id, message_id)?;
         let mailbox = self
             .database
@@ -565,7 +565,7 @@ impl AppState {
             Err(error) => {
                 let _ = self.database.update_reply(
                     attempt.id,
-                    ReplyStatus::Failed,
+                    DeliveryStatus::Failed,
                     None,
                     Some(error.code),
                     Some(&error.message),
@@ -581,14 +581,14 @@ impl AppState {
         match result {
             Ok(Ok(provider_message_id)) => self.database.update_reply(
                 attempt.id,
-                ReplyStatus::Sent,
+                DeliveryStatus::Sent,
                 Some(&provider_message_id),
                 None,
                 None,
             ),
             Ok(Err(error)) if error.code == "SMTP_UNCERTAIN" => self.database.update_reply(
                 attempt.id,
-                ReplyStatus::Uncertain,
+                DeliveryStatus::Uncertain,
                 None,
                 Some("REPLY_UNCERTAIN"),
                 Some(&error.message),
@@ -596,7 +596,7 @@ impl AppState {
             Ok(Err(error)) => {
                 let _ = self.database.update_reply(
                     attempt.id,
-                    ReplyStatus::Failed,
+                    DeliveryStatus::Failed,
                     None,
                     Some(error.code),
                     Some(&error.message),
@@ -605,9 +605,130 @@ impl AppState {
             }
             Err(_) => self.database.update_reply(
                 attempt.id,
-                ReplyStatus::Uncertain,
+                DeliveryStatus::Uncertain,
                 None,
                 Some("REPLY_UNCERTAIN"),
+                Some("send task stopped before terminal SMTP evidence was recorded"),
+            ),
+        }
+    }
+
+    pub fn list_outbound(
+        &self,
+        organization_id: &str,
+        mailbox_id: Option<Uuid>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<OutboundMessage>, AppError> {
+        self.database
+            .list_outbound(organization_id, mailbox_id, limit.clamp(1, 500), offset)
+    }
+
+    pub fn get_outbound(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+    ) -> Result<OutboundMessage, AppError> {
+        self.database.get_outbound(organization_id, id)
+    }
+
+    /// A selector is either the mailbox id or the address itself. Operators
+    /// know the address they send from; nothing should make them look up a
+    /// UUID before they can use it.
+    pub fn resolve_mailbox(
+        &self,
+        organization_id: &str,
+        selector: &str,
+    ) -> Result<Mailbox, AppError> {
+        let selector = selector.trim();
+        if let Ok(id) = Uuid::parse_str(selector) {
+            return self.database.get_mailbox(organization_id, id);
+        }
+        self.database
+            .list_mailboxes(organization_id)?
+            .into_iter()
+            .find(|mailbox| mailbox.email.eq_ignore_ascii_case(selector))
+            .ok_or_else(|| AppError::not_found("mailbox"))
+    }
+
+    /// Originate mail from one mailbox. The row is claimed by its idempotency
+    /// key before anything leaves this process, so repeating the same call
+    /// returns the first attempt instead of handing the provider a second copy.
+    pub async fn send_outbound(
+        &self,
+        organization_id: &str,
+        mailbox_id: Uuid,
+        request: CreateOutboundRequest,
+    ) -> Result<OutboundMessage, AppError> {
+        let normalized = validate_outbound_request(&request)?;
+        let (outbound, created) = self.database.begin_outbound(
+            organization_id,
+            mailbox_id,
+            request.idempotency_key.trim(),
+            &normalized.recipients,
+            normalized.cc.as_deref(),
+            &normalized.subject,
+            &normalized.body,
+        )?;
+        if !created {
+            return Ok(outbound);
+        }
+        let outbound =
+            self.database
+                .update_outbound(outbound.id, DeliveryStatus::Sending, None, None, None)?;
+        let mailbox = self.database.get_mailbox(organization_id, mailbox_id)?;
+        let credentials = match self
+            .resolver
+            .resolve_credentials(&mailbox.skarbiec_item_id)
+            .await
+        {
+            Ok(credentials) => credentials,
+            Err(error) => {
+                let _ = self.database.update_outbound(
+                    outbound.id,
+                    DeliveryStatus::Failed,
+                    None,
+                    Some(error.code),
+                    Some(&error.message),
+                );
+                return Err(error);
+            }
+        };
+        let pending = outbound.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            mail::send_outbound(&mailbox, &credentials, &pending)
+        })
+        .await;
+        match result {
+            Ok(Ok(provider_message_id)) => self.database.update_outbound(
+                outbound.id,
+                DeliveryStatus::Sent,
+                Some(&provider_message_id),
+                None,
+                None,
+            ),
+            Ok(Err(error)) if error.code == "SMTP_UNCERTAIN" => self.database.update_outbound(
+                outbound.id,
+                DeliveryStatus::Uncertain,
+                None,
+                Some("OUTBOUND_UNCERTAIN"),
+                Some(&error.message),
+            ),
+            Ok(Err(error)) => {
+                let _ = self.database.update_outbound(
+                    outbound.id,
+                    DeliveryStatus::Failed,
+                    None,
+                    Some(error.code),
+                    Some(&error.message),
+                );
+                Err(error)
+            }
+            Err(_) => self.database.update_outbound(
+                outbound.id,
+                DeliveryStatus::Uncertain,
+                None,
+                Some("OUTBOUND_UNCERTAIN"),
                 Some("send task stopped before terminal SMTP evidence was recorded"),
             ),
         }
@@ -697,4 +818,81 @@ fn validate_reply_request(request: &CreateReplyRequest) -> Result<(), AppError> 
         ));
     }
     Ok(())
+}
+
+struct NormalizedOutbound {
+    recipients: String,
+    cc: Option<String>,
+    subject: String,
+    body: String,
+}
+
+fn validate_outbound_request(
+    request: &CreateOutboundRequest,
+) -> Result<NormalizedOutbound, AppError> {
+    let key = request.idempotency_key.trim();
+    if key.is_empty() || key.len() > 200 || key.chars().any(char::is_whitespace) {
+        return Err(AppError::invalid(
+            "IDEMPOTENCY_KEY_INVALID",
+            "idempotency_key must contain 1 to 200 non-whitespace characters",
+        ));
+    }
+    let subject = request.subject.trim().to_string();
+    if subject.is_empty() || subject.chars().count() > 500 {
+        return Err(AppError::invalid(
+            "OUTBOUND_SUBJECT_INVALID",
+            "subject must contain between 1 and 500 characters",
+        ));
+    }
+    if request.body.trim().is_empty() {
+        return Err(AppError::invalid(
+            "OUTBOUND_BODY_INVALID",
+            "outbound body must not be empty",
+        ));
+    }
+    if request.body.len() > 256 * 1024 {
+        return Err(AppError::invalid(
+            "OUTBOUND_BODY_TOO_LARGE",
+            "outbound body exceeds the 256 KiB limit",
+        ));
+    }
+    let recipients = normalize_addresses(&request.to)?;
+    if recipients.is_empty() {
+        return Err(AppError::invalid(
+            "OUTBOUND_RECIPIENT_INVALID",
+            "at least one recipient address is required",
+        ));
+    }
+    let cc = normalize_addresses(&request.cc)?;
+    Ok(NormalizedOutbound {
+        recipients: recipients.join(", "),
+        cc: (!cc.is_empty()).then(|| cc.join(", ")),
+        subject,
+        body: request.body.trim_end().to_string(),
+    })
+}
+
+/// Recipients are bare addresses, deduplicated in the order given. A display
+/// name is refused here rather than at the provider, where the refusal would
+/// arrive after the row was already claimed.
+fn normalize_addresses(values: &[String]) -> Result<Vec<String>, AppError> {
+    let mut addresses = Vec::with_capacity(values.len());
+    for value in values {
+        for candidate in value.split(',') {
+            let candidate = candidate.trim();
+            if candidate.is_empty() {
+                continue;
+            }
+            Address::from_str(candidate).map_err(|_| {
+                AppError::invalid(
+                    "OUTBOUND_RECIPIENT_INVALID",
+                    format!("{candidate} is not a valid email address"),
+                )
+            })?;
+            if !addresses.iter().any(|existing| existing == candidate) {
+                addresses.push(candidate.to_string());
+            }
+        }
+    }
+    Ok(addresses)
 }

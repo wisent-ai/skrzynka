@@ -123,7 +123,7 @@ pub struct ReplyAttempt {
     pub message_id: Uuid,
     pub idempotency_key: String,
     pub body: String,
-    pub status: ReplyStatus,
+    pub status: DeliveryStatus,
     pub provider_message_id: Option<String>,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
@@ -134,7 +134,7 @@ pub struct ReplyAttempt {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ReplyStatus {
+pub enum DeliveryStatus {
     Pending,
     Sending,
     Sent,
@@ -142,7 +142,7 @@ pub enum ReplyStatus {
     Uncertain,
 }
 
-impl ReplyStatus {
+impl DeliveryStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -154,7 +154,7 @@ impl ReplyStatus {
     }
 }
 
-impl std::str::FromStr for ReplyStatus {
+impl std::str::FromStr for DeliveryStatus {
     type Err = ParseModelError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
@@ -164,7 +164,7 @@ impl std::str::FromStr for ReplyStatus {
             "sent" => Ok(Self::Sent),
             "failed" => Ok(Self::Failed),
             "uncertain" => Ok(Self::Uncertain),
-            _ => Err(ParseModelError(format!("unknown reply status: {value}"))),
+            _ => Err(ParseModelError(format!("unknown delivery status: {value}"))),
         }
     }
 }
@@ -172,6 +172,38 @@ impl std::str::FromStr for ReplyStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateReplyRequest {
     pub idempotency_key: String,
+    pub body: String,
+}
+
+/// Mail this mailbox originates rather than answers. It carries its own
+/// recipients and subject because no inbound message supplies them, and it
+/// walks the same delivery states as a reply attempt: one idempotency key,
+/// one provider mutation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutboundMessage {
+    pub id: Uuid,
+    pub mailbox_id: Uuid,
+    pub idempotency_key: String,
+    pub recipients: String,
+    pub cc: Option<String>,
+    pub subject: String,
+    pub body: String,
+    pub status: DeliveryStatus,
+    pub provider_message_id: Option<String>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub sent_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateOutboundRequest {
+    pub idempotency_key: String,
+    pub to: Vec<String>,
+    #[serde(default)]
+    pub cc: Vec<String>,
+    pub subject: String,
     pub body: String,
 }
 
