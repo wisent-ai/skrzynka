@@ -23,7 +23,7 @@ The observable result is one local inbox with mailbox identity preserved on ever
 ## What works now
 
 - Connect Google identities discovered in Skarbiec through Gmail OAuth; Skrzynka configures Gmail, stores the durable authorization back in Skarbiec, and performs IMAP/SMTP authentication with XOAUTH2.
-- Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. `skrzynka gmail delegation` prints the client ID and grant URL.
+- Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. `skrzynka gmail delegation` prints the client ID, the scope and the console URL. Skrzynka never performs that grant: it exists only in the admin console, so a missing grant is reported as `GOOGLE_DELEGATION_NOT_GRANTED` naming the three values an administrator needs.
 - Add any number of other mailboxes by exact Skarbiec item ID.
 - Read password-backed `login` items with explicit server settings or complete `bundle` profiles.
 - Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox and IMAP UID.
@@ -82,6 +82,15 @@ bundle and created the mailbox. `--bind 127.0.0.1:<port>` selects another
 loopback port when `8790` is occupied. A browser on a Stado-selected Weles host
 can reach that callback through `stado host forward-local`; no provider
 password is used for IMAP.
+
+Measured on 2026-09-03 against the client currently stored in
+`skrzynka-google-oauth-desktop`: Google refuses that authorization with
+`redirect_uri_mismatch` for `http://127.0.0.1:8790/v1/gmail/oauth/callback`
+and for the bare `http://127.0.0.1:8790`, `http://127.0.0.1/` and
+`http://localhost:8790/` variants — the client has no loopback redirect
+registered at all, so no consent screen is reachable and this command cannot
+complete until the replacement Desktop client described below is created.
+Domain-wide delegation is the path that works without an OAuth client.
 
 Send a first message from a connected mailbox, addressing it by the mailbox's
 own address rather than its id:

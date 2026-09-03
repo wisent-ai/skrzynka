@@ -94,10 +94,6 @@ enum GmailCommand {
         email: String,
         #[arg(long)]
         display_name: Option<String>,
-        /// Perform the one-time Workspace admin-console grant through Weles on
-        /// this machine if Google reports the client is not authorized yet.
-        #[arg(long)]
-        authorize: bool,
     },
 }
 
@@ -260,17 +256,11 @@ async fn run(cli: Cli) -> Result<(), AppError> {
             GmailCommand::Delegate {
                 email,
                 display_name,
-                authorize,
             } => {
                 let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
                 print_json(
                     &state
-                        .connect_gmail_delegated(
-                            LOCAL_CLI_ORGANIZATION,
-                            &email,
-                            display_name,
-                            authorize,
-                        )
+                        .connect_gmail_delegated(LOCAL_CLI_ORGANIZATION, &email, display_name)
                         .await?,
                 )
             }
