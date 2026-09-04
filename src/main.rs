@@ -5,6 +5,7 @@ mod error;
 mod gmail;
 mod mail;
 mod models;
+mod onboarding;
 mod service;
 mod skarbiec;
 
@@ -49,6 +50,10 @@ struct Cli {
 enum Command {
     Serve(ServeArgs),
     Status,
+    Onboarding {
+        #[arg(long)]
+        reset: bool,
+    },
     Version,
     Mailbox {
         #[command(subcommand)]
@@ -231,6 +236,10 @@ async fn run(cli: Cli) -> Result<(), AppError> {
         }))?;
         return Ok(());
     }
+    if let Command::Onboarding { reset } = &cli.command {
+        onboarding::run(*reset)?;
+        return Ok(());
+    }
     let database_path = cli.database.unwrap_or_else(default_database_path);
     let database = Database::open(database_path)?;
     let resolver = SkarbiecResolver::new(cli.skarbiec_bin);
@@ -238,7 +247,9 @@ async fn run(cli: Cli) -> Result<(), AppError> {
         Command::Serve(args) => serve(database, resolver, args).await,
         Command::Status => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
-            print_json(&state.status(LOCAL_CLI_ORGANIZATION).await?)
+            let status = state.status(LOCAL_CLI_ORGANIZATION).await?;
+            print_json(&status)?;
+            onboarding::record_status_report_rendered()
         }
         Command::Mailbox { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
@@ -277,6 +288,7 @@ async fn run(cli: Cli) -> Result<(), AppError> {
             }
         }
         Command::Version => unreachable!(),
+        Command::Onboarding { .. } => unreachable!(),
     }
 }
 
