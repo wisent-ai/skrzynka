@@ -18,7 +18,7 @@
 
 Skrzynka is a self-hosted email operations service for people and local tools that need to receive mail from multiple IMAP mailboxes, send replies through the mailbox that received each message, and originate new mail from any of those mailboxes. Mailbox credentials stay in [Skarbiec](https://github.com/wisent-ai/skarbiec): Skrzynka stores exact item references and non-secret connection settings, resolves passwords or OAuth authorizations only while opening IMAP or SMTP, and never writes resolved secrets to its database or logs.
 
-The observable result is one local inbox with mailbox identity preserved on every message and reply. The service exposes the same state through a CLI and an authenticated loopback-only JSON API used by `skrzynka-desktop`.
+The observable result is one local inbox with mailbox identity preserved on every inbound message and provider-facing send. The service exposes the same state through a CLI and an authenticated loopback-only JSON API used by `skrzynka-desktop`.
 
 ## What works now
 
@@ -32,7 +32,7 @@ The observable result is one local inbox with mailbox identity preserved on ever
 - Originate mail from a connected mailbox with `skrzynka message send --mailbox <id-or-address> --to <address> --subject <text> --body-file <path>` (or `POST /v1/mailboxes/:id/outbound`). An outbound message carries its own recipients, cc and subject, walks the same delivery states as a reply, and is claimed by its idempotency key before anything reaches the provider, so a repeated call returns the first attempt instead of sending twice. `skrzynka message outbound` reads what went out.
 - Record synchronization, reply, and outbound state in a local SQLite database, including actionable mailbox errors, the provider's own SMTP refusal text, and ambiguous-send protection.
 - Keep the HTTP surface on loopback; startup refuses a non-loopback bind address.
-- Authenticate every `/v1` API request through the shared Wisent identity service and scope durable mailbox, message, and reply access to the selected organization.
+- Authenticate every `/v1` API request through the shared Wisent identity service and scope durable mailbox, message, reply, and outbound access to the selected organization.
 
 Skrzynka does **not** currently manage provider-side folders, delete or mark messages, download attachments, render remote HTML, expose a remote shared server, generate reply text, or send automatic replies. Gmail OAuth is an authentication adapter; message transport remains IMAP and SMTP.
 
@@ -148,13 +148,13 @@ That client belongs in Wisent's own Google Cloud project `wisent-480400` (projec
 
 Every `/v1` request except the Gmail provider callback must carry both `Authorization: Bearer <Supabase JWT>` and `X-Wisent-Organization-ID: <uuid>`. Skrzynka forwards the unchanged bearer token and parsed organization UUID to `authorize_organization(target_org_id)` at the canonical Supabase project (`https://alvaewvbyxpgwdpugnxy.supabase.co`) and builds its request context only from the RPC's verified `user_id`, `organization_id`, and `owner`/`admin`/`member` role. It does not query membership tables itself, accept identity or role from a request payload, or log the bearer token.
 
-All three roles can read organization resources, synchronize mailboxes, and send replies. Mailbox configuration, including Gmail OAuth, delegated mailbox connection, and mailbox create/update/delete, requires `owner` or `admin`. Missing or invalid bearer authentication returns `401`; a missing or malformed organization header returns `400`; missing membership or an unsupported role returns `403`; unavailable central identity verification returns `503`. Workload and service tokens are not human login credentials and receive no synthetic organization context.
+All three roles can read organization resources, synchronize mailboxes, send replies, and originate mail: `POST /v1/mailboxes/:id/outbound` requires `member`, which `owner`, `admin`, and `member` all satisfy. Mailbox configuration, including Gmail OAuth, delegated mailbox connection, and mailbox create/update/delete, requires `owner` or `admin`. Missing or invalid bearer authentication returns `401`; a missing or malformed organization header returns `400`; missing membership or an unsupported role returns `403`; unavailable central identity verification returns `503`. Workload and service tokens are not human login credentials and receive no synthetic organization context.
 
 ## Operating model
 
-Skrzynka is an operated local product. Its SQLite database defaults to `~/.local/share/skrzynka/skrzynka.db`; it contains organization-scoped mailbox metadata, normalized message content, and reply status, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
+Skrzynka is an operated local product. Its SQLite database defaults to `~/.local/share/skrzynka/skrzynka.db`; it contains organization-scoped mailbox metadata, normalized inbound message content, reply bodies and delivery state, and every originated message's recipients, cc, subject, full plain-text body, delivery status, provider message id, and refusal, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
 
-Back up the database while the service is stopped. Restoring the database restores local messages and mailbox references, but Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka does not delete its Skarbiec item or provider mailbox.
+Back up the database while the service is stopped. Restoring the database restores mailbox references, normalized messages, reply attempts, and outbound messages, but Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka deletes that local mailbox and cascades through its messages, reply attempts, and outbound messages, destroying the installation's record that the mailbox originated those messages; it does not delete the Skarbiec item or provider mailbox.
 
 ## Status and support
 
