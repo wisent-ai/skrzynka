@@ -22,7 +22,7 @@ The observable result is one local inbox with mailbox identity preserved on ever
 
 ## What works now
 
-- Connect one personal Gmail account or one Workspace user with an app-specific password and no administrator or OAuth client: `skrzynka gmail app-password --email user@gmail.com` reads the secret only from stdin, proves it with Gmail IMAP before saving anything, writes a dedicated bundle to Skarbiec, and creates the fixed Gmail mailbox profile. `POST /v1/gmail/app-password` provides API parity by accepting an existing `skarbiec_item_id`, never the secret.
+- Connect one personal Gmail account or one Workspace user with an app-specific password and no administrator or OAuth client: `skrzynka gmail app-password --email user@gmail.com` reads the secret only from stdin, proves it with Gmail IMAP before saving anything, and writes a dedicated bundle to Skarbiec. If that address already has a mailbox in the organization (matched case-insensitively), Skrzynka reconnects that row to Gmail IMAP and enables it without changing its SMTP settings; otherwise it creates the fixed Gmail mailbox profile. `POST /v1/gmail/app-password` provides API parity by accepting an existing `skarbiec_item_id`, never the secret.
 - Connect Google identities discovered in Skarbiec through Gmail OAuth; Skrzynka configures Gmail, stores the durable authorization back in Skarbiec, and performs IMAP/SMTP authentication with XOAUTH2.
 - Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. `skrzynka gmail delegation` prints the client ID, the scope and the console URL. Skrzynka never performs that grant: it exists only in the admin console, so a missing grant is reported as `GOOGLE_DELEGATION_NOT_GRANTED` naming the three values an administrator needs.
 - Add any number of other mailboxes by exact Skarbiec item ID.
@@ -84,11 +84,16 @@ target/debug/skrzynka message list
 
 The command first logs in to `imap.gmail.com:993` over TLS. Only after Google
 accepts the credential does it write the deterministic
-`skrzynka-gmail-app-password-*` bundle to Skarbiec and create a mailbox using
-`smtp.gmail.com:587` with STARTTLS. The username and outgoing `From` address
-are the supplied account address. This is a one-user, one-app-password path:
-it needs neither a Workspace administrator nor any OAuth client. The password
-never appears in argv, Skrzynka logs, its database, or its loopback API.
+`skrzynka-gmail-app-password-*` bundle to Skarbiec. When the organization
+already has a mailbox for the supplied address, compared case-insensitively,
+the command points that row at the new bundle, configures Gmail IMAP, and
+enables it while preserving its SMTP host, port, and security. Otherwise it
+creates a mailbox using `smtp.gmail.com:587` with STARTTLS. If the database
+change fails after the bundle is saved, the refusal names both the saved
+Skarbiec item and the mailbox that was not created or updated. This is a
+one-user, one-app-password path: it needs neither a Workspace administrator nor
+any OAuth client. The password never appears in argv, Skrzynka logs, its
+database, or its loopback API.
 
 The OAuth alternative remains:
 
@@ -145,7 +150,7 @@ For password-backed providers, Skrzynka persists the exact item selected by the 
 | `smtp_security` | no | `starttls` (default) or `tls` |
 | `display_name` | no | Human-readable mailbox name |
 
-Non-secret connection values supplied during `mailbox add` take precedence over bundle values. `gmail app-password` reads the password from stdin, proves it through IMAP, and then writes a canonical `skarbiec.item.v2` bundle with `auth_method: "password"`, the account as both `username` and `email`, and Gmail's fixed IMAP/SMTP profile. The API equivalent, `POST /v1/gmail/app-password`, accepts only an existing `skarbiec_item_id` and an optional display name; Skarbiec remains the only credential store and no secret crosses the desktop API. Gmail OAuth instead lists Google identities from Skarbiec and opens the authorization URL returned by the core; the callback writes a dedicated `skrzynka-gmail-*` bundle containing the refresh token and automatic Gmail server profile. Passwords, OAuth codes, and provider tokens never cross the desktop API.
+Non-secret connection values supplied during `mailbox add` take precedence over bundle values. `gmail app-password` reads the password from stdin, proves it through IMAP, and then writes a canonical `skarbiec.item.v2` bundle with `auth_method: "password"`, the account as both `username` and `email`, and Gmail's fixed IMAP/SMTP profile. A new mailbox uses that whole profile; an existing case-insensitive address match keeps its outgoing SMTP configuration and changes only its credential reference, Gmail IMAP endpoint, and enabled state. The API equivalent, `POST /v1/gmail/app-password`, accepts only an existing `skarbiec_item_id` and an optional display name; Skarbiec remains the only credential store and no secret crosses the desktop API. Gmail OAuth instead lists Google identities from Skarbiec and opens the authorization URL returned by the core; the callback writes a dedicated `skrzynka-gmail-*` bundle containing the refresh token and automatic Gmail server settings.
 
 The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret`, and one `value` field of type `oauth_client`; that value is the unmodified JSON downloaded for a Google OAuth client whose application type is **Desktop app**. Skrzynka accepts only the `installed` client shape and Google's canonical authorization and token endpoints.
 

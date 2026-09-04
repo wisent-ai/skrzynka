@@ -198,8 +198,24 @@ impl AppState {
             .resolver
             .save_gmail_app_password(&email, password)
             .await?;
-        self.ensure_gmail_password_mailbox(organization_id, item_id, email, display_name)
-            .await
+        self.ensure_gmail_password_mailbox(
+            organization_id,
+            item_id.clone(),
+            email.clone(),
+            display_name,
+        )
+        .await
+        .map_err(|error| {
+            AppError::new(
+                error.status,
+                error.code,
+                format!(
+                    "Google app-specific password was saved in Skarbiec item '{item_id}', but mailbox '{email}' was not created or updated: {}",
+                    error.message
+                ),
+                error.retryable,
+            )
+        })
     }
 
     /// Connect an existing password item selected in Skarbiec Desktop. The
@@ -240,13 +256,35 @@ impl AppState {
         email: String,
         display_name: Option<String>,
     ) -> Result<Mailbox, AppError> {
-        if let Some(mailbox) = self
+        let mut matches = self
             .database
             .list_mailboxes(organization_id)?
             .into_iter()
-            .find(|mailbox| mailbox.skarbiec_item_id == skarbiec_item_id)
-        {
-            return Ok(mailbox);
+            .filter(|mailbox| {
+                mailbox.skarbiec_item_id == skarbiec_item_id
+                    || mailbox.email.eq_ignore_ascii_case(&email)
+            })
+            .collect::<Vec<_>>();
+        if matches.len() > 1 {
+            let ids = matches
+                .iter()
+                .map(|mailbox| mailbox.id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(AppError::conflict(
+                "MAILBOX_SELECTOR_AMBIGUOUS",
+                format!(
+                    "{email} names {} mailboxes ({ids}); select one by id",
+                    matches.len()
+                ),
+            ));
+        }
+        if let Some(mut mailbox) = matches.pop() {
+            mailbox.skarbiec_item_id = skarbiec_item_id;
+            mailbox.imap_host = "imap.gmail.com".to_string();
+            mailbox.imap_port = 993;
+            mailbox.enabled = true;
+            return self.database.update_mailbox(&mailbox);
         }
         self.create_mailbox(
             organization_id,

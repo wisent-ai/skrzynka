@@ -261,13 +261,15 @@ impl Database {
     pub fn update_mailbox(&self, mailbox: &Mailbox) -> Result<Mailbox, AppError> {
         let now = Utc::now().to_rfc3339();
         let changed = self.lock()?.execute(
-            "UPDATE mailboxes SET display_name=?3, email=?4, imap_host=?5,
-                    imap_port=?6, smtp_host=?7, smtp_port=?8, smtp_security=?9,
-                    poll_interval_seconds=?10, enabled=?11, updated_at=?12
+            "UPDATE mailboxes SET skarbiec_item_id=?3, display_name=?4, email=?5,
+                    imap_host=?6, imap_port=?7, smtp_host=?8, smtp_port=?9,
+                    smtp_security=?10, poll_interval_seconds=?11, enabled=?12,
+                    updated_at=?13
              WHERE id=?1 AND organization_id=?2",
             params![
                 mailbox.id.to_string(),
                 mailbox.organization_id,
+                mailbox.skarbiec_item_id,
                 mailbox.display_name,
                 mailbox.email,
                 mailbox.imap_host,
