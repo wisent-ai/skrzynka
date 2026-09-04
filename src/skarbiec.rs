@@ -279,6 +279,52 @@ impl SkarbiecResolver {
         Ok(item_id)
     }
 
+    pub fn gmail_app_password_item_id(email: &str) -> Result<String, AppError> {
+        Address::from_str(email)
+            .map_err(|_| invalid_item("Google app-password identity is not an email address"))?;
+        let digest = format!(
+            "{:x}",
+            Sha256::digest(email.to_ascii_lowercase().as_bytes())
+        );
+        Ok(format!("skrzynka-gmail-app-password-{}", &digest[..20]))
+    }
+
+    /// Persist a single-account Gmail credential after the caller has proved
+    /// it against Google's IMAP endpoint.
+    pub async fn save_gmail_app_password(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<String, AppError> {
+        let item_id = Self::gmail_app_password_item_id(email)?;
+        if password.is_empty() {
+            return Err(invalid_item("Google app-specific password is empty"));
+        }
+        let payload = json!({
+            "schema": "skarbiec.item.v2",
+            "kind": "bundle",
+            "fields": {
+                "username": email,
+                "email": email,
+                "password": password,
+                "auth_method": "password",
+                "oauth_provider": "google",
+                "imap_host": "imap.gmail.com",
+                "imap_port": 993,
+                "smtp_host": "smtp.gmail.com",
+                "smtp_port": 587,
+                "smtp_security": "starttls"
+            },
+            "context": {
+                "source_kind": "gmail_app_password",
+                "account_ref": email
+            }
+        });
+        self.set_item(&item_id, "bundle", &payload).await?;
+        self.token_cache.lock().await.remove(&item_id);
+        Ok(item_id)
+    }
+
     pub async fn resolve_credentials(
         &self,
         item_id: &str,
@@ -618,8 +664,9 @@ impl SkarbiecResolver {
         });
         let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
         header.kid = account.private_key_id.clone();
-        let key = jsonwebtoken::EncodingKey::from_rsa_pem(account.private_key.as_bytes())
-            .map_err(|_| invalid_item("Google service account private key is not a valid RSA PEM"))?;
+        let key = jsonwebtoken::EncodingKey::from_rsa_pem(account.private_key.as_bytes()).map_err(
+            |_| invalid_item("Google service account private key is not a valid RSA PEM"),
+        )?;
         let assertion = jsonwebtoken::encode(&header, &claims, &key)
             .map_err(|_| AppError::internal("delegation assertion could not be signed"))?;
         let response = self

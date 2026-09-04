@@ -40,6 +40,31 @@ impl imap::Authenticator for OAuth2Authenticator<'_> {
     }
 }
 
+/// Prove a Gmail password credential without selecting or reading the inbox.
+/// The caller persists only after this login succeeds.
+pub fn verify_gmail_app_password(
+    email: &str,
+    password: &str,
+    skarbiec_item_id: &str,
+) -> Result<(), AppError> {
+    let client = imap::ClientBuilder::new("imap.gmail.com", 993)
+        .mode(imap::ConnectionMode::Tls)
+        .tls_kind(imap::TlsKind::Native)
+        .connect()
+        .map_err(|_| {
+            dependency_error(
+                "IMAP_UNAVAILABLE",
+                "IMAP server could not be reached over TLS",
+                true,
+            )
+        })?;
+    let mut session = client
+        .login(email, password)
+        .map_err(|_| gmail::google_imap_password_rejected(email, skarbiec_item_id))?;
+    let _ = session.logout();
+    Ok(())
+}
+
 pub fn fetch_messages(
     mailbox: &Mailbox,
     credentials: &ResolvedCredentials,
@@ -322,7 +347,10 @@ fn validate_body(
     too_large_code: &'static str,
 ) -> Result<(), AppError> {
     if body.trim().is_empty() {
-        return Err(AppError::invalid(empty_code, "message body must not be empty"));
+        return Err(AppError::invalid(
+            empty_code,
+            "message body must not be empty",
+        ));
     }
     if body.len() > MAX_BODY_BYTES {
         return Err(AppError::invalid(

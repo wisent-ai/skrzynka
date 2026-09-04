@@ -27,11 +27,9 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/gmail/profiles", get(list_gmail_profiles))
         .route("/v1/gmail/oauth/start", post(start_gmail_oauth))
         .route("/v1/gmail/oauth/:flow_id", get(gmail_oauth_status))
-        .route(
-            "/v1/gmail/delegation",
-            get(gmail_delegation_status_handler),
-        )
+        .route("/v1/gmail/delegation", get(gmail_delegation_status_handler))
         .route("/v1/gmail/delegate", post(connect_gmail_delegated))
+        .route("/v1/gmail/app-password", post(connect_gmail_app_password))
         .route("/v1/mailboxes", get(list_mailboxes).post(create_mailbox))
         .route(
             "/v1/mailboxes/:id",
@@ -130,6 +128,30 @@ async fn connect_gmail_delegated(
     Ok(Json(json!(
         state
             .connect_gmail_delegated(&auth.organization_id, &request.email, request.display_name)
+            .await?
+    )))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConnectGmailAppPasswordRequest {
+    skarbiec_item_id: String,
+    display_name: Option<String>,
+}
+
+async fn connect_gmail_app_password(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Json(request): Json<ConnectGmailAppPasswordRequest>,
+) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
+    Ok(Json(json!(
+        state
+            .connect_gmail_app_password_item(
+                &auth.organization_id,
+                &request.skarbiec_item_id,
+                request.display_name,
+            )
             .await?
     )))
 }

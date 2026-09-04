@@ -63,20 +63,16 @@ pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError 
     )
 }
 
-/// The refusal when Google IMAP receives an ordinary password instead of OAuth or an app password.
+/// The refusal when Google IMAP rejects a password credential.
 ///
-/// Google disabled ordinary password IMAP access in May 2022. When IMAP authentication fails
-/// for a Gmail account with a Password credential, the operator needs to know they must use
-/// either the app's OAuth flow or an app-specific password. The mailbox email, credential
-/// item name, and the two paths forward are the sentence an operator needs.
-pub fn google_imap_password_rejected(
-    mailbox_email: &str,
-    skarbiec_item_id: &str,
-) -> AppError {
+/// The same refusal covers an ordinary account password and an invalid or
+/// revoked app-specific password. It names both supported recovery paths
+/// without ever placing a secret in argv.
+pub fn google_imap_password_rejected(mailbox_email: &str, skarbiec_item_id: &str) -> AppError {
     AppError::dependency(
         "GMAIL_IMAP_PASSWORD_REJECTED",
         format!(
-            "mailbox {mailbox_email} could not authenticate to imap.gmail.com with the password in Skarbiec item '{skarbiec_item_id}': Google does not accept an ordinary account password over IMAP. Authorize with `skrzynka gmail authorize --skarbiec-item {skarbiec_item_id}`, or store a Google app-specific password in that item — note that `skarbiec set-json {skarbiec_item_id}` reads the whole payload from stdin and replaces it, so supply the complete item."
+            "Google refused IMAP authentication for mailbox {mailbox_email} using the password credential associated with Skarbiec item '{skarbiec_item_id}'. Supply a valid Google app-specific password through stdin to `skrzynka gmail app-password --email {mailbox_email}`, or authorize the account with `skrzynka gmail authorize --skarbiec-item {skarbiec_item_id}`."
         ),
         false,
     )
@@ -583,8 +579,10 @@ mod tests {
     #[test]
     fn a_landing_url_without_an_error_carries_no_code() {
         // A completed flow must never be reported as a registration problem.
-        assert!(oauth_error_code("http://127.0.0.1:8788/v1/gmail/oauth/callback?code=x&state=y")
-            .is_none());
+        assert!(
+            oauth_error_code("http://127.0.0.1:8788/v1/gmail/oauth/callback?code=x&state=y")
+                .is_none()
+        );
         assert!(oauth_error_code("https://accounts.google.com/signin/oauth/consent").is_none());
         assert!(oauth_error_code("https://accounts.google.com/x?authError=").is_none());
         assert!(oauth_error_code("not a url").is_none());
@@ -592,12 +590,16 @@ mod tests {
 
     #[test]
     fn the_operands_come_from_the_url_that_was_handed_out() {
-        let url = "https://accounts.google.com/o/oauth2/auth?client_id=abc.apps.googleusercontent.com\
+        let url =
+            "https://accounts.google.com/o/oauth2/auth?client_id=abc.apps.googleusercontent.com\
                    &redirect_uri=http%3A%2F%2F127.0.0.1%3A8788%2Fv1%2Fgmail%2Foauth%2Fcallback\
                    &response_type=code";
         let (client_id, redirect_uri) = authorization_operands(url).expect("operands");
         assert_eq!(client_id, "abc.apps.googleusercontent.com");
-        assert_eq!(redirect_uri, "http://127.0.0.1:8788/v1/gmail/oauth/callback");
+        assert_eq!(
+            redirect_uri,
+            "http://127.0.0.1:8788/v1/gmail/oauth/callback"
+        );
         // A URL missing either operand yields nothing rather than half a
         // sentence naming an empty client.
         assert!(authorization_operands("https://accounts.google.com/o/oauth2/auth").is_none());
@@ -610,7 +612,10 @@ mod tests {
             "http://127.0.0.1:8788/v1/gmail/oauth/callback",
         );
         assert_eq!(error.code, "GMAIL_OAUTH_REDIRECT_NOT_REGISTERED");
-        assert!(!error.retryable, "registering a redirect URI is not a retry");
+        assert!(
+            !error.retryable,
+            "registering a redirect URI is not a retry"
+        );
         assert_eq!(
             error.message,
             "the OAuth client 903183433368-5nt0jdbqtli8rm39oh2s0limiljap3l9.apps.googleusercontent.com \
@@ -624,20 +629,23 @@ retry"
 
     #[test]
     fn google_imap_password_rejected_names_mailbox_and_credential_item() {
-        let error = google_imap_password_rejected(
-            "user@gmail.com",
-            "gmail-personal",
-        );
+        let error = google_imap_password_rejected("user@gmail.com", "gmail-personal");
         assert_eq!(error.code, "GMAIL_IMAP_PASSWORD_REJECTED");
-        assert!(!error.retryable, "fixing a password with OAuth or app password is not a retry");
+        assert!(
+            !error.retryable,
+            "fixing a password with OAuth or app password is not a retry"
+        );
         // Message must be exactly as specified, with operands interpolated
         assert_eq!(
             error.message,
-            "mailbox user@gmail.com could not authenticate to imap.gmail.com with the password in Skarbiec item 'gmail-personal': Google does not accept an ordinary account password over IMAP. Authorize with `skrzynka gmail authorize --skarbiec-item gmail-personal`, or store a Google app-specific password in that item — note that `skarbiec set-json gmail-personal` reads the whole payload from stdin and replaces it, so supply the complete item."
+            "Google refused IMAP authentication for mailbox user@gmail.com using the password credential associated with Skarbiec item 'gmail-personal'. Supply a valid Google app-specific password through stdin to `skrzynka gmail app-password --email user@gmail.com`, or authorize the account with `skrzynka gmail authorize --skarbiec-item gmail-personal`."
         );
         // Reject any argv-secret patterns: password= or =< constructions must never appear
         assert!(!error.message.contains("password="), "message must not suggest password= argv form; secrets cannot be passed on command line");
-        assert!(!error.message.contains("=<"), "message must not contain =< placeholder; all guidance must be concrete");
+        assert!(
+            !error.message.contains("=<"),
+            "message must not contain =< placeholder; all guidance must be concrete"
+        );
     }
 
     #[test]
@@ -648,7 +656,9 @@ retry"
         let error = google_imap_password_rejected("user@example.invalid", "example-inbox");
         assert_eq!(error.code, "GMAIL_IMAP_PASSWORD_REJECTED");
         // Error message is Gmail-focused; mail.rs must enforce the host boundary
-        assert!(error.message.contains("Google") || error.message.contains("Gmail"), 
-            "error message is Gmail-specific; caller must detect gmail.com hosts first");
+        assert!(
+            error.message.contains("Google") || error.message.contains("Gmail"),
+            "error message is Gmail-specific; caller must detect gmail.com hosts first"
+        );
     }
 }

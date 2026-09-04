@@ -21,6 +21,7 @@ use axum::http::StatusCode;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 use std::{
+    io::{self, Read},
     net::SocketAddr,
     path::{Path, PathBuf},
 };
@@ -95,6 +96,13 @@ enum GmailCommand {
     },
     /// Connect one Workspace mailbox through domain-wide delegation.
     Delegate {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        display_name: Option<String>,
+    },
+    /// Connect one Gmail account using an app-specific password read from stdin.
+    AppPassword {
         #[arg(long)]
         email: String,
         #[arg(long)]
@@ -275,6 +283,23 @@ async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
+            GmailCommand::AppPassword {
+                email,
+                display_name,
+            } => {
+                let password = read_gmail_app_password()?;
+                let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
+                print_json(
+                    &state
+                        .connect_gmail_app_password(
+                            LOCAL_CLI_ORGANIZATION,
+                            &email,
+                            &password,
+                            display_name,
+                        )
+                        .await?,
+                )
+            }
         },
         Command::Message { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
@@ -343,7 +368,9 @@ async fn authorize_gmail(
             // before reporting that, so the operator gets the cause instead of
             // the symptom.
             if error.map(|error| error.code) == Some("GMAIL_OAUTH_FLOW_EXPIRED") {
-                if gmail::diagnose_authorization(&flow.authorization_url).await.as_deref()
+                if gmail::diagnose_authorization(&flow.authorization_url)
+                    .await
+                    .as_deref()
                     == Some("redirect_uri_mismatch")
                 {
                     if let Some((client_id, redirect_uri)) =
@@ -501,6 +528,43 @@ async fn run_message(state: AppState, command: MessageCommand) -> Result<(), App
             print_json(&state.list_outbound(LOCAL_CLI_ORGANIZATION, mailbox_id, limit, offset)?)
         }
     }
+}
+
+fn read_gmail_app_password() -> Result<String, AppError> {
+    const MAX_APP_PASSWORD_BYTES: u64 = 4 * 1024;
+    let mut input = Vec::new();
+    io::stdin()
+        .lock()
+        .take(MAX_APP_PASSWORD_BYTES + 1)
+        .read_to_end(&mut input)
+        .map_err(|_| {
+            AppError::invalid(
+                "GMAIL_APP_PASSWORD_INPUT_INVALID",
+                "Google app-specific password could not be read from stdin",
+            )
+        })?;
+    if input.len() as u64 > MAX_APP_PASSWORD_BYTES {
+        return Err(AppError::invalid(
+            "GMAIL_APP_PASSWORD_INPUT_INVALID",
+            "Google app-specific password supplied through stdin is too long",
+        ));
+    }
+    let input = String::from_utf8(input).map_err(|_| {
+        AppError::invalid(
+            "GMAIL_APP_PASSWORD_INPUT_INVALID",
+            "Google app-specific password supplied through stdin must be valid UTF-8",
+        )
+    })?;
+    let password = input
+        .trim_end_matches(|character| character == '\r' || character == '\n')
+        .to_string();
+    if password.is_empty() {
+        return Err(AppError::invalid(
+            "GMAIL_APP_PASSWORD_INPUT_INVALID",
+            "Google app-specific password supplied through stdin must not be empty",
+        ));
+    }
+    Ok(password)
 }
 
 fn read_body_file(path: &Path, code: &'static str) -> Result<String, AppError> {
