@@ -96,13 +96,13 @@ pub struct ImportItemCounts {
     pub rejected: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MailboxImportSource {
     pub kind: &'static str,
     pub skarbiec_item_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MailboxImportResult {
     pub applied: bool,
     pub source: MailboxImportSource,

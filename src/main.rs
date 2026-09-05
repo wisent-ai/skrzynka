@@ -277,7 +277,7 @@ async fn run(cli: Cli) -> Result<(), AppError> {
         Command::Status => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             let status = state.status(LOCAL_CLI_ORGANIZATION).await?;
-            print_json(&status)?;
+            print_json(&status)
         }
         Command::Mailbox { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
