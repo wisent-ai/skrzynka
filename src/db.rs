@@ -14,12 +14,13 @@ use std::{
 };
 use uuid::Uuid;
 
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone)]
 pub struct MailboxConfig {
     pub organization_id: String,
     pub skarbiec_item_id: String,
+    pub smtp_skarbiec_item_id: Option<String>,
     pub display_name: String,
     pub email: String,
     pub imap_host: String,
@@ -66,6 +67,7 @@ impl Database {
                 id TEXT PRIMARY KEY,
                 organization_id TEXT NOT NULL,
                 skarbiec_item_id TEXT NOT NULL UNIQUE,
+                smtp_skarbiec_item_id TEXT,
                 display_name TEXT NOT NULL,
                 email TEXT NOT NULL,
                 imap_host TEXT NOT NULL,
@@ -139,10 +141,21 @@ impl Database {
             ",
         )?;
         match version {
-            0 | 2 => connection.pragma_update(None, "user_version", SCHEMA_VERSION)?,
+            0 => connection.pragma_update(None, "user_version", SCHEMA_VERSION)?,
             1 => {
                 connection.execute(
                     "ALTER TABLE mailboxes ADD COLUMN organization_id TEXT NOT NULL DEFAULT 'legacy-local'",
+                    [],
+                )?;
+                connection.execute(
+                    "ALTER TABLE mailboxes ADD COLUMN smtp_skarbiec_item_id TEXT",
+                    [],
+                )?;
+                connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            }
+            2 | 3 => {
+                connection.execute(
+                    "ALTER TABLE mailboxes ADD COLUMN smtp_skarbiec_item_id TEXT",
                     [],
                 )?;
                 connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -172,14 +185,16 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let result = self.lock()?.execute(
             "INSERT INTO mailboxes (
-                id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
+                id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
+                display_name, email, imap_host, imap_port,
                 smtp_host, smtp_port, smtp_security, poll_interval_seconds,
                 enabled, last_uid, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, 0, ?12, ?12)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, 0, ?13, ?13)",
             params![
                 id.to_string(),
                 config.organization_id,
                 config.skarbiec_item_id,
+                config.smtp_skarbiec_item_id,
                 config.display_name,
                 config.email,
                 config.imap_host,
@@ -204,10 +219,10 @@ impl Database {
     pub fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
         let connection = self.lock()?;
         let mut statement = connection.prepare(
-            "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
-                    smtp_host, smtp_port, smtp_security, poll_interval_seconds,
-                    enabled, last_uid, last_sync_at, last_error_code,
-                    last_error_message, created_at, updated_at
+            "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
+                    display_name, email, imap_host, imap_port, smtp_host, smtp_port,
+                    smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                    last_error_code, last_error_message, created_at, updated_at
              FROM mailboxes WHERE organization_id=?1
              ORDER BY display_name COLLATE NOCASE, email",
         )?;
@@ -218,10 +233,10 @@ impl Database {
     pub fn list_all_mailboxes(&self) -> Result<Vec<Mailbox>, AppError> {
         let connection = self.lock()?;
         let mut statement = connection.prepare(
-            "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
-                    smtp_host, smtp_port, smtp_security, poll_interval_seconds,
-                    enabled, last_uid, last_sync_at, last_error_code,
-                    last_error_message, created_at, updated_at
+            "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
+                    display_name, email, imap_host, imap_port, smtp_host, smtp_port,
+                    smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                    last_error_code, last_error_message, created_at, updated_at
              FROM mailboxes ORDER BY display_name COLLATE NOCASE, email",
         )?;
         let rows = statement.query_map([], mailbox_from_row)?;
@@ -231,10 +246,10 @@ impl Database {
     pub fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
         self.lock()?
             .query_row(
-                "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
-                        smtp_host, smtp_port, smtp_security, poll_interval_seconds,
-                        enabled, last_uid, last_sync_at, last_error_code,
-                        last_error_message, created_at, updated_at
+                "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
+                        display_name, email, imap_host, imap_port, smtp_host, smtp_port,
+                        smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                        last_error_code, last_error_message, created_at, updated_at
                  FROM mailboxes WHERE id = ?1 AND organization_id = ?2",
                 params![id.to_string(), organization_id],
                 mailbox_from_row,
@@ -246,10 +261,10 @@ impl Database {
     pub fn get_mailbox_internal(&self, id: Uuid) -> Result<Mailbox, AppError> {
         self.lock()?
             .query_row(
-                "SELECT id, organization_id, skarbiec_item_id, display_name, email, imap_host, imap_port,
-                        smtp_host, smtp_port, smtp_security, poll_interval_seconds,
-                        enabled, last_uid, last_sync_at, last_error_code,
-                        last_error_message, created_at, updated_at
+                "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
+                        display_name, email, imap_host, imap_port, smtp_host, smtp_port,
+                        smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                        last_error_code, last_error_message, created_at, updated_at
                  FROM mailboxes WHERE id = ?1",
                 [id.to_string()],
                 mailbox_from_row,
@@ -261,15 +276,16 @@ impl Database {
     pub fn update_mailbox(&self, mailbox: &Mailbox) -> Result<Mailbox, AppError> {
         let now = Utc::now().to_rfc3339();
         let changed = self.lock()?.execute(
-            "UPDATE mailboxes SET skarbiec_item_id=?3, display_name=?4, email=?5,
-                    imap_host=?6, imap_port=?7, smtp_host=?8, smtp_port=?9,
-                    smtp_security=?10, poll_interval_seconds=?11, enabled=?12,
-                    updated_at=?13
+            "UPDATE mailboxes SET skarbiec_item_id=?3, smtp_skarbiec_item_id=?4,
+                    display_name=?5, email=?6, imap_host=?7, imap_port=?8,
+                    smtp_host=?9, smtp_port=?10, smtp_security=?11,
+                    poll_interval_seconds=?12, enabled=?13, updated_at=?14
              WHERE id=?1 AND organization_id=?2",
             params![
                 mailbox.id.to_string(),
                 mailbox.organization_id,
                 mailbox.skarbiec_item_id,
+                mailbox.smtp_skarbiec_item_id,
                 mailbox.display_name,
                 mailbox.email,
                 mailbox.imap_host,
@@ -811,21 +827,22 @@ fn mailbox_from_row(row: &Row<'_>) -> rusqlite::Result<Mailbox> {
         id: parse_uuid(row.get::<_, String>(0)?)?,
         organization_id: row.get(1)?,
         skarbiec_item_id: row.get(2)?,
-        display_name: row.get(3)?,
-        email: row.get(4)?,
-        imap_host: row.get(5)?,
-        imap_port: checked_u16(row.get::<_, i64>(6)?, 6)?,
-        smtp_host: row.get(7)?,
-        smtp_port: checked_u16(row.get::<_, i64>(8)?, 8)?,
-        smtp_security: parse_enum(row.get::<_, String>(9)?, 9)?,
-        poll_interval_seconds: checked_u64(row.get::<_, i64>(10)?, 10)?,
-        enabled: row.get::<_, i64>(11)? != 0,
-        last_uid: checked_u32(row.get::<_, i64>(12)?, 12)?,
-        last_sync_at: row.get(13)?,
-        last_error_code: row.get(14)?,
-        last_error_message: row.get(15)?,
-        created_at: row.get(16)?,
-        updated_at: row.get(17)?,
+        smtp_skarbiec_item_id: row.get(3)?,
+        display_name: row.get(4)?,
+        email: row.get(5)?,
+        imap_host: row.get(6)?,
+        imap_port: checked_u16(row.get::<_, i64>(7)?, 7)?,
+        smtp_host: row.get(8)?,
+        smtp_port: checked_u16(row.get::<_, i64>(9)?, 9)?,
+        smtp_security: parse_enum(row.get::<_, String>(10)?, 10)?,
+        poll_interval_seconds: checked_u64(row.get::<_, i64>(11)?, 11)?,
+        enabled: row.get::<_, i64>(12)? != 0,
+        last_uid: checked_u32(row.get::<_, i64>(13)?, 13)?,
+        last_sync_at: row.get(14)?,
+        last_error_code: row.get(15)?,
+        last_error_message: row.get(16)?,
+        created_at: row.get(17)?,
+        updated_at: row.get(18)?,
     })
 }
 

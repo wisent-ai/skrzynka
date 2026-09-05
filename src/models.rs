@@ -11,6 +11,7 @@ pub struct Mailbox {
     #[serde(skip_serializing)]
     pub organization_id: String,
     pub skarbiec_item_id: String,
+    pub smtp_skarbiec_item_id: Option<String>,
     pub display_name: String,
     pub email: String,
     pub imap_host: String,
@@ -26,6 +27,14 @@ pub struct Mailbox {
     pub last_error_message: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+impl Mailbox {
+    pub fn outbound_skarbiec_item_id(&self) -> &str {
+        self.smtp_skarbiec_item_id
+            .as_deref()
+            .unwrap_or(&self.skarbiec_item_id)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

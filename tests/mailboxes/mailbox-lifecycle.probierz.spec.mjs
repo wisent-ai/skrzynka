@@ -40,12 +40,13 @@ test("real mailbox add, edit, and removal journeys pass", { timeout: 600_000 }, 
     0,
     `mailbox integration target failed${result.signal ? ` with ${result.signal}` : ""}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
-  assert.match(result.stdout, /test result: ok\. 4 passed; 0 failed;/);
+  assert.match(result.stdout, /test result: ok\. 5 passed; 0 failed;/);
   for (const name of [
     "mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accounts",
     "mailbox_disable_changes_only_enabled_state_and_refuses_unknown_accounts",
     "mailbox_enable_changes_only_enabled_state_and_refuses_unknown_accounts",
     "mailbox_remove_requires_confirmation_deletes_local_state_and_preserves_skarbiec",
+    "schema_three_migration_adds_smtp_credential_without_rewriting_mail_history",
   ]) {
     assert.match(result.stdout, new RegExp(`test ${name} \\.\\.\\. ok`));
   }

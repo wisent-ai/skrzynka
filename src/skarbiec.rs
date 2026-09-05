@@ -473,6 +473,7 @@ impl SkarbiecResolver {
         Ok(MailboxConfig {
             organization_id: String::new(),
             skarbiec_item_id: request.skarbiec_item_id.clone(),
+            smtp_skarbiec_item_id: None,
             display_name,
             email,
             imap_host,

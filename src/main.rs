@@ -107,6 +107,9 @@ enum GmailCommand {
         email: String,
         #[arg(long)]
         display_name: Option<String>,
+        /// Attach receiving credentials to an existing mailbox selected by id or address.
+        #[arg(long)]
+        mailbox: Option<String>,
     },
 }
 
@@ -286,6 +289,7 @@ async fn run(cli: Cli) -> Result<(), AppError> {
             GmailCommand::AppPassword {
                 email,
                 display_name,
+                mailbox,
             } => {
                 let password = read_gmail_app_password()?;
                 let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
@@ -296,6 +300,7 @@ async fn run(cli: Cli) -> Result<(), AppError> {
                             &email,
                             &password,
                             display_name,
+                            mailbox.as_deref(),
                         )
                         .await?,
                 )

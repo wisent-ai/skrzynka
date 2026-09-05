@@ -184,6 +184,7 @@ impl AppState {
         email: &str,
         password: &str,
         display_name: Option<String>,
+        mailbox_selector: Option<&str>,
     ) -> Result<Mailbox, AppError> {
         let email = validated_gmail_email(email)?;
         if password.is_empty() {
@@ -192,20 +193,28 @@ impl AppState {
                 "Google app-specific password supplied through stdin must not be empty",
             ));
         }
+        let target = mailbox_selector
+            .map(|selector| self.resolve_mailbox(organization_id, selector))
+            .transpose()?;
         let item_id = SkarbiecResolver::gmail_app_password_item_id(&email)?;
         verify_gmail_app_password(&email, password, &item_id).await?;
         let item_id = self
             .resolver
             .save_gmail_app_password(&email, password)
             .await?;
-        self.ensure_gmail_password_mailbox(
-            organization_id,
-            item_id.clone(),
-            email.clone(),
-            display_name,
-        )
-        .await
-        .map_err(|error| {
+        let result = match target {
+            Some(mailbox) => self.attach_gmail_password_mailbox(mailbox, item_id.clone()),
+            None => {
+                self.ensure_gmail_password_mailbox(
+                    organization_id,
+                    item_id.clone(),
+                    email.clone(),
+                    display_name,
+                )
+                .await
+            }
+        };
+        result.map_err(|error| {
             AppError::new(
                 error.status,
                 error.code,
@@ -226,7 +235,11 @@ impl AppState {
         organization_id: &str,
         skarbiec_item_id: &str,
         display_name: Option<String>,
+        mailbox_selector: Option<&str>,
     ) -> Result<Mailbox, AppError> {
+        let target = mailbox_selector
+            .map(|selector| self.resolve_mailbox(organization_id, selector))
+            .transpose()?;
         let credentials = self.resolver.resolve_credentials(skarbiec_item_id).await?;
         let (email, password) = match credentials {
             ResolvedCredentials::Password { username, password } => {
@@ -240,15 +253,36 @@ impl AppState {
             }
         };
         verify_gmail_app_password(&email, &password, skarbiec_item_id).await?;
-        self.ensure_gmail_password_mailbox(
-            organization_id,
-            skarbiec_item_id.to_string(),
-            email,
-            display_name,
-        )
-        .await
+        match target {
+            Some(mailbox) => {
+                self.attach_gmail_password_mailbox(mailbox, skarbiec_item_id.to_string())
+            }
+            None => {
+                self.ensure_gmail_password_mailbox(
+                    organization_id,
+                    skarbiec_item_id.to_string(),
+                    email,
+                    display_name,
+                )
+                .await
+            }
+        }
     }
 
+    fn attach_gmail_password_mailbox(
+        &self,
+        mut mailbox: Mailbox,
+        skarbiec_item_id: String,
+    ) -> Result<Mailbox, AppError> {
+        if mailbox.smtp_skarbiec_item_id.is_none() {
+            mailbox.smtp_skarbiec_item_id = Some(mailbox.skarbiec_item_id.clone());
+        }
+        mailbox.skarbiec_item_id = skarbiec_item_id;
+        mailbox.imap_host = "imap.gmail.com".to_string();
+        mailbox.imap_port = 993;
+        mailbox.enabled = true;
+        self.database.update_mailbox(&mailbox)
+    }
     async fn ensure_gmail_password_mailbox(
         &self,
         organization_id: &str,
@@ -612,7 +646,7 @@ impl AppState {
             .get_mailbox(organization_id, message.mailbox_id)?;
         let credentials = match self
             .resolver
-            .resolve_credentials(&mailbox.skarbiec_item_id)
+            .resolve_credentials(mailbox.outbound_skarbiec_item_id())
             .await
         {
             Ok(credentials) => credentials,
@@ -759,7 +793,7 @@ impl AppState {
         let mailbox = self.database.get_mailbox(organization_id, mailbox_id)?;
         let credentials = match self
             .resolver
-            .resolve_credentials(&mailbox.skarbiec_item_id)
+            .resolve_credentials(mailbox.outbound_skarbiec_item_id())
             .await
         {
             Ok(credentials) => credentials,
