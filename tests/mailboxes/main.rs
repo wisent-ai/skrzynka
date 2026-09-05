@@ -95,6 +95,28 @@ impl MailboxFixture {
         command.output().expect("run real Skrzynka binary")
     }
 
+    fn skrzynka_with_stdin(&self, args: &[&str], input: &str) -> Output {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_skrzynka"));
+        command
+            .arg("--database")
+            .arg(&self.database)
+            .arg("--skarbiec-bin")
+            .arg(&self.skarbiec)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        self.isolated_environment(&mut command);
+        let mut child = command.spawn().expect("start real Skrzynka binary");
+        child
+            .stdin
+            .take()
+            .expect("open Skrzynka stdin")
+            .write_all(input.as_bytes())
+            .expect("write Gmail app password");
+        child.wait_with_output().expect("collect Skrzynka output")
+    }
+
     fn skarbiec(&self, args: &[&str]) -> Output {
         let mut command = Command::new(&self.skarbiec);
         command.args(args);
@@ -136,6 +158,16 @@ impl MailboxFixture {
         mailbox["id"].as_str().expect("mailbox id must be text")
     }
 
+    fn assert_skarbiec_item_absent(&self, item_id: &str) {
+        let output = self.skarbiec(&["get", item_id]);
+        assert!(
+            !output.status.success(),
+            "Skarbiec item '{item_id}' must not exist\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     fn assert_success(&self, context: &str, output: Output) {
         assert!(
             output.status.success(),
@@ -172,6 +204,31 @@ fn stderr(output: &Output) -> String {
 fn assert_exit_one_with(output: &Output, expected: &str) {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(stderr(output), expected);
+}
+
+fn mailbox_receiving_state(
+    fixture: &MailboxFixture,
+) -> Vec<(String, String, Option<String>, String, i64)> {
+    let connection = fixture.connection();
+    let mut statement = connection
+        .prepare(
+            "SELECT id, skarbiec_item_id, smtp_skarbiec_item_id, imap_host, enabled
+             FROM mailboxes ORDER BY id",
+        )
+        .expect("prepare mailbox receiving-state query");
+    statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .expect("read mailbox receiving state")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect mailbox receiving state")
 }
 
 #[test]
@@ -373,6 +430,91 @@ fn mailbox_remove_requires_confirmation_deletes_local_state_and_preserves_skarbi
         &missing,
         r#"{"error":{"code":"NOT_FOUND","message":"mailbox was not found","retryable":false}}"#,
     );
+}
+
+#[test]
+fn gmail_app_password_mailbox_selector_refusals_leave_credentials_and_mailboxes_unchanged() {
+    const GMAIL_EMAIL: &str = "selector-refusal@gmail.com";
+    const GMAIL_ITEM: &str = "skrzynka-gmail-app-password-0d4931795b42e0dc4226";
+    const SHARED_ADDRESS: &str = "team@example.invalid";
+
+    let fixture = MailboxFixture::new("gmail-selector");
+    fixture.seed_mailbox_item("alpha-inbox");
+    fixture.seed_mailbox_item("beta-inbox");
+
+    let alpha_output = fixture.skrzynka(&[
+        "mailbox",
+        "add",
+        "--skarbiec-item",
+        "alpha-inbox",
+        "--display-name",
+        "Alpha Inbox",
+    ]);
+    assert_success("add first same-address mailbox", &alpha_output);
+    let alpha: Value =
+        serde_json::from_slice(&alpha_output.stdout).expect("first mailbox add must return JSON");
+
+    let beta_output = fixture.skrzynka(&[
+        "mailbox",
+        "add",
+        "--skarbiec-item",
+        "beta-inbox",
+        "--display-name",
+        "Beta Inbox",
+    ]);
+    assert_success("add second same-address mailbox", &beta_output);
+    let beta: Value =
+        serde_json::from_slice(&beta_output.stdout).expect("second mailbox add must return JSON");
+
+    let baseline = mailbox_receiving_state(&fixture);
+    assert_eq!(baseline.len(), 2, "fixture must contain exactly two mailboxes");
+    fixture.assert_skarbiec_item_absent(GMAIL_ITEM);
+
+    let missing = fixture.skrzynka_with_stdin(
+        &[
+            "gmail",
+            "app-password",
+            "--email",
+            GMAIL_EMAIL,
+            "--mailbox",
+            UNKNOWN_MAILBOX,
+        ],
+        PASSWORD,
+    );
+    assert_exit_one_with(
+        &missing,
+        r#"{"error":{"code":"NOT_FOUND","message":"mailbox was not found","retryable":false}}"#,
+    );
+    assert_eq!(
+        mailbox_receiving_state(&fixture),
+        baseline,
+        "unknown selector refusal must not modify or add mailbox rows"
+    );
+    fixture.assert_skarbiec_item_absent(GMAIL_ITEM);
+
+    let ambiguous = fixture.skrzynka_with_stdin(
+        &[
+            "gmail",
+            "app-password",
+            "--email",
+            GMAIL_EMAIL,
+            "--mailbox",
+            SHARED_ADDRESS,
+        ],
+        PASSWORD,
+    );
+    let ambiguous_error = format!(
+        r#"{{"error":{{"code":"MAILBOX_SELECTOR_AMBIGUOUS","message":"{SHARED_ADDRESS} names 2 mailboxes ({}, {}); select one by id","retryable":false}}}}"#,
+        MailboxFixture::mailbox_id(&alpha),
+        MailboxFixture::mailbox_id(&beta)
+    );
+    assert_exit_one_with(&ambiguous, &ambiguous_error);
+    assert_eq!(
+        mailbox_receiving_state(&fixture),
+        baseline,
+        "ambiguous selector refusal must not modify or add mailbox rows"
+    );
+    fixture.assert_skarbiec_item_absent(GMAIL_ITEM);
 }
 
 #[test]
