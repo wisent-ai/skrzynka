@@ -36,7 +36,7 @@ const LOCAL_CLI_ORGANIZATION: &str = "legacy-local";
     name = "skrzynka",
     version,
     about = "Receive and reply across multiple mailboxes without moving credentials out of Skarbiec",
-    after_help = "Safe first result: skrzynka serve; add one Skarbiec mailbox; skrzynka sync; skrzynka message list"
+    after_help = "Safe first result: skrzynka mailbox import --skarbiec-item <ITEM_ID>; repeat while has_more=true"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -116,6 +116,8 @@ enum GmailCommand {
 #[derive(Subcommand)]
 enum MailboxCommand {
     Add(AddMailboxArgs),
+    /// Connect an existing account by Skarbiec item and atomically import one INBOX page.
+    Import(AddMailboxArgs),
     List,
     Show {
         id: Uuid,
@@ -153,6 +155,22 @@ struct AddMailboxArgs {
     smtp_security: Option<CliSmtpSecurity>,
     #[arg(long)]
     poll_seconds: Option<u64>,
+}
+
+impl AddMailboxArgs {
+    fn into_request(self) -> CreateMailboxRequest {
+        CreateMailboxRequest {
+            skarbiec_item_id: self.skarbiec_item,
+            display_name: self.display_name,
+            email: self.email,
+            imap_host: self.imap_host,
+            imap_port: self.imap_port,
+            smtp_host: self.smtp_host,
+            smtp_port: self.smtp_port,
+            smtp_security: self.smtp_security.map(Into::into),
+            poll_interval_seconds: self.poll_seconds,
+        }
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -260,7 +278,6 @@ async fn run(cli: Cli) -> Result<(), AppError> {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
             let status = state.status(LOCAL_CLI_ORGANIZATION).await?;
             print_json(&status)?;
-            onboarding::record_status_report_rendered()
         }
         Command::Mailbox { command } => {
             let state = AppState::new(database, resolver, 60, DEFAULT_CALLBACK_BASE_URL)?;
@@ -428,22 +445,17 @@ async fn serve(
 async fn run_mailbox(state: AppState, command: MailboxCommand) -> Result<(), AppError> {
     match command {
         MailboxCommand::Add(args) => {
-            let request = CreateMailboxRequest {
-                skarbiec_item_id: args.skarbiec_item,
-                display_name: args.display_name,
-                email: args.email,
-                imap_host: args.imap_host,
-                imap_port: args.imap_port,
-                smtp_host: args.smtp_host,
-                smtp_port: args.smtp_port,
-                smtp_security: args.smtp_security.map(Into::into),
-                poll_interval_seconds: args.poll_seconds,
-            };
             print_json(
                 &state
-                    .create_mailbox(LOCAL_CLI_ORGANIZATION, request)
+                    .create_mailbox(LOCAL_CLI_ORGANIZATION, args.into_request())
                     .await?,
             )
+        }
+        MailboxCommand::Import(args) => {
+            let result = state
+                .import_mailbox(LOCAL_CLI_ORGANIZATION, args.into_request())
+                .await?;
+            print_json(&result)
         }
         MailboxCommand::List => print_json(&state.list_mailboxes(LOCAL_CLI_ORGANIZATION)?),
         MailboxCommand::Show { id } => print_json(&state.get_mailbox(LOCAL_CLI_ORGANIZATION, id)?),

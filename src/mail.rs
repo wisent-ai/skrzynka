@@ -10,7 +10,7 @@ use lettre::{
     Message as OutgoingMessage, SmtpTransport, Transport,
 };
 use mailparse::{MailHeaderMap, ParsedMail};
-use std::{str::FromStr, time::Duration};
+use std::{collections::BTreeMap, str::FromStr, time::Duration};
 use uuid::Uuid;
 
 const MAX_RAW_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
@@ -21,7 +21,9 @@ const MAX_MESSAGES_PER_SYNC: usize = 200;
 pub struct FetchedMessages {
     pub messages: Vec<NewMessage>,
     pub skipped: usize,
+    pub rejected_by_reason: BTreeMap<String, usize>,
     pub last_uid: u32,
+    pub has_more: bool,
 }
 
 struct OAuth2Authenticator<'a> {
@@ -129,13 +131,14 @@ pub fn fetch_messages(
         .into_iter()
         .filter(|uid| *uid >= first_uid)
         .collect::<Vec<_>>();
-    uids.sort_unstable();
-    if uids.len() > MAX_MESSAGES_PER_SYNC {
+    let has_more = uids.len() > MAX_MESSAGES_PER_SYNC;
+    if has_more {
         uids.truncate(MAX_MESSAGES_PER_SYNC);
     }
 
     let mut messages = Vec::with_capacity(uids.len());
     let mut skipped = 0usize;
+    let mut rejected_by_reason = BTreeMap::new();
     let mut last_uid = mailbox.last_uid;
     for requested_uid in uids {
         let fetches = session
@@ -149,6 +152,9 @@ pub fn fetch_messages(
             })?;
         let Some(fetch) = fetches.iter().next() else {
             skipped += 1;
+            *rejected_by_reason
+                .entry("provider_row_missing".to_string())
+                .or_default() += 1;
             last_uid = last_uid.max(requested_uid);
             continue;
         };
@@ -156,22 +162,35 @@ pub fn fetch_messages(
         last_uid = last_uid.max(uid);
         let Some(body) = fetch.body() else {
             skipped += 1;
+            *rejected_by_reason
+                .entry("message_body_missing".to_string())
+                .or_default() += 1;
             continue;
         };
         if body.len() > MAX_RAW_MESSAGE_BYTES {
             skipped += 1;
+            *rejected_by_reason
+                .entry("message_exceeds_2_mib".to_string())
+                .or_default() += 1;
             continue;
         }
         match normalize_message(uid, body) {
             Ok(message) => messages.push(message),
-            Err(_) => skipped += 1,
+            Err(error) => {
+                skipped += 1;
+                *rejected_by_reason
+                    .entry(error.code.to_ascii_lowercase())
+                    .or_default() += 1;
+            }
         }
     }
     let _ = session.logout();
     Ok(FetchedMessages {
         messages,
         skipped,
+        rejected_by_reason,
         last_uid,
+        has_more,
     })
 }
 

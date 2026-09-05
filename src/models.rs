@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -80,6 +81,38 @@ pub struct CreateMailboxRequest {
     pub poll_interval_seconds: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MailboxImportState {
+    Imported,
+    Unchanged,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ImportItemCounts {
+    pub imported: usize,
+    pub unchanged: usize,
+    pub conflicting: usize,
+    pub rejected: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailboxImportSource {
+    pub kind: &'static str,
+    pub skarbiec_item_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailboxImportResult {
+    pub applied: bool,
+    pub source: MailboxImportSource,
+    pub mailbox_state: MailboxImportState,
+    pub mailbox: Mailbox,
+    pub messages: ImportItemCounts,
+    pub rejected_by_reason: BTreeMap<String, usize>,
+    pub has_more: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateMailboxRequest {
     pub display_name: Option<String>,
@@ -111,7 +144,7 @@ pub struct Message {
     pub snippet: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NewMessage {
     pub external_uid: u32,
     pub message_id: Option<String>,
