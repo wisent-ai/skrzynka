@@ -25,9 +25,13 @@ The observable result is one local inbox with mailbox identity preserved on ever
 - Connect one personal Gmail account or one Workspace user with an app-specific password and no administrator or OAuth client: `skrzynka gmail app-password --email user@gmail.com` reads the secret only from stdin, proves it with Gmail IMAP before saving anything, and writes a dedicated bundle to Skarbiec. Add `--mailbox <id-or-address>` to attach that bundle as the receiving credential of an existing mailbox while preserving its address, display name, SMTP profile, and sending credential. Without `--mailbox`, an address match is reconnected as before; otherwise Skrzynka creates the fixed Gmail mailbox profile. `POST /v1/gmail/app-password` provides API parity by accepting an existing `skarbiec_item_id` and the same optional `mailbox` selector, never the secret.
 - Connect Google identities discovered in Skarbiec through Gmail OAuth; Skrzynka configures Gmail, stores the durable authorization back in Skarbiec, and performs IMAP/SMTP authentication with XOAUTH2.
 - Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. `skrzynka gmail delegation` prints the client ID, the scope and the console URL. Skrzynka never performs that grant: it exists only in the admin console, so a missing grant is reported as `GOOGLE_DELEGATION_NOT_GRANTED` naming the three values an administrator needs.
-- Add any number of other mailboxes by exact Skarbiec item ID.
-- Read password-backed `login` items with explicit server settings or complete `bundle` profiles.
-- Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox and IMAP UID.
+- Adopt any number of existing mailboxes by exact Skarbiec item ID with
+  `skrzynka mailbox import`; CLI, API, and desktop use the same credential
+  resolver, IMAP normalizer, and atomic SQLite commit.
+- Read password-backed `login` items with explicit non-secret server settings
+  or complete `bundle` profiles.
+- Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox
+  and IMAP UID.
 - List mailboxes and messages without exposing credentials.
 - Reply through the originating mailbox over SMTP with required TLS and preserved thread headers.
 - Originate mail from a connected mailbox with `skrzynka message send --mailbox <id-or-address> --to <address> --subject <text> --body-file <path>` (or `POST /v1/mailboxes/:id/outbound`). An outbound message carries its own recipients, cc and subject, walks the same delivery states as a reply, and is claimed by its idempotency key before anything reaches the provider, so a repeated call returns the first attempt instead of sending twice. `skrzynka message outbound` reads what went out.
@@ -60,15 +64,35 @@ Start the local service:
 cargo run -- serve
 ```
 
-In another shell, add a mailbox whose complete profile is stored in a Skarbiec `bundle`:
+In another shell, import a mailbox whose complete profile is stored in a
+Skarbiec `bundle`:
 
 ```sh
-cargo run -- mailbox add --skarbiec-item team-inbox
-cargo run -- sync
+cargo run -- mailbox import --skarbiec-item team-inbox
 cargo run -- message list
 ```
 
-A successful sync prints a bounded JSON summary with `received`, `mailbox_id`, and `last_uid`; `message list` then shows normalized message metadata and body text from the local database. A `login` item can be added by also supplying `--email`, `--imap-host`, `--smtp-host`, and the applicable ports/security mode. See the [executable examples](https://skrzynka.wisent.com/docs/examples) and the [onboarding contract](https://skrzynka.wisent.com/docs/onboarding).
+`mailbox import` resolves the referenced credential only inside Skrzynka,
+fetches and validates up to 200 INBOX messages, then commits the mailbox,
+accepted messages, and UID cursor in one SQLite transaction. Its JSON result
+reports mailbox state, imported, unchanged, conflicting, and rejected message
+counts, rejection reasons, and `has_more`. Repeat the same command while
+`has_more` is true; an equal mailbox UID is unchanged and is never inserted
+twice. A `login` item can be imported by also supplying `--email`,
+`--imap-host`, `--smtp-host`, and the applicable ports/security mode.
+
+The equivalent reusable surfaces are **Connect and import** in Skrzynka Desktop
+and authenticated `POST /v1/imports/mailbox` with the same non-secret mailbox
+profile JSON accepted by `POST /v1/mailboxes`. The secret is never accepted in
+argv or the API, and the result does not return it or provider message bodies.
+A changed profile for an already attached item or differing normalized data for
+a retained UID is a conflict: the old mailbox, messages, and cursor are
+preserved and the fetched page is not partially committed. Authentication,
+source, fetch, and normalization errors likewise leave no new mailbox or
+advanced cursor. Unsupported provider rows are counted by reason rather than
+silently disappearing. Skipping import leaves an empty usable installation.
+See the [executable examples](https://skrzynka.wisent.com/docs/examples) and the
+[onboarding contract](https://skrzynka.wisent.com/docs/onboarding).
 
 For one Gmail account, generate an app-specific password in that account, then
 pass it to Skrzynka only through stdin:
@@ -182,7 +206,7 @@ That client belongs in Wisent's own Google Cloud project `wisent-480400` (projec
 
 Every `/v1` request except the Gmail provider callback must carry both `Authorization: Bearer <Supabase JWT>` and `X-Wisent-Organization-ID: <uuid>`. Skrzynka forwards the unchanged bearer token and parsed organization UUID to `authorize_organization(target_org_id)` at the canonical Supabase project (`https://alvaewvbyxpgwdpugnxy.supabase.co`) and builds its request context only from the RPC's verified `user_id`, `organization_id`, and `owner`/`admin`/`member` role. It does not query membership tables itself, accept identity or role from a request payload, or log the bearer token.
 
-All three roles can read organization resources, synchronize mailboxes, send replies, and originate mail: `POST /v1/mailboxes/:id/outbound` requires `member`, which `owner`, `admin`, and `member` all satisfy. Mailbox configuration, including Gmail OAuth, app-password item connection, delegated mailbox connection, and mailbox create/update/delete, requires `owner` or `admin`. Missing or invalid bearer authentication returns `401`; a missing or malformed organization header returns `400`; missing membership or an unsupported role returns `403`; unavailable central identity verification returns `503`. Workload and service tokens are not human login credentials and receive no synthetic organization context.
+All three roles can read organization resources, synchronize mailboxes, send replies, and originate mail: `POST /v1/mailboxes/:id/outbound` requires `member`, which `owner`, `admin`, and `member` all satisfy. Mailbox configuration, including `POST /v1/imports/mailbox`, Gmail OAuth, app-password item connection, delegated mailbox connection, and mailbox create/update/delete, requires `owner` or `admin`. Missing or invalid bearer authentication returns `401`; a missing or malformed organization header returns `400`; missing membership or an unsupported role returns `403`; unavailable central identity verification returns `503`. Workload and service tokens are not human login credentials and receive no synthetic organization context.
 
 ## Operating model
 

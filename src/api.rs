@@ -31,6 +31,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/gmail/delegate", post(connect_gmail_delegated))
         .route("/v1/gmail/app-password", post(connect_gmail_app_password))
         .route("/v1/mailboxes", get(list_mailboxes).post(create_mailbox))
+        .route("/v1/imports/mailbox", post(import_mailbox))
         .route(
             "/v1/mailboxes/:id",
             get(get_mailbox)
@@ -201,6 +202,17 @@ async fn create_mailbox(
     auth.require_role(OrganizationRole::Admin)?;
     let mailbox = state.create_mailbox(&auth.organization_id, request).await?;
     Ok((StatusCode::CREATED, Json(json!(mailbox))))
+}
+
+async fn import_mailbox(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Json(request): Json<CreateMailboxRequest>,
+) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
+    Ok(Json(json!(
+        state.import_mailbox(&auth.organization_id, request).await?
+    )))
 }
 
 async fn get_mailbox(

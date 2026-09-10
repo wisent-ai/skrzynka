@@ -1,6 +1,6 @@
 use crate::{
     auth::AuthVerifier,
-    db::Database,
+    db::{Database, MailboxConfig},
     error::AppError,
     gmail::{
         GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFlowSnapshot, GmailOAuthFlowStatus,
@@ -8,7 +8,8 @@ use crate::{
     },
     mail,
     models::{
-        CreateMailboxRequest, CreateOutboundRequest, CreateReplyRequest, DeliveryStatus, Mailbox,
+        CreateMailboxRequest, CreateOutboundRequest, CreateReplyRequest, DeliveryStatus,
+        ImportItemCounts, Mailbox, MailboxImportResult, MailboxImportSource, MailboxImportState,
         MailboxSyncResult, Message, OutboundMessage, ReplyAttempt, SkarbiecItemMetadata,
         SmtpSecurity, StatusResponse, SyncAllSummary, SyncSummary, UpdateMailboxRequest,
     },
@@ -434,6 +435,84 @@ impl AppState {
         self.database.create_mailbox(&config)
     }
 
+    /// Adopt an existing IMAP mailbox by Skarbiec item reference and import one
+    /// bounded provider page. Credentials are resolved only inside Skrzynka;
+    /// the provider page is fully fetched and normalized before SQLite commits
+    /// the mailbox, messages, and cursor in one transaction.
+    pub async fn import_mailbox(
+        &self,
+        organization_id: &str,
+        mut request: CreateMailboxRequest,
+    ) -> Result<MailboxImportResult, AppError> {
+        let _guard = self.operation_lock.lock().await;
+        if request.poll_interval_seconds.is_none() {
+            request.poll_interval_seconds = Some(self.poll_interval_seconds);
+        }
+        let mut config = self.resolver.resolve_mailbox_config(&request).await?;
+        config.organization_id = organization_id.to_string();
+        let existing = self
+            .database
+            .list_mailboxes(organization_id)?
+            .into_iter()
+            .find(|mailbox| mailbox.skarbiec_item_id == config.skarbiec_item_id);
+        if let Some(mailbox) = existing.as_ref() {
+            if !mailbox_matches_config(mailbox, &config) {
+                return Err(AppError::conflict(
+                    "MAILBOX_IMPORT_PROFILE_CONFLICT",
+                    "the Skarbiec item is already attached with different mailbox settings; no import data was changed",
+                ));
+            }
+        }
+        let credentials = self
+            .resolver
+            .resolve_credentials(&config.skarbiec_item_id)
+            .await?;
+        let create_mailbox = existing.is_none();
+        let mailbox_state = if create_mailbox {
+            MailboxImportState::Imported
+        } else {
+            MailboxImportState::Unchanged
+        };
+        let mailbox = existing.unwrap_or_else(|| mailbox_from_config(&config));
+        let source_item_id = config.skarbiec_item_id.clone();
+        let database = self.database.clone();
+        let (mailbox, imported, unchanged, fetched) = tokio::task::spawn_blocking(move || {
+            let fetched = mail::fetch_messages(&mailbox, &credentials)?;
+            let (mailbox, imported, unchanged) = database.commit_mailbox_import(
+                &mailbox,
+                create_mailbox,
+                &fetched.messages,
+                fetched.last_uid,
+            )?;
+            Ok::<_, AppError>((mailbox, imported, unchanged, fetched))
+        })
+        .await
+        .map_err(|_| AppError::internal("mailbox import task stopped unexpectedly"))??;
+        if imported + unchanged > 0 {
+            if let Err(error) = crate::onboarding::record_mailbox_import_completed() {
+                tracing::warn!(%error, "mailbox import persisted but first-use evidence could not be recorded");
+            }
+        }
+
+        Ok(MailboxImportResult {
+            applied: true,
+            source: MailboxImportSource {
+                kind: "imap_skarbiec_item",
+                skarbiec_item_id: source_item_id,
+            },
+            mailbox_state,
+            mailbox,
+            messages: ImportItemCounts {
+                imported,
+                unchanged,
+                conflicting: 0,
+                rejected: fetched.skipped,
+            },
+            rejected_by_reason: fetched.rejected_by_reason,
+            has_more: fetched.has_more,
+        })
+    }
+
     pub fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
         self.database.list_mailboxes(organization_id)
     }
@@ -512,19 +591,20 @@ impl AppState {
         let database = self.database.clone();
         let result = tokio::task::spawn_blocking(move || {
             let fetched = mail::fetch_messages(&mailbox, &credentials)?;
-            let mut received = 0usize;
-            for message in &fetched.messages {
-                if database.insert_message(mailbox.id, message)? {
-                    received += 1;
-                }
-            }
-            database.record_sync_success(mailbox.id, fetched.last_uid)?;
+            let (mailbox, received, _) = database.commit_mailbox_import(
+                &mailbox,
+                false,
+                &fetched.messages,
+                fetched.last_uid,
+            )?;
             Ok::<_, AppError>(SyncSummary {
                 mailbox_id: mailbox.id,
                 received,
                 skipped: fetched.skipped,
                 last_uid: fetched.last_uid,
-                completed_at: Utc::now().to_rfc3339(),
+                completed_at: mailbox
+                    .last_sync_at
+                    .unwrap_or_else(|| Utc::now().to_rfc3339()),
             })
         })
         .await
@@ -533,6 +613,13 @@ impl AppState {
             let _ = self
                 .database
                 .record_sync_failure(id, error.code, &error.message);
+        }
+        if let Ok(summary) = &result {
+            if summary.received > 0 {
+                if let Err(error) = crate::onboarding::record_mailbox_import_completed() {
+                    tracing::warn!(%error, "mailbox synchronization persisted but first-use evidence could not be recorded");
+                }
+            }
         }
         result
     }
@@ -869,6 +956,45 @@ impl AppState {
             }
         });
     }
+}
+
+fn mailbox_from_config(config: &MailboxConfig) -> Mailbox {
+    let now = Utc::now().to_rfc3339();
+    Mailbox {
+        id: Uuid::new_v4(),
+        organization_id: config.organization_id.clone(),
+        skarbiec_item_id: config.skarbiec_item_id.clone(),
+        smtp_skarbiec_item_id: config.smtp_skarbiec_item_id.clone(),
+        display_name: config.display_name.clone(),
+        email: config.email.clone(),
+        imap_host: config.imap_host.clone(),
+        imap_port: config.imap_port,
+        smtp_host: config.smtp_host.clone(),
+        smtp_port: config.smtp_port,
+        smtp_security: config.smtp_security,
+        poll_interval_seconds: config.poll_interval_seconds,
+        enabled: true,
+        last_uid: 0,
+        last_sync_at: None,
+        last_error_code: None,
+        last_error_message: None,
+        created_at: now.clone(),
+        updated_at: now,
+    }
+}
+
+fn mailbox_matches_config(mailbox: &Mailbox, config: &MailboxConfig) -> bool {
+    mailbox.organization_id == config.organization_id
+        && mailbox.skarbiec_item_id == config.skarbiec_item_id
+        && mailbox.smtp_skarbiec_item_id == config.smtp_skarbiec_item_id
+        && mailbox.display_name == config.display_name
+        && mailbox.email == config.email
+        && mailbox.imap_host == config.imap_host
+        && mailbox.imap_port == config.imap_port
+        && mailbox.smtp_host == config.smtp_host
+        && mailbox.smtp_port == config.smtp_port
+        && mailbox.smtp_security == config.smtp_security
+        && mailbox.poll_interval_seconds == config.poll_interval_seconds
 }
 
 fn validated_gmail_email(email: &str) -> Result<String, AppError> {

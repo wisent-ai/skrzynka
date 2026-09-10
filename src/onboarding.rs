@@ -13,7 +13,7 @@ use uuid::Uuid;
 const PRODUCT_ID: &str = "skrzynka";
 const JOURNEY_ID: &str = "first-use";
 const STATE_SCHEMA: &str = "skrzynka.onboarding-state.v1";
-const FIRST_SUCCESS_FACT: &str = "status_report_rendered";
+const FIRST_SUCCESS_FACT: &str = "mailbox_import_persisted";
 const DEFINITION: &str = include_str!("onboarding_first_use.json");
 
 #[derive(Deserialize, Serialize)]
@@ -74,7 +74,7 @@ pub fn run(reset: bool) -> Result<(), AppError> {
     }
 }
 
-pub fn record_status_report_rendered() -> Result<(), AppError> {
+pub fn record_mailbox_import_completed() -> Result<(), AppError> {
     let path = state_path();
     if !path.exists() {
         return Ok(());
@@ -196,6 +196,15 @@ fn read_state(path: &PathBuf, definition: &Value) -> Result<OnboardingState, App
         return Err(AppError::internal(
             "stored onboarding state identity mismatch; use --reset to replace it",
         ));
+    }
+    let definition_version = definition
+        .get("journey_version")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::internal("canonical onboarding journey has no version"))?;
+    if state.journey_version != definition_version {
+        let replacement = new_state(definition)?;
+        save_state(&replacement)?;
+        return Ok(replacement);
     }
     screen_by_id(definition, &state.current_screen_id)?;
     Ok(state)
