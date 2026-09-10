@@ -35,12 +35,12 @@ function runMailboxTarget() {
 
 test("real mailbox add, edit, and removal journeys pass", { timeout: 600_000 }, async () => {
   const histories = [
-    "mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accounts",
-    "mailbox_disable_changes_only_enabled_state_and_refuses_unknown_accounts",
-    "mailbox_enable_changes_only_enabled_state_and_refuses_unknown_accounts",
-    "mailbox_remove_requires_confirmation_deletes_local_state_and_preserves_skarbiec",
-    "schema_three_migration_adds_smtp_credential_without_rewriting_mail_history",
-    "gmail_app_password_mailbox_selector_refusals_leave_credentials_and_mailboxes_unchanged",
+    "lifecycle::mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accounts",
+    "lifecycle::mailbox_disable_changes_only_enabled_state_and_refuses_unknown_accounts",
+    "lifecycle::mailbox_enable_changes_only_enabled_state_and_refuses_unknown_accounts",
+    "lifecycle::mailbox_remove_requires_confirmation_deletes_local_state_and_preserves_skarbiec",
+    "credentials::schema_three_migration_adds_smtp_credential_without_rewriting_mail_history",
+    "credentials::gmail_app_password_mailbox_selector_refusals_leave_credentials_and_mailboxes_unchanged",
   ];
   const result = await runMailboxTarget();
   assert.equal(
