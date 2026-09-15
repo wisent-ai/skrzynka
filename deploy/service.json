@@ -1,0 +1,10 @@
+{
+  "installable": true,
+  "unit": "com.wisent.always-on.skrzynka",
+  "program": "$HOME/.local/bin/skrzynka",
+  "args": ["--skarbiec-bin", "$HOME/.local/bin/skarbiec", "serve", "--bind", "127.0.0.1:8788"],
+  "env": {
+    "PATH": "$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+  },
+  "summary": "Skrzynka loopback mail API and scheduled IMAP synchronization; credentials remain in the account's Skarbiec vault."
+}

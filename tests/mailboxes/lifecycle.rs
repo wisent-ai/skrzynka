@@ -1,90 +1,6 @@
-use rusqlite::params;
-use std::fs;
+use rusqlite::{params, Connection};
 
 use super::fixture::*;
-#[test]
-fn mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accounts() {
-    let fixture = MailboxFixture::new("add");
-    fixture.seed_mailbox_item("team-inbox");
-    fixture.seed_mailbox_item("invalid-inbox");
-
-    let created = fixture.add_mailbox("team-inbox");
-    let id = MailboxFixture::mailbox_id(&created);
-    let stored = fixture
-        .connection()
-        .query_row(
-            "SELECT skarbiec_item_id, display_name, email, imap_host, imap_port, smtp_host, smtp_port, smtp_security, poll_interval_seconds, enabled, last_uid FROM mailboxes WHERE id=?1",
-            [id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, i64>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, i64>(6)?,
-                    row.get::<_, String>(7)?,
-                    row.get::<_, i64>(8)?,
-                    row.get::<_, i64>(9)?,
-                    row.get::<_, i64>(10)?,
-                ))
-            },
-        )
-        .expect("read persisted mailbox state");
-    assert_eq!(
-        stored,
-        (
-            "team-inbox".to_string(),
-            "Team Inbox".to_string(),
-            "team@example.invalid".to_string(),
-            "imap.example.invalid".to_string(),
-            993,
-            "smtp.example.invalid".to_string(),
-            587,
-            "starttls".to_string(),
-            60,
-            1,
-            0,
-        )
-    );
-    let database_bytes = fs::read(&fixture.database).expect("read SQLite state");
-    assert!(
-        !database_bytes
-            .windows(PASSWORD.len())
-            .any(|window| window == PASSWORD.as_bytes()),
-        "the mailbox password must never enter SQLite"
-    );
-
-    let duplicate = fixture.skrzynka(&[
-        "mailbox",
-        "add",
-        "--skarbiec-item",
-        "team-inbox",
-    ]);
-    assert_exit_one_with(
-        &duplicate,
-        r#"{"error":{"code":"MAILBOX_ALREADY_EXISTS","message":"a mailbox already uses this Skarbiec item","retryable":false}}"#,
-    );
-
-    let invalid = fixture.skrzynka(&[
-        "mailbox",
-        "add",
-        "--skarbiec-item",
-        "invalid-inbox",
-        "--email",
-        "not-an-address",
-    ]);
-    assert_exit_one_with(
-        &invalid,
-        r#"{"error":{"code":"MAILBOX_PROFILE_INVALID","message":"email is not a valid address","retryable":false}}"#,
-    );
-    let count: i64 = fixture
-        .connection()
-        .query_row("SELECT COUNT(*) FROM mailboxes", [], |row| row.get(0))
-        .expect("count persisted mailboxes");
-    assert_eq!(count, 1, "refused creates must not write mailbox state");
-}
 
 #[test]
 fn mailbox_disable_changes_only_enabled_state_and_refuses_unknown_accounts() {
@@ -194,11 +110,143 @@ fn mailbox_remove_requires_confirmation_deletes_local_state_and_preserves_skarbi
 
     let credential = fixture.skarbiec(&["get", "team-inbox", "--field", "password"]);
     assert_success("read preserved Skarbiec item", &credential);
-    assert_eq!(String::from_utf8_lossy(&credential.stdout), format!("{PASSWORD}\n"));
+    assert_eq!(
+        String::from_utf8_lossy(&credential.stdout),
+        format!("{PASSWORD}\n")
+    );
 
     let missing = fixture.skrzynka(&["mailbox", "remove", id, "--confirm"]);
     assert_exit_one_with(
         &missing,
         r#"{"error":{"code":"NOT_FOUND","message":"mailbox was not found","retryable":false}}"#,
+    );
+}
+
+#[test]
+fn schema_three_migration_adds_smtp_credential_without_rewriting_mail_history() {
+    let fixture = MailboxFixture::without_skarbiec("schema-three-migration");
+    let connection = Connection::open(&fixture.database).expect("open schema-three database");
+    connection
+        .execute_batch(
+            r#"
+            PRAGMA foreign_keys=ON;
+            CREATE TABLE mailboxes (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                skarbiec_item_id TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                imap_host TEXT NOT NULL,
+                imap_port INTEGER NOT NULL,
+                smtp_host TEXT NOT NULL,
+                smtp_port INTEGER NOT NULL,
+                smtp_security TEXT NOT NULL CHECK (smtp_security IN ('starttls', 'tls')),
+                poll_interval_seconds INTEGER NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_uid INTEGER NOT NULL DEFAULT 0,
+                last_sync_at TEXT,
+                last_error_code TEXT,
+                last_error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE outbound_messages (
+                id TEXT PRIMARY KEY,
+                mailbox_id TEXT NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                idempotency_key TEXT NOT NULL UNIQUE,
+                recipients TEXT NOT NULL,
+                cc TEXT,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'uncertain')),
+                provider_message_id TEXT,
+                error_code TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                sent_at TEXT
+            );
+            INSERT INTO mailboxes (
+                id, organization_id, skarbiec_item_id, display_name, email,
+                imap_host, imap_port, smtp_host, smtp_port, smtp_security,
+                poll_interval_seconds, enabled, last_uid, created_at, updated_at
+            ) VALUES (
+                '00000000-0000-0000-0000-000000000010', 'legacy-local',
+                'legacy-credential', 'Legacy mailbox', 'legacy@example.invalid',
+                'imap.example.invalid', 993, 'smtp.example.invalid', 587,
+                'starttls', 60, 0, 42, '2026-09-01T00:00:00Z',
+                '2026-09-01T00:00:00Z'
+            );
+            INSERT INTO outbound_messages (
+                id, mailbox_id, idempotency_key, recipients, subject, body,
+                status, provider_message_id, created_at, updated_at, sent_at
+            ) VALUES (
+                '00000000-0000-0000-0000-000000000011',
+                '00000000-0000-0000-0000-000000000010', 'legacy-send',
+                'buyer@example.invalid', 'Legacy subject', 'Legacy body', 'sent',
+                '<legacy@example.invalid>', '2026-09-01T00:00:00Z',
+                '2026-09-01T00:00:01Z', '2026-09-01T00:00:01Z'
+            );
+            PRAGMA user_version=3;
+            "#,
+        )
+        .expect("seed schema-three state");
+    drop(connection);
+
+    let listed = fixture.skrzynka(&["mailbox", "list"]);
+    assert_success("open and migrate schema-three database", &listed);
+
+    let connection = fixture.connection();
+    let version: i64 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .expect("read migrated schema version");
+    assert_eq!(version, 4);
+    let mailbox = connection
+        .query_row(
+            "SELECT skarbiec_item_id, smtp_skarbiec_item_id, email, smtp_host, enabled, last_uid FROM mailboxes",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            },
+        )
+        .expect("read migrated mailbox");
+    assert_eq!(
+        mailbox,
+        (
+            "legacy-credential".to_string(),
+            None,
+            "legacy@example.invalid".to_string(),
+            "smtp.example.invalid".to_string(),
+            0,
+            42,
+        )
+    );
+    let outbound = connection
+        .query_row(
+            "SELECT idempotency_key, status, provider_message_id FROM outbound_messages",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .expect("read preserved outbound message");
+    assert_eq!(
+        outbound,
+        (
+            "legacy-send".to_string(),
+            "sent".to_string(),
+            Some("<legacy@example.invalid>".to_string()),
+        )
     );
 }

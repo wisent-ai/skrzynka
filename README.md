@@ -58,7 +58,13 @@ cargo build
 cargo run -- help
 ```
 
-Start the local service:
+For a persistent installation, run `stado registry self` to read this Mac's host name,
+then `stado product install skrzynka --surface service --host HOST`. Stado owns
+the declared service and its automatic supervision; the declaration comes from
+`deploy/service.json` through the canonical Wisent product catalogue.
+See [managed service and receiving diagnostics](https://skrzynka.wisent.com/docs/managed-service).
+
+For a foreground development session instead:
 
 ```sh
 cargo run -- serve
@@ -73,8 +79,10 @@ cargo run -- message list
 ```
 
 `mailbox import` resolves the referenced credential only inside Skrzynka,
-fetches and validates up to 200 INBOX messages, then commits the mailbox,
-accepted messages, and UID cursor in one SQLite transaction. Its JSON result
+fetches and validates up to 200 INBOX messages in ascending UID order, then commits
+the mailbox, accepted messages, and UID cursor in one SQLite transaction. Taking
+the oldest remaining UIDs before applying the page limit prevents skipped mail.
+Its JSON result
 reports mailbox state, imported, unchanged, conflicting, and rejected message
 counts, rejection reasons, and `has_more`. Repeat the same command while
 `has_more` is true; an equal mailbox UID is unchanged and is never inserted
