@@ -53,11 +53,42 @@ pub fn verify_gmail_app_password(
                 true,
             )
         })?;
-    let mut session = client
-        .login(email, password)
-        .map_err(|_| gmail::google_imap_password_rejected(email, skarbiec_item_id))?;
+    let mut session = client.login(email, password).map_err(|(error, _)| {
+        password_login_error(error, "imap.gmail.com", email, skarbiec_item_id, password)
+    })?;
     let _ = session.logout();
     Ok(())
+}
+
+// Preserve the server's response code as well as its explanation. A socket
+// failure is not evidence that Google rejected the password.
+fn password_login_error(
+    error: imap::Error,
+    host: &str,
+    email: &str,
+    item: &str,
+    password: &str,
+) -> AppError {
+    let mut failure =
+        if matches!(&error, imap::Error::No(_)) && host.eq_ignore_ascii_case("imap.gmail.com") {
+            gmail::google_imap_password_rejected(email, item)
+        } else {
+            dependency_error(
+                "IMAP_AUTHENTICATION_FAILED",
+                "IMAP LOGIN did not complete; inspect the reported provider or connection error",
+                matches!(&error, imap::Error::Io(_) | imap::Error::ConnectionLost),
+            )
+        };
+    let detail = format!("{error:?}");
+    let detail = if password.is_empty() {
+        detail
+    } else {
+        detail.replace(password, "[redacted]")
+    };
+    failure
+        .message
+        .push_str(&format!(" IMAP LOGIN at {host}: {detail}"));
+    failure
 }
 
 pub fn fetch_messages(
@@ -77,16 +108,14 @@ pub fn fetch_messages(
         })?;
     let mut session = match credentials {
         ResolvedCredentials::Password { username, password } => {
-            client.login(username, password).map_err(|_| {
-                if mailbox.imap_host.contains("gmail.com") {
-                    gmail::google_imap_password_rejected(&mailbox.email, &mailbox.skarbiec_item_id)
-                } else {
-                    dependency_error(
-                        "IMAP_AUTHENTICATION_FAILED",
-                        "IMAP authentication was refused; inspect the selected Skarbiec item",
-                        false,
-                    )
-                }
+            client.login(username, password).map_err(|(error, _)| {
+                password_login_error(
+                    error,
+                    &mailbox.imap_host,
+                    &mailbox.email,
+                    &mailbox.skarbiec_item_id,
+                    password,
+                )
             })?
         }
         ResolvedCredentials::OAuth2 {

@@ -146,6 +146,16 @@ fn provider_import_does_not_advance_past_unprocessed_mail() {
         "stdout": String::from_utf8_lossy(&output.stdout), "stderr": String::from_utf8_lossy(&output.stderr),
         "passed": false
     });
+    let connection = Connection::open(&database).expect("inspect real import final state");
+    report["persisted_mailboxes"] = serde_json::json!(connection
+        .query_row("SELECT COUNT(*) FROM mailboxes", [], |row| row
+            .get::<_, u64>(0))
+        .unwrap());
+    report["persisted_messages"] = serde_json::json!(connection
+        .query_row("SELECT COUNT(*) FROM messages", [], |row| row
+            .get::<_, u64>(0))
+        .unwrap());
+    drop(connection);
     let evidence = root.join("report.json");
     fs::write(&evidence, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     eprintln!("provider import evidence: {}", evidence.display());
