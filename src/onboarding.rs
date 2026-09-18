@@ -44,7 +44,9 @@ pub fn run(reset: bool) -> Result<(), AppError> {
     };
 
     if state.status == "completed" {
-        println!("Skrzynka first-use journey is already complete: {FIRST_SUCCESS_FACT} was recorded.");
+        println!(
+            "Skrzynka first-use journey is already complete: {FIRST_SUCCESS_FACT} was recorded."
+        );
         return Ok(());
     }
 
@@ -66,9 +68,8 @@ pub fn run(reset: bool) -> Result<(), AppError> {
         }
 
         wait_for_enter()?;
-        state.current_screen_id = next_screen_id(screen)?.ok_or_else(|| {
-            AppError::internal("canonical onboarding screen has no next screen")
-        })?;
+        state.current_screen_id = next_screen_id(screen)?
+            .ok_or_else(|| AppError::internal("canonical onboarding screen has no next screen"))?;
         save_state(&state)?;
         println!();
     }
@@ -83,22 +84,20 @@ pub fn record_mailbox_import_completed() -> Result<(), AppError> {
     let definition = canonical_definition()?;
     let mut state = read_state(&path, &definition)?;
     if state.status != "completed" {
-        state
-            .evidence
-            .insert(FIRST_SUCCESS_FACT.to_string(), true);
+        state.evidence.insert(FIRST_SUCCESS_FACT.to_string(), true);
         save_state(&state)?;
     }
     Ok(())
 }
 
 fn canonical_definition() -> Result<Value, AppError> {
-    let definition: Value = serde_json::from_str(DEFINITION)
-        .map_err(|error| AppError::internal(format!("canonical onboarding journey is invalid: {error}")))?;
+    let definition: Value = serde_json::from_str(DEFINITION).map_err(|error| {
+        AppError::internal(format!("canonical onboarding journey is invalid: {error}"))
+    })?;
     if definition.get("schema_version").and_then(Value::as_u64) != Some(1)
         || definition.get("product_id").and_then(Value::as_str) != Some(PRODUCT_ID)
         || definition.get("journey_id").and_then(Value::as_str) != Some(JOURNEY_ID)
-        || definition.get("first_success_fact").and_then(Value::as_str)
-            != Some(FIRST_SUCCESS_FACT)
+        || definition.get("first_success_fact").and_then(Value::as_str) != Some(FIRST_SUCCESS_FACT)
     {
         return Err(AppError::internal(
             "canonical onboarding journey identity mismatch",
@@ -252,20 +251,26 @@ fn save_state(state: &OnboardingState) -> Result<(), AppError> {
     })?;
 
     let temporary = path.with_extension(format!("json.tmp-{}", Uuid::new_v4()));
-    let body = serde_json::to_vec(state)
-        .map_err(|error| AppError::internal(format!("onboarding state could not be encoded: {error}")))?;
+    let body = serde_json::to_vec(state).map_err(|error| {
+        AppError::internal(format!("onboarding state could not be encoded: {error}"))
+    })?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(&temporary)
-        .map_err(|error| AppError::internal(format!("onboarding state could not be created: {error}")))?;
+        .map_err(|error| {
+            AppError::internal(format!("onboarding state could not be created: {error}"))
+        })?;
     file.write_all(&body)
         .and_then(|_| file.write_all(b"\n"))
         .and_then(|_| file.sync_all())
-        .map_err(|error| AppError::internal(format!("onboarding state could not be saved: {error}")))?;
-    fs::rename(&temporary, &path)
-        .map_err(|error| AppError::internal(format!("onboarding state could not be replaced: {error}")))?;
+        .map_err(|error| {
+            AppError::internal(format!("onboarding state could not be saved: {error}"))
+        })?;
+    fs::rename(&temporary, &path).map_err(|error| {
+        AppError::internal(format!("onboarding state could not be replaced: {error}"))
+    })?;
     Ok(())
 }
 
@@ -278,7 +283,9 @@ fn screen_by_id<'a>(definition: &'a Value, id: &str) -> Result<&'a Value, AppErr
                 .iter()
                 .find(|screen| screen.get("screen_id").and_then(Value::as_str) == Some(id))
         })
-        .ok_or_else(|| AppError::internal(format!("canonical onboarding screen is unavailable: {id}")))
+        .ok_or_else(|| {
+            AppError::internal(format!("canonical onboarding screen is unavailable: {id}"))
+        })
 }
 
 fn next_screen_id(screen: &Value) -> Result<Option<String>, AppError> {
@@ -298,15 +305,16 @@ fn next_screen_id(screen: &Value) -> Result<Option<String>, AppError> {
                 .get("next_screen_id")
                 .and_then(Value::as_str)
                 .map(str::to_string)
-                .ok_or_else(|| {
-                    AppError::internal("canonical onboarding transition has no target")
-                })
+                .ok_or_else(|| AppError::internal("canonical onboarding transition has no target"))
         })
         .transpose()
 }
 
 fn completion_fact(screen: &Value) -> Result<Option<&str>, AppError> {
-    let Some(evidence) = screen.get("completion_evidence").filter(|value| !value.is_null()) else {
+    let Some(evidence) = screen
+        .get("completion_evidence")
+        .filter(|value| !value.is_null())
+    else {
         return Ok(None);
     };
     if evidence.get("kind").and_then(Value::as_str) != Some("fact")

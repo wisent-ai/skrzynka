@@ -316,7 +316,6 @@ impl Database {
         Ok(())
     }
 
-
     pub fn record_sync_failure(&self, id: Uuid, code: &str, message: &str) -> Result<(), AppError> {
         let now = Utc::now().to_rfc3339();
         self.lock()?.execute(
@@ -480,11 +479,7 @@ impl Database {
         )?;
         transaction.commit()?;
         drop(connection);
-        Ok((
-            self.get_mailbox_internal(mailbox.id)?,
-            imported,
-            unchanged,
-        ))
+        Ok((self.get_mailbox_internal(mailbox.id)?, imported, unchanged))
     }
 
     pub fn list_messages(

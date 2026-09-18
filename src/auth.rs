@@ -126,10 +126,8 @@ impl AuthVerifier {
             _ => {}
         }
 
-        let mut authorizations: Vec<AuthorizationResponse> = response
-            .json()
-            .await
-            .map_err(|_| identity_unavailable())?;
+        let mut authorizations: Vec<AuthorizationResponse> =
+            response.json().await.map_err(|_| identity_unavailable())?;
         if authorizations.len() != 1 {
             return if authorizations.is_empty() {
                 Err(forbidden())

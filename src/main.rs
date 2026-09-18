@@ -444,13 +444,11 @@ async fn serve(
 
 async fn run_mailbox(state: AppState, command: MailboxCommand) -> Result<(), AppError> {
     match command {
-        MailboxCommand::Add(args) => {
-            print_json(
-                &state
-                    .create_mailbox(LOCAL_CLI_ORGANIZATION, args.into_request())
-                    .await?,
-            )
-        }
+        MailboxCommand::Add(args) => print_json(
+            &state
+                .create_mailbox(LOCAL_CLI_ORGANIZATION, args.into_request())
+                .await?,
+        ),
         MailboxCommand::Import(args) => {
             let result = state
                 .import_mailbox(LOCAL_CLI_ORGANIZATION, args.into_request())

@@ -80,10 +80,8 @@ impl MailboxFixture {
         let document = format!(
             r#"{{"schema":"skarbiec.item.v2","kind":"bundle","fields":{{"username":"team@example.invalid","password":"{PASSWORD}","display_name":"Team Inbox","email":"team@example.invalid","imap_host":"imap.example.invalid","imap_port":"993","smtp_host":"smtp.example.invalid","smtp_port":"587","smtp_security":"starttls"}},"context":{{}}}}"#
         );
-        let output = self.skarbiec_with_stdin(
-            &["set-json", item_id, "--type", "bundle"],
-            &document,
-        );
+        let output =
+            self.skarbiec_with_stdin(&["set-json", item_id, "--type", "bundle"], &document);
         self.assert_success("seed real Skarbiec mailbox bundle", output);
     }
 
