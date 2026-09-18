@@ -220,6 +220,22 @@ All three roles can read organization resources, synchronize mailboxes, send rep
 
 Skrzynka is an operated local product. Its SQLite database defaults to `~/.local/share/skrzynka/skrzynka.db`; it contains organization-scoped mailbox metadata, normalized inbound message content, reply bodies and delivery state, and every originated message's recipients, cc, subject, full plain-text body, delivery status, provider message id, and refusal, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
 
+Both default locations need a home directory. Without `HOME`, a command that
+does not pass `--database <PATH>` is refused with `DATABASE_PATH_REQUIRED`, and
+`skrzynka onboarding` without `XDG_STATE_HOME` or `HOME` is refused with
+`neither XDG_STATE_HOME nor HOME is set`; nothing is written into the working
+directory instead.
+
+The source is one module per concern, each a folder of files under 300 lines:
+`cli` (arguments and subcommands), `api` (router and handlers), `service`
+(the `AppState` methods, grouped by Gmail connection, mailboxes, polling,
+messages and outbound mail), `db` (schema and one file per table), `skarbiec`
+(the vault transport, items, mailbox resolution and Google tokens), `gmail`
+(the OAuth broker and its diagnosis), `onboarding`, `models`, `mail`, `auth`
+and `error`. `cargo test --locked` runs `tests/gmail/` against the diagnosis
+helpers and `tests/mailboxes/` against the real binary with an isolated
+Skarbiec, including the refusals above.
+
 Back up the database while the service is stopped. Restoring the database restores mailbox references, normalized messages, reply attempts, and outbound messages, but Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka deletes that local mailbox and cascades through its messages, reply attempts, and outbound messages, destroying the installation's record that the mailbox originated those messages; it does not delete the Skarbiec item or provider mailbox.
 
 ## Status and support

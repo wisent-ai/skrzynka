@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection};
+use std::process::{Command, Stdio};
 
 use super::fixture::*;
 
@@ -248,5 +249,30 @@ fn schema_three_migration_adds_smtp_credential_without_rewriting_mail_history() 
             "sent".to_string(),
             Some("<legacy@example.invalid>".to_string()),
         )
+    );
+}
+
+#[test]
+fn without_a_home_directory_the_default_paths_are_refused_not_guessed() {
+    let mut status = Command::new(env!("CARGO_BIN_EXE_skrzynka"));
+    status.arg("status").env_remove("HOME").env_remove("XDG_STATE_HOME");
+    let output = status.output().expect("run real Skrzynka binary");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("DATABASE_PATH_REQUIRED"), "{stderr}");
+    assert!(stderr.contains("pass --database <PATH>"), "{stderr}");
+
+    let mut onboarding = Command::new(env!("CARGO_BIN_EXE_skrzynka"));
+    onboarding
+        .arg("onboarding")
+        .env_remove("HOME")
+        .env_remove("XDG_STATE_HOME")
+        .stdin(Stdio::null());
+    let output = onboarding.output().expect("run real Skrzynka binary");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("neither XDG_STATE_HOME nor HOME is set"),
+        "{stderr}"
     );
 }
