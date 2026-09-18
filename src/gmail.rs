@@ -13,6 +13,10 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 const GMAIL_SCOPES: &str = "openid email https://mail.google.com/";
+/// A diagnosis reads Google's authorization page once; it does not wait longer than this.
+const AUTHORIZATION_PROBE_TIMEOUT_SECONDS: u64 = 20;
+/// An OAuth authorization code is short; anything longer is not one.
+const MAX_AUTHORIZATION_CODE_LENGTH: usize = 4096;
 /// The OAuth error code Google put in the landing URL it sent a browser to,
 /// or `None` when that URL carries none.
 ///
@@ -106,7 +110,9 @@ pub async fn diagnose_authorization(authorization_url: &str) -> Option<String> {
     let response = Client::new()
         .get(authorization_url)
         .header("user-agent", "Mozilla/5.0")
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(
+            AUTHORIZATION_PROBE_TIMEOUT_SECONDS,
+        ))
         .send()
         .await
         .ok()?;
@@ -330,7 +336,7 @@ impl GmailOAuthBroker {
             .code
             .as_deref()
             .map(str::trim)
-            .filter(|value| !value.is_empty() && value.len() <= 4096)
+            .filter(|value| !value.is_empty() && value.len() <= MAX_AUTHORIZATION_CODE_LENGTH)
             .ok_or_else(|| {
                 AppError::invalid(
                     "GMAIL_OAUTH_CODE_INVALID",

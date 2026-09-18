@@ -13,7 +13,10 @@ use crate::{
     db::Database,
     error::AppError,
     gmail::StartGmailOAuthRequest,
-    models::{CreateMailboxRequest, CreateOutboundRequest, CreateReplyRequest, SmtpSecurity},
+    models::{
+        CreateMailboxRequest, CreateOutboundRequest, CreateReplyRequest, SmtpSecurity,
+        MAX_BODY_BYTES,
+    },
     service::AppState,
     skarbiec::SkarbiecResolver,
 };
@@ -30,6 +33,8 @@ use uuid::Uuid;
 
 const DEFAULT_CALLBACK_BASE_URL: &str = "http://127.0.0.1:8788";
 const LOCAL_CLI_ORGANIZATION: &str = "legacy-local";
+/// While the browser authorizes Gmail, the flow is re-read four times a second.
+const AUTHORIZATION_POLL_MILLIS: u64 = 250;
 
 #[derive(Parser)]
 #[command(
@@ -410,7 +415,7 @@ async fn authorize_gmail(
                 error.map(|error| error.retryable).unwrap_or(false),
             ));
         }
-        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(AUTHORIZATION_POLL_MILLIS)).await;
     }
 }
 
@@ -585,7 +590,7 @@ fn read_gmail_app_password() -> Result<String, AppError> {
 fn read_body_file(path: &Path, code: &'static str) -> Result<String, AppError> {
     let metadata = std::fs::metadata(path)
         .map_err(|_| AppError::invalid(code, "message body file could not be read"))?;
-    if !metadata.is_file() || metadata.len() > 256 * 1024 {
+    if !metadata.is_file() || metadata.len() > MAX_BODY_BYTES as u64 {
         return Err(AppError::invalid(
             code,
             "message body file must be a regular file no larger than 256 KiB",

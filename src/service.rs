@@ -12,6 +12,8 @@ use crate::{
         ImportItemCounts, Mailbox, MailboxImportResult, MailboxImportSource, MailboxImportState,
         MailboxSyncResult, Message, OutboundMessage, ReplyAttempt, SkarbiecItemMetadata,
         SmtpSecurity, StatusResponse, SyncAllSummary, SyncSummary, UpdateMailboxRequest,
+        MAX_BODY_BYTES, MAX_DISPLAY_NAME_CHARS, MAX_HOST_LENGTH, MAX_IDEMPOTENCY_KEY_LENGTH,
+        MAX_POLL_INTERVAL_SECONDS, MAX_SUBJECT_CHARS, MIN_POLL_INTERVAL_SECONDS,
     },
     skarbiec::{ResolvedCredentials, SkarbiecResolver, GOOGLE_ADMIN_DELEGATION_URL},
 };
@@ -64,7 +66,8 @@ impl AppState {
         poll_interval_seconds: u64,
         callback_base_url: &str,
     ) -> Result<Self, AppError> {
-        if !(15..=86_400).contains(&poll_interval_seconds) {
+        if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS).contains(&poll_interval_seconds)
+        {
             return Err(AppError::invalid(
                 "POLL_INTERVAL_INVALID",
                 "poll interval must be between 15 and 86400 seconds",
@@ -1020,7 +1023,9 @@ async fn verify_gmail_app_password(
 }
 
 fn validate_mailbox(mailbox: &Mailbox) -> Result<(), AppError> {
-    if mailbox.display_name.is_empty() || mailbox.display_name.chars().count() > 200 {
+    if mailbox.display_name.is_empty()
+        || mailbox.display_name.chars().count() > MAX_DISPLAY_NAME_CHARS
+    {
         return Err(AppError::invalid(
             "MAILBOX_PROFILE_INVALID",
             "display_name must contain between 1 and 200 characters",
@@ -1034,7 +1039,7 @@ fn validate_mailbox(mailbox: &Mailbox) -> Result<(), AppError> {
         ("smtp_host", mailbox.smtp_host.as_str()),
     ] {
         if value.is_empty()
-            || value.len() > 253
+            || value.len() > MAX_HOST_LENGTH
             || value.contains("://")
             || value.chars().any(char::is_whitespace)
         {
@@ -1050,7 +1055,9 @@ fn validate_mailbox(mailbox: &Mailbox) -> Result<(), AppError> {
             "mail server ports must be nonzero",
         ));
     }
-    if !(15..=86_400).contains(&mailbox.poll_interval_seconds) {
+    if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS)
+        .contains(&mailbox.poll_interval_seconds)
+    {
         return Err(AppError::invalid(
             "MAILBOX_PROFILE_INVALID",
             "poll_interval_seconds must be between 15 and 86400",
@@ -1061,7 +1068,10 @@ fn validate_mailbox(mailbox: &Mailbox) -> Result<(), AppError> {
 
 fn validate_reply_request(request: &CreateReplyRequest) -> Result<(), AppError> {
     let key = request.idempotency_key.trim();
-    if key.is_empty() || key.len() > 200 || key.chars().any(char::is_whitespace) {
+    if key.is_empty()
+        || key.len() > MAX_IDEMPOTENCY_KEY_LENGTH
+        || key.chars().any(char::is_whitespace)
+    {
         return Err(AppError::invalid(
             "IDEMPOTENCY_KEY_INVALID",
             "idempotency_key must contain 1 to 200 non-whitespace characters",
@@ -1073,7 +1083,7 @@ fn validate_reply_request(request: &CreateReplyRequest) -> Result<(), AppError> 
             "reply body must not be empty",
         ));
     }
-    if request.body.len() > 256 * 1024 {
+    if request.body.len() > MAX_BODY_BYTES {
         return Err(AppError::invalid(
             "REPLY_BODY_TOO_LARGE",
             "reply body exceeds the 256 KiB limit",
@@ -1093,14 +1103,17 @@ fn validate_outbound_request(
     request: &CreateOutboundRequest,
 ) -> Result<NormalizedOutbound, AppError> {
     let key = request.idempotency_key.trim();
-    if key.is_empty() || key.len() > 200 || key.chars().any(char::is_whitespace) {
+    if key.is_empty()
+        || key.len() > MAX_IDEMPOTENCY_KEY_LENGTH
+        || key.chars().any(char::is_whitespace)
+    {
         return Err(AppError::invalid(
             "IDEMPOTENCY_KEY_INVALID",
             "idempotency_key must contain 1 to 200 non-whitespace characters",
         ));
     }
     let subject = request.subject.trim().to_string();
-    if subject.is_empty() || subject.chars().count() > 500 {
+    if subject.is_empty() || subject.chars().count() > MAX_SUBJECT_CHARS {
         return Err(AppError::invalid(
             "OUTBOUND_SUBJECT_INVALID",
             "subject must contain between 1 and 500 characters",
@@ -1112,7 +1125,7 @@ fn validate_outbound_request(
             "outbound body must not be empty",
         ));
     }
-    if request.body.len() > 256 * 1024 {
+    if request.body.len() > MAX_BODY_BYTES {
         return Err(AppError::invalid(
             "OUTBOUND_BODY_TOO_LARGE",
             "outbound body exceeds the 256 KiB limit",

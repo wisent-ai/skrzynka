@@ -2,7 +2,10 @@ use crate::{
     db::MailboxConfig,
     error::AppError,
     gmail::GmailProfile,
-    models::{CreateMailboxRequest, SkarbiecItemMetadata, SmtpSecurity},
+    models::{
+        CreateMailboxRequest, SkarbiecItemMetadata, SmtpSecurity, MAX_DISPLAY_NAME_CHARS,
+        MAX_HOST_LENGTH, MAX_ITEM_ID_LENGTH, MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS,
+    },
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use lettre::Address;
@@ -15,6 +18,12 @@ use std::{
 use tokio::{io::AsyncWriteExt, process::Command, sync::Mutex};
 
 const MAX_SKARBIEC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+/// A mailbox is polled every minute unless its profile says otherwise.
+const DEFAULT_POLL_INTERVAL_SECONDS: u64 = 60;
+/// A cached token is reused only while it has more than a minute left.
+const TOKEN_EXPIRY_MARGIN_SECONDS: i64 = 60;
+/// The Skarbiec CLI answers within seconds; longer than this is a stuck vault.
+const SKARBIEC_COMMAND_TIMEOUT_SECONDS: u64 = 15;
 const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "skrzynka-google-oauth-desktop";
 const GOOGLE_SERVICE_ACCOUNT_ITEM_ID: &str = "skrzynka-google-service-account";
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
@@ -457,14 +466,17 @@ impl SkarbiecResolver {
         if imap_port == 0 || smtp_port == 0 {
             return Err(profile_error("mail server ports must be nonzero"));
         }
-        let poll_interval_seconds = request.poll_interval_seconds.unwrap_or(60);
-        if !(15..=86_400).contains(&poll_interval_seconds) {
+        let poll_interval_seconds = request
+            .poll_interval_seconds
+            .unwrap_or(DEFAULT_POLL_INTERVAL_SECONDS);
+        if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS).contains(&poll_interval_seconds)
+        {
             return Err(profile_error(
                 "poll_interval_seconds must be between 15 and 86400",
             ));
         }
         let display_name = display_name.trim().to_string();
-        if display_name.is_empty() || display_name.chars().count() > 200 {
+        if display_name.is_empty() || display_name.chars().count() > MAX_DISPLAY_NAME_CHARS {
             return Err(profile_error(
                 "display_name must contain between 1 and 200 characters",
             ));
@@ -497,7 +509,8 @@ impl SkarbiecResolver {
             .get(credential_item_id)
             .cloned()
         {
-            if cached.expires_at > Utc::now() + ChronoDuration::seconds(60) {
+            if cached.expires_at > Utc::now() + ChronoDuration::seconds(TOKEN_EXPIRY_MARGIN_SECONDS)
+            {
                 return Ok(cached.value);
             }
         }
@@ -649,7 +662,8 @@ impl SkarbiecResolver {
         user_email: &str,
     ) -> Result<String, AppError> {
         if let Some(cached) = self.token_cache.lock().await.get(cache_key).cloned() {
-            if cached.expires_at > Utc::now() + ChronoDuration::seconds(60) {
+            if cached.expires_at > Utc::now() + ChronoDuration::seconds(TOKEN_EXPIRY_MARGIN_SECONDS)
+            {
                 return Ok(cached.value);
             }
         }
@@ -781,22 +795,25 @@ impl SkarbiecResolver {
             )
         })?;
         drop(stdin);
-        let output = tokio::time::timeout(Duration::from_secs(15), child.wait_with_output())
-            .await
-            .map_err(|_| {
-                AppError::dependency(
-                    "SKARBIEC_TIMEOUT",
-                    "Skarbiec did not finish within 15 seconds",
-                    true,
-                )
-            })?
-            .map_err(|_| {
-                AppError::dependency(
-                    "SKARBIEC_WRITE_FAILED",
-                    "Skarbiec did not persist Gmail authorization",
-                    false,
-                )
-            })?;
+        let output = tokio::time::timeout(
+            Duration::from_secs(SKARBIEC_COMMAND_TIMEOUT_SECONDS),
+            child.wait_with_output(),
+        )
+        .await
+        .map_err(|_| {
+            AppError::dependency(
+                "SKARBIEC_TIMEOUT",
+                "Skarbiec did not finish within 15 seconds",
+                true,
+            )
+        })?
+        .map_err(|_| {
+            AppError::dependency(
+                "SKARBIEC_WRITE_FAILED",
+                "Skarbiec did not persist Gmail authorization",
+                false,
+            )
+        })?;
         if !output.status.success() {
             return Err(AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
@@ -828,22 +845,25 @@ impl SkarbiecResolver {
         let mut command = Command::new(&self.binary);
         command.args(arguments);
         command.kill_on_drop(true);
-        tokio::time::timeout(Duration::from_secs(15), command.output())
-            .await
-            .map_err(|_| {
-                AppError::dependency(
-                    "SKARBIEC_TIMEOUT",
-                    "Skarbiec did not finish within 15 seconds",
-                    true,
-                )
-            })?
-            .map_err(|_| {
-                AppError::dependency(
-                    "SKARBIEC_UNAVAILABLE",
-                    "Skarbiec could not be started from the configured path",
-                    true,
-                )
-            })
+        tokio::time::timeout(
+            Duration::from_secs(SKARBIEC_COMMAND_TIMEOUT_SECONDS),
+            command.output(),
+        )
+        .await
+        .map_err(|_| {
+            AppError::dependency(
+                "SKARBIEC_TIMEOUT",
+                "Skarbiec did not finish within 15 seconds",
+                true,
+            )
+        })?
+        .map_err(|_| {
+            AppError::dependency(
+                "SKARBIEC_UNAVAILABLE",
+                "Skarbiec could not be started from the configured path",
+                true,
+            )
+        })
     }
 }
 
@@ -904,7 +924,10 @@ fn profile_preference(item_id: &str) -> u8 {
 }
 
 fn validate_item_id(item_id: &str) -> Result<(), AppError> {
-    if item_id.is_empty() || item_id.len() > 256 || item_id.chars().any(char::is_whitespace) {
+    if item_id.is_empty()
+        || item_id.len() > MAX_ITEM_ID_LENGTH
+        || item_id.chars().any(char::is_whitespace)
+    {
         return Err(profile_error(
             "skarbiec_item_id must contain 1 to 256 non-whitespace characters",
         ));
@@ -914,7 +937,7 @@ fn validate_item_id(item_id: &str) -> Result<(), AppError> {
 
 fn validate_hostname(value: &str, field: &str) -> Result<(), AppError> {
     if value.is_empty()
-        || value.len() > 253
+        || value.len() > MAX_HOST_LENGTH
         || value.contains("://")
         || value.chars().any(char::is_whitespace)
     {

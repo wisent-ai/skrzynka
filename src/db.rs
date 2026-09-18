@@ -953,7 +953,7 @@ fn mailbox_from_row(row: &Row<'_>) -> rusqlite::Result<Mailbox> {
         smtp_port: checked_u16(row.get::<_, i64>(9)?, 9)?,
         smtp_security: parse_enum(row.get::<_, String>(10)?, 10)?,
         poll_interval_seconds: checked_u64(row.get::<_, i64>(11)?, 11)?,
-        enabled: row.get::<_, i64>(12)? != 0,
+        enabled: row.get::<_, bool>(12)?,
         last_uid: checked_u32(row.get::<_, i64>(13)?, 13)?,
         last_sync_at: row.get(14)?,
         last_error_code: row.get(15)?,

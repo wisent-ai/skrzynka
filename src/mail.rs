@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    models::{Mailbox, Message, NewMessage, OutboundMessage, SmtpSecurity},
+    models::{Mailbox, Message, NewMessage, OutboundMessage, SmtpSecurity, MAX_BODY_BYTES},
     skarbiec::ResolvedCredentials,
 };
 use lettre::{
@@ -15,7 +15,8 @@ use uuid::Uuid;
 mod incoming;
 pub use incoming::{fetch_messages, verify_gmail_app_password};
 
-const MAX_BODY_BYTES: usize = 256 * 1024;
+/// An SMTP submission that has not completed in half a minute is a dead connection.
+const SMTP_TIMEOUT_SECONDS: u64 = 30;
 
 pub fn send_reply(
     mailbox: &Mailbox,
@@ -158,7 +159,9 @@ fn deliver(
             .credentials(Credentials::new(username.clone(), access_token.clone()))
             .authentication(vec![Mechanism::Xoauth2]),
     };
-    let transport = builder.timeout(Some(Duration::from_secs(30))).build();
+    let transport = builder
+        .timeout(Some(Duration::from_secs(SMTP_TIMEOUT_SECONDS)))
+        .build();
     transport.send(outgoing).map_err(|error| {
         // The server's own sentence is the only thing that says why it
         // refused. A fixed message sends the operator hunting through logs

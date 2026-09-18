@@ -15,6 +15,9 @@ const JOURNEY_ID: &str = "first-use";
 const STATE_SCHEMA: &str = "skrzynka.onboarding-state.v1";
 const FIRST_SUCCESS_FACT: &str = "mailbox_import_persisted";
 const DEFINITION: &str = include_str!("onboarding_first_use.json");
+/// A canonical first-use journey has three to five screens.
+const MIN_JOURNEY_SCREENS: usize = 3;
+const MAX_JOURNEY_SCREENS: usize = 5;
 
 #[derive(Deserialize, Serialize)]
 struct OnboardingState {
@@ -112,7 +115,7 @@ fn canonical_definition() -> Result<Value, AppError> {
         .get("screens")
         .and_then(Value::as_array)
         .ok_or_else(|| AppError::internal("canonical onboarding journey has no screens"))?;
-    if !(3..=5).contains(&screens.len()) {
+    if !(MIN_JOURNEY_SCREENS..=MAX_JOURNEY_SCREENS).contains(&screens.len()) {
         return Err(AppError::internal(
             "canonical onboarding journey must have three to five screens",
         ));

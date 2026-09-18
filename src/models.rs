@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+/// The bounds a mailbox profile is held to: how often it may be polled, and how long its
+/// display name, its host names (RFC 1035) and its Skarbiec item id may be.
+pub const MIN_POLL_INTERVAL_SECONDS: u64 = 15;
+pub const MAX_POLL_INTERVAL_SECONDS: u64 = 86_400;
+pub const MAX_DISPLAY_NAME_CHARS: usize = 200;
+pub const MAX_HOST_LENGTH: usize = 253;
+pub const MAX_ITEM_ID_LENGTH: usize = 256;
+/// The bounds a reply or outbound request is held to: its idempotency key, its subject and
+/// its body, which is also the largest body file the CLI reads.
+pub const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 200;
+pub const MAX_SUBJECT_CHARS: usize = 500;
+pub const MAX_BODY_BYTES: usize = 256 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct ParseModelError(pub String);
