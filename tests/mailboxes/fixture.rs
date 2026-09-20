@@ -51,11 +51,19 @@ impl MailboxFixture {
         // `~/.skrzynka` state its own commands use: never `/tmp`, which this
         // machine sweeps on sight, and never `~/.stado/work`, which belongs
         // to Stado. `Drop` removes the whole root, so nothing accumulates.
+        // The case name is carried into the directory so a leftover root says
+        // which test made it, bounded to twelve bytes because the gpg socket
+        // path above is the hard limit.
+        let label: String = test_name
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
+            .take(12)
+            .collect();
         let root = PathBuf::from(env!("HOME"))
             .join(".skrzynka")
             .join("test-runs")
             .join(format!(
-                "{:x}{:08x}{sequence:x}",
+                "{label}-{:x}{:08x}{sequence:x}",
                 std::process::id(),
                 unique & 0xffff_ffff
             ));

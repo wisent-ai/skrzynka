@@ -9,6 +9,9 @@ use std::collections::BTreeMap;
 
 const MAX_RAW_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MESSAGES_PER_SYNC: usize = 200;
+/// Gmail's own IMAP endpoint: the only host the Gmail connection paths speak
+/// for, and the boundary that decides whether a refusal is Google's.
+pub const GMAIL_IMAP_HOST: &str = "imap.gmail.com";
 
 #[derive(Debug)]
 pub struct FetchedMessages {
@@ -35,60 +38,79 @@ impl imap::Authenticator for OAuth2Authenticator<'_> {
     }
 }
 
+/// Why an IMAP password login did not complete: the code this product raises,
+/// whether retrying can help, and the provider's own words.
+///
+/// The two halves are kept apart because two callers need different ones. The
+/// synchronizer records the full refusal, guidance included, on the mailbox.
+/// The connection report supplies its own next step and would otherwise print
+/// an instruction to run the command the operator has just run.
+pub struct PasswordLoginRefusal {
+    pub code: &'static str,
+    pub retryable: bool,
+    pub evidence: String,
+}
+
+impl PasswordLoginRefusal {
+    /// The refusal a caller raises or persists: what happened, what to do, and
+    /// the provider's words at the end.
+    pub fn into_error(self, email: &str, skarbiec_item_id: &str) -> AppError {
+        let mut failure = match self.code {
+            "GMAIL_IMAP_PASSWORD_REJECTED" => {
+                gmail::google_imap_password_rejected(email, skarbiec_item_id)
+            }
+            code => dependency_error(
+                code,
+                "IMAP LOGIN did not complete; inspect the reported provider or connection error",
+                self.retryable,
+            ),
+        };
+        failure.message.push(' ');
+        failure.message.push_str(&self.evidence);
+        failure
+    }
+}
+
 /// Prove a Gmail password credential without selecting or reading the inbox.
 /// The caller persists only after this login succeeds.
-pub fn verify_gmail_app_password(
-    email: &str,
-    password: &str,
-    skarbiec_item_id: &str,
-) -> Result<(), AppError> {
-    let client = imap::ClientBuilder::new("imap.gmail.com", 993)
+pub fn verify_gmail_app_password(email: &str, password: &str) -> Result<(), PasswordLoginRefusal> {
+    let client = imap::ClientBuilder::new(GMAIL_IMAP_HOST, 993)
         .mode(imap::ConnectionMode::Tls)
         .tls_kind(imap::TlsKind::Native)
         .connect()
-        .map_err(|_| {
-            dependency_error(
-                "IMAP_UNAVAILABLE",
-                "IMAP server could not be reached over TLS",
-                true,
-            )
+        .map_err(|error| PasswordLoginRefusal {
+            code: "IMAP_UNAVAILABLE",
+            retryable: true,
+            evidence: format!("IMAP TLS connect to {GMAIL_IMAP_HOST}: {error:?}"),
         })?;
-    let mut session = client.login(email, password).map_err(|(error, _)| {
-        password_login_error(error, "imap.gmail.com", email, skarbiec_item_id, password)
-    })?;
+    let mut session = client
+        .login(email, password)
+        .map_err(|(error, _)| password_login_refusal(error, GMAIL_IMAP_HOST, password))?;
     let _ = session.logout();
     Ok(())
 }
 
 // Preserve the server's response code as well as its explanation. A socket
 // failure is not evidence that Google rejected the password.
-fn password_login_error(
-    error: imap::Error,
-    host: &str,
-    email: &str,
-    item: &str,
-    password: &str,
-) -> AppError {
-    let mut failure =
-        if matches!(&error, imap::Error::No(_)) && host.eq_ignore_ascii_case("imap.gmail.com") {
-            gmail::google_imap_password_rejected(email, item)
-        } else {
-            dependency_error(
-                "IMAP_AUTHENTICATION_FAILED",
-                "IMAP LOGIN did not complete; inspect the reported provider or connection error",
-                matches!(&error, imap::Error::Io(_) | imap::Error::ConnectionLost),
-            )
-        };
+fn password_login_refusal(error: imap::Error, host: &str, password: &str) -> PasswordLoginRefusal {
+    let rejected_by_google =
+        matches!(&error, imap::Error::No(_)) && host.eq_ignore_ascii_case(GMAIL_IMAP_HOST);
     let detail = format!("{error:?}");
     let detail = if password.is_empty() {
         detail
     } else {
         detail.replace(password, "[redacted]")
     };
-    failure
-        .message
-        .push_str(&format!(" IMAP LOGIN at {host}: {detail}"));
-    failure
+    PasswordLoginRefusal {
+        code: if rejected_by_google {
+            "GMAIL_IMAP_PASSWORD_REJECTED"
+        } else {
+            "IMAP_AUTHENTICATION_FAILED"
+        },
+        retryable: !rejected_by_google
+            && matches!(&error, imap::Error::Io(_) | imap::Error::ConnectionLost),
+        evidence: format!("IMAP LOGIN at {host}: {detail}"),
+    }
 }
 
 pub fn fetch_messages(
@@ -109,13 +131,8 @@ pub fn fetch_messages(
     let mut session = match credentials {
         ResolvedCredentials::Password { username, password } => {
             client.login(username, password).map_err(|(error, _)| {
-                password_login_error(
-                    error,
-                    &mailbox.imap_host,
-                    &mailbox.email,
-                    &mailbox.skarbiec_item_id,
-                    password,
-                )
+                password_login_refusal(error, &mailbox.imap_host, password)
+                    .into_error(&mailbox.email, &mailbox.skarbiec_item_id)
             })?
         }
         ResolvedCredentials::OAuth2 {

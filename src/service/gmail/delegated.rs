@@ -1,39 +1,19 @@
 //! Gmail through a delegated service account or an OAuth grant.
 
-use super::super::{AppState, GmailDelegationStatus, GmailOAuthStatusError, GmailOAuthStatusResponse};
+use super::super::{AppState, GmailOAuthStatusError, GmailOAuthStatusResponse};
+use crate::{
+    error::AppError,
+    gmail::{
+        GmailOAuthCallback, GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, StartGmailOAuthRequest,
+        StartGmailOAuthResponse,
+    },
+    models::{CreateMailboxRequest, Mailbox, SmtpSecurity},
+};
 use lettre::Address;
 use std::str::FromStr;
 use uuid::Uuid;
-use crate::{
-
-    error::AppError,
-    gmail::{GmailOAuthCallback, GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, StartGmailOAuthRequest, StartGmailOAuthResponse},
-    models::{CreateMailboxRequest, Mailbox, SmtpSecurity},
-    skarbiec::GOOGLE_ADMIN_DELEGATION_URL,
-};
 
 impl AppState {
-    /// Delegation is reportable, never failing: a missing service-account item
-    /// is a state the Connect surface must render, not an error.
-    pub async fn gmail_delegation_status(&self) -> GmailDelegationStatus {
-        match self.resolver.google_service_account().await {
-            Ok(account) => GmailDelegationStatus {
-                configured: true,
-                service_account: Some(account.client_email),
-                client_id: Some(account.client_id),
-                scope: "https://mail.google.com/",
-                admin_console_url: GOOGLE_ADMIN_DELEGATION_URL,
-            },
-            Err(_) => GmailDelegationStatus {
-                configured: false,
-                service_account: None,
-                client_id: None,
-                scope: "https://mail.google.com/",
-                admin_console_url: GOOGLE_ADMIN_DELEGATION_URL,
-            },
-        }
-    }
-
     /// Connect a Workspace mailbox through domain-wide delegation: prove the
     /// grant by minting a token for the address, persist the credential bundle
     /// in Skarbiec, then create or return the mailbox.

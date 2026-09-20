@@ -34,13 +34,20 @@ function runMailboxTarget() {
 }
 
 test("real mailbox add, edit, and removal journeys pass", { timeout: 600_000 }, async () => {
+  // Each name is the module its case lives in. The 2026-09-09 split moved
+  // `mailbox_add` into `credentials` and `schema_three_migration` into
+  // `lifecycle` without moving these two strings, so this spec was asserting
+  // two result lines cargo can never print.
   const histories = [
-    "lifecycle::mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accounts",
+    "credentials::mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accounts",
     "lifecycle::mailbox_disable_changes_only_enabled_state_and_refuses_unknown_accounts",
     "lifecycle::mailbox_enable_changes_only_enabled_state_and_refuses_unknown_accounts",
     "lifecycle::mailbox_remove_requires_confirmation_deletes_local_state_and_preserves_skarbiec",
-    "credentials::schema_three_migration_adds_smtp_credential_without_rewriting_mail_history",
+    "lifecycle::schema_three_migration_adds_smtp_credential_without_rewriting_mail_history",
     "credentials::gmail_app_password_mailbox_selector_refusals_leave_credentials_and_mailboxes_unchanged",
+    "readiness::every_connection_path_is_reported_and_none_is_usable_without_its_declaration",
+    "readiness::a_consumer_account_is_refused_for_delegation_without_asking_google",
+    "readiness::an_address_that_is_not_an_address_is_refused_before_anything_is_contacted",
   ];
   const result = await runMailboxTarget();
   assert.equal(

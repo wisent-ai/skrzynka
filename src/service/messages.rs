@@ -4,7 +4,10 @@ use super::AppState;
 use crate::{
     error::AppError,
     mail,
-    models::{CreateReplyRequest, DeliveryStatus, Message, ReplyAttempt, MAX_BODY_BYTES, MAX_IDEMPOTENCY_KEY_LENGTH},
+    models::{
+        CreateReplyRequest, DeliveryStatus, Message, ReplyAttempt, MAX_BODY_BYTES,
+        MAX_IDEMPOTENCY_KEY_LENGTH,
+    },
 };
 use uuid::Uuid;
 
@@ -111,7 +114,6 @@ impl AppState {
             ),
         }
     }
-
 }
 
 fn validate_reply_request(request: &CreateReplyRequest) -> Result<(), AppError> {

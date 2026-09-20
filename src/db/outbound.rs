@@ -1,7 +1,10 @@
 //! Outbound message rows: begin, update, read and interrupted-send recovery.
 
 use super::{is_unique_constraint, parse_enum, parse_uuid, Database};
-use crate::{error::AppError, models::{DeliveryStatus, OutboundMessage}};
+use crate::{
+    error::AppError,
+    models::{DeliveryStatus, OutboundMessage},
+};
 use chrono::Utc;
 use rusqlite::{params, OptionalExtension, Row};
 use uuid::Uuid;

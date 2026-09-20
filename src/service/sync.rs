@@ -106,7 +106,10 @@ impl AppState {
         self.sync_mailboxes(mailboxes).await
     }
 
-    pub(super) async fn sync_mailboxes(&self, mailboxes: Vec<Mailbox>) -> Result<SyncAllSummary, AppError> {
+    pub(super) async fn sync_mailboxes(
+        &self,
+        mailboxes: Vec<Mailbox>,
+    ) -> Result<SyncAllSummary, AppError> {
         let mut results = Vec::with_capacity(mailboxes.len());
         for mailbox in mailboxes {
             match self.sync_mailbox_internal(mailbox.id).await {
@@ -131,5 +134,4 @@ impl AppState {
             mailboxes: results,
         })
     }
-
 }

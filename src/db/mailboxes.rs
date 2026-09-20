@@ -1,6 +1,9 @@
 //! Mailbox rows: creation, listing, update, deletion and sync bookkeeping.
 
-use super::{checked_u16, checked_u32, checked_u64, is_unique_constraint, parse_enum, parse_uuid, Database, MailboxConfig};
+use super::{
+    checked_u16, checked_u32, checked_u64, is_unique_constraint, parse_enum, parse_uuid, Database,
+    MailboxConfig,
+};
 use crate::{error::AppError, models::Mailbox};
 use chrono::Utc;
 use rusqlite::{params, OptionalExtension, Row};

@@ -1,7 +1,10 @@
 //! Message rows: the import commit and message reads.
 
 use super::{checked_u32, is_unique_constraint, parse_uuid, Database};
-use crate::{error::AppError, models::{Mailbox, Message, NewMessage}};
+use crate::{
+    error::AppError,
+    models::{Mailbox, Message, NewMessage},
+};
 use chrono::Utc;
 use rusqlite::{params, OptionalExtension, Row};
 use std::collections::{HashMap, HashSet};

@@ -1,6 +1,11 @@
 //! Google OAuth clients, service accounts and the access tokens minted from them.
 
-use super::{invalid_item, optional_text, required_text, CachedAccessToken, GoogleOAuthClient, GoogleServiceAccount, SkarbiecResolver, GMAIL_DELEGATION_SCOPE, GOOGLE_ADMIN_DELEGATION_URL, GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID, GOOGLE_TOKEN_URI, TOKEN_EXPIRY_MARGIN_SECONDS};
+use super::{
+    invalid_item, optional_text, required_text, CachedAccessToken, GoogleOAuthClient,
+    GoogleServiceAccount, SkarbiecResolver, GMAIL_DELEGATION_SCOPE, GOOGLE_ADMIN_DELEGATION_URL,
+    GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID, GOOGLE_TOKEN_URI,
+    TOKEN_EXPIRY_MARGIN_SECONDS,
+};
 use crate::error::AppError;
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::{json, Value};
@@ -273,5 +278,4 @@ impl SkarbiecResolver {
         );
         Ok(access_token)
     }
-
 }

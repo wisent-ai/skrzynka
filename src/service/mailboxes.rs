@@ -157,7 +157,6 @@ impl AppState {
     pub fn delete_mailbox(&self, organization_id: &str, id: Uuid) -> Result<(), AppError> {
         self.database.delete_mailbox(organization_id, id)
     }
-
 }
 
 fn mailbox_from_config(config: &MailboxConfig) -> Mailbox {

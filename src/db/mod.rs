@@ -205,7 +205,6 @@ impl Database {
     }
 }
 
-
 fn parse_uuid(value: String) -> rusqlite::Result<Uuid> {
     Uuid::parse_str(&value).map_err(|error| conversion_error(0, error))
 }

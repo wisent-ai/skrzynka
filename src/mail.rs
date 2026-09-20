@@ -13,7 +13,7 @@ use std::{str::FromStr, time::Duration};
 use uuid::Uuid;
 
 mod incoming;
-pub use incoming::{fetch_messages, verify_gmail_app_password};
+pub use incoming::{fetch_messages, verify_gmail_app_password, GMAIL_IMAP_HOST};
 
 /// An SMTP submission that has not completed in half a minute is a dead connection.
 const SMTP_TIMEOUT_SECONDS: u64 = 30;

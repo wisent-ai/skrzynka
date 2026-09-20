@@ -2,14 +2,14 @@
 
 use super::{print_json, AUTHORIZATION_POLL_MILLIS, LOCAL_CLI_ORGANIZATION};
 use crate::{
-    db::Database,
-    error::AppError,
-    gmail::StartGmailOAuthRequest,
-    service::AppState,
+    db::Database, error::AppError, gmail::StartGmailOAuthRequest, service::AppState,
     skarbiec::SkarbiecResolver,
 };
 use axum::http::StatusCode;
-use std::{io::{self, Read}, net::SocketAddr};
+use std::{
+    io::{self, Read},
+    net::SocketAddr,
+};
 
 pub(super) async fn authorize_gmail(
     database: Database,
@@ -42,7 +42,9 @@ pub(super) async fn authorize_gmail(
 
     let callback_state = state.clone();
     let server =
-        tokio::spawn(async move { axum::serve(listener, crate::api::router(callback_state)).await });
+        tokio::spawn(
+            async move { axum::serve(listener, crate::api::router(callback_state)).await },
+        );
     loop {
         let status = state
             .gmail_oauth_status(LOCAL_CLI_ORGANIZATION, flow.flow_id)
@@ -70,7 +72,10 @@ pub(super) async fn authorize_gmail(
                     if let Some((client_id, redirect_uri)) =
                         crate::gmail::authorization_operands(&flow.authorization_url)
                     {
-                        return Err(crate::gmail::redirect_not_registered(&client_id, &redirect_uri));
+                        return Err(crate::gmail::redirect_not_registered(
+                            &client_id,
+                            &redirect_uri,
+                        ));
                     }
                 }
             }

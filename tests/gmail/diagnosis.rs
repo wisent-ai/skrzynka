@@ -20,8 +20,7 @@ fn the_captured_google_error_decodes_to_its_code() {
 fn a_landing_url_without_an_error_carries_no_code() {
     // A completed flow must never be reported as a registration problem.
     assert!(
-        oauth_error_code("http://127.0.0.1:8788/v1/gmail/oauth/callback?code=x&state=y")
-            .is_none()
+        oauth_error_code("http://127.0.0.1:8788/v1/gmail/oauth/callback?code=x&state=y").is_none()
     );
     assert!(oauth_error_code("https://accounts.google.com/signin/oauth/consent").is_none());
     assert!(oauth_error_code("https://accounts.google.com/x?authError=").is_none());
@@ -30,8 +29,7 @@ fn a_landing_url_without_an_error_carries_no_code() {
 
 #[test]
 fn the_operands_come_from_the_url_that_was_handed_out() {
-    let url =
-        "https://accounts.google.com/o/oauth2/auth?client_id=abc.apps.googleusercontent.com\
+    let url = "https://accounts.google.com/o/oauth2/auth?client_id=abc.apps.googleusercontent.com\
                &redirect_uri=http%3A%2F%2F127.0.0.1%3A8788%2Fv1%2Fgmail%2Foauth%2Fcallback\
                &response_type=code";
     let (client_id, redirect_uri) = authorization_operands(url).expect("operands");
@@ -68,20 +66,30 @@ retry"
 }
 
 #[test]
-fn google_imap_password_rejected_names_mailbox_and_credential_item() {
+fn google_imap_password_rejected_names_mailbox_credential_item_and_the_report() {
     let error = google_imap_password_rejected("user@gmail.com", "gmail-personal");
     assert_eq!(error.code, "GMAIL_IMAP_PASSWORD_REJECTED");
     assert!(
         !error.retryable,
         "fixing a password with OAuth or app password is not a retry"
     );
-    // Message must be exactly as specified, with operands interpolated
     assert_eq!(
         error.message,
-        "Google refused IMAP authentication for mailbox user@gmail.com using the password credential associated with Skarbiec item 'gmail-personal'. Supply a valid Google app-specific password through stdin to `skrzynka gmail app-password --email user@gmail.com`, or authorize the account with `skrzynka gmail authorize --skarbiec-item gmail-personal`."
+        "Google refused IMAP authentication for mailbox user@gmail.com using the password credential associated with Skarbiec item 'gmail-personal'. Supply a valid Google app-specific password through stdin to `skrzynka gmail app-password --email user@gmail.com`. Run `skrzynka gmail connection --email user@gmail.com` for which connection paths this account can actually use."
+    );
+    // The refusal used to recommend `gmail authorize` to every account. That
+    // path depends on an OAuth client whose redirect registration is a fact
+    // about this installation, so the refusal points at the report that
+    // measures it instead of asserting it.
+    assert!(
+        !error.message.contains("gmail authorize"),
+        "an unmeasured OAuth recommendation is what this refusal stopped making"
     );
     // Reject any argv-secret patterns: password= or =< constructions must never appear
-    assert!(!error.message.contains("password="), "message must not suggest password= argv form; secrets cannot be passed on command line");
+    assert!(
+        !error.message.contains("password="),
+        "message must not suggest password= argv form; secrets cannot be passed on command line"
+    );
     assert!(
         !error.message.contains("=<"),
         "message must not contain =< placeholder; all guidance must be concrete"

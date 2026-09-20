@@ -1,6 +1,10 @@
 //! Skarbiec items: the catalog, Google profiles, and the Gmail credentials written back.
 
-use super::{cli::bounded_stdout, invalid_item, looks_like_google_profile, profile_preference, validate_item_id, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID};
+use super::{
+    cli::bounded_stdout, invalid_item, looks_like_google_profile, profile_preference,
+    validate_item_id, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID,
+    GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
+};
 use crate::{error::AppError, gmail::GmailProfile, models::SkarbiecItemMetadata};
 use lettre::Address;
 use serde_json::{json, Value};
@@ -250,5 +254,4 @@ impl SkarbiecResolver {
         self.token_cache.lock().await.remove(&item_id);
         Ok(item_id)
     }
-
 }

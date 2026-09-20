@@ -1,6 +1,9 @@
 //! The canonical first-use journey definition and the screen lookups over it.
 
-use super::{DEFINITION, FIRST_SUCCESS_FACT, JOURNEY_ID, MAX_JOURNEY_SCREENS, MIN_JOURNEY_SCREENS, PRODUCT_ID};
+use super::{
+    DEFINITION, FIRST_SUCCESS_FACT, JOURNEY_ID, MAX_JOURNEY_SCREENS, MIN_JOURNEY_SCREENS,
+    PRODUCT_ID,
+};
 use crate::error::AppError;
 use serde_json::Value;
 use std::collections::HashSet;

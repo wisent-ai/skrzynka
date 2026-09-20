@@ -4,7 +4,10 @@ use super::AppState;
 use crate::{
     error::AppError,
     mail,
-    models::{CreateOutboundRequest, DeliveryStatus, Mailbox, OutboundMessage, MAX_BODY_BYTES, MAX_IDEMPOTENCY_KEY_LENGTH, MAX_SUBJECT_CHARS},
+    models::{
+        CreateOutboundRequest, DeliveryStatus, Mailbox, OutboundMessage, MAX_BODY_BYTES,
+        MAX_IDEMPOTENCY_KEY_LENGTH, MAX_SUBJECT_CHARS,
+    },
 };
 use lettre::Address;
 use std::str::FromStr;

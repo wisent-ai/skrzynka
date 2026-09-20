@@ -1,11 +1,15 @@
 //! The broker: construction, profiles, starting a flow, receiving the callback, status.
 
 use super::{
-    FlowRecord, GmailAuthorization, GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFailure, GmailOAuthFlowSnapshot,
-    GmailOAuthFlowStatus, GmailProfile, PendingFlow, StartGmailOAuthRequest, StartGmailOAuthResponse,
-    FLOW_LIFETIME_MINUTES, GMAIL_SCOPES, MAX_AUTHORIZATION_CODE_LENGTH,
+    FlowRecord, GmailAuthorization, GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFailure,
+    GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, GmailProfile, GmailRedirectProbe, PendingFlow,
+    StartGmailOAuthRequest, StartGmailOAuthResponse, FLOW_LIFETIME_MINUTES, GMAIL_SCOPES,
+    MAX_AUTHORIZATION_CODE_LENGTH,
 };
-use crate::{error::AppError, skarbiec::SkarbiecResolver};
+use crate::{
+    error::AppError,
+    skarbiec::{GoogleOAuthClient, SkarbiecResolver},
+};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Duration, Utc};
 use reqwest::{Client, Url};
@@ -45,6 +49,33 @@ impl GmailOAuthBroker {
         self.resolver.list_google_profiles().await
     }
 
+    /// What Google answers today about the fixed OAuth client and this
+    /// process's own loopback callback.
+    ///
+    /// It starts no flow and stores no state: the URL is built exactly as a
+    /// real authorization would build it, handed to Google once, and the code
+    /// Google puts in the landing URL is read back. A `None` refusal means
+    /// Google did not refuse at the authorization page, which is weaker than
+    /// proof that the redirect is registered — only a completed flow proves
+    /// that.
+    pub async fn redirect_registration(&self) -> Result<GmailRedirectProbe, AppError> {
+        let oauth_client = self.resolver.google_oauth_client().await?;
+        let verifier = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+        let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+        let authorization_url = authorization_url(
+            &oauth_client,
+            &self.callback_url,
+            &challenge,
+            &Uuid::new_v4().to_string(),
+            None,
+        )?;
+        Ok(GmailRedirectProbe {
+            client_id: oauth_client.client_id,
+            redirect_uri: self.callback_url.to_string(),
+            refusal: super::diagnose_authorization(authorization_url.as_str()).await,
+        })
+    }
+
     pub async fn start(
         &self,
         organization_id: &str,
@@ -59,35 +90,13 @@ impl GmailOAuthBroker {
         let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
         let flow_id = Uuid::new_v4();
         let expires_at = Utc::now() + Duration::minutes(FLOW_LIFETIME_MINUTES);
-        let mut authorization_url = Url::parse(&oauth_client.auth_uri).map_err(|_| {
-            AppError::dependency(
-                "GMAIL_OAUTH_CLIENT_INVALID",
-                "Google OAuth client has an invalid authorization endpoint",
-                false,
-            )
-        })?;
-        if authorization_url.scheme() != "https"
-            || authorization_url.host_str() != Some("accounts.google.com")
-        {
-            return Err(AppError::dependency(
-                "GMAIL_OAUTH_CLIENT_INVALID",
-                "Google OAuth client authorization endpoint is not trusted",
-                false,
-            ));
-        }
-        authorization_url
-            .query_pairs_mut()
-            .append_pair("client_id", &oauth_client.client_id)
-            .append_pair("redirect_uri", self.callback_url.as_str())
-            .append_pair("response_type", "code")
-            .append_pair("scope", GMAIL_SCOPES)
-            .append_pair("access_type", "offline")
-            .append_pair("prompt", "consent")
-            .append_pair("include_granted_scopes", "true")
-            .append_pair("login_hint", &email)
-            .append_pair("code_challenge", &challenge)
-            .append_pair("code_challenge_method", "S256")
-            .append_pair("state", &flow_id.to_string());
+        let authorization_url = authorization_url(
+            &oauth_client,
+            &self.callback_url,
+            &challenge,
+            &flow_id.to_string(),
+            Some(&email),
+        )?;
 
         self.flows.lock().await.insert(
             flow_id,
@@ -205,4 +214,52 @@ impl GmailOAuthBroker {
             status: record.status.clone(),
         })
     }
+}
+
+/// The authorization URL Google is handed for one client and one loopback
+/// callback.
+///
+/// The started flow and the readiness probe both build it here, so a probe can
+/// never ask Google about a URL the real flow would not have handed out.
+fn authorization_url(
+    oauth_client: &GoogleOAuthClient,
+    callback_url: &Url,
+    challenge: &str,
+    state: &str,
+    login_hint: Option<&str>,
+) -> Result<Url, AppError> {
+    let mut authorization_url = Url::parse(&oauth_client.auth_uri).map_err(|_| {
+        AppError::dependency(
+            "GMAIL_OAUTH_CLIENT_INVALID",
+            "Google OAuth client has an invalid authorization endpoint",
+            false,
+        )
+    })?;
+    if authorization_url.scheme() != "https"
+        || authorization_url.host_str() != Some("accounts.google.com")
+    {
+        return Err(AppError::dependency(
+            "GMAIL_OAUTH_CLIENT_INVALID",
+            "Google OAuth client authorization endpoint is not trusted",
+            false,
+        ));
+    }
+    authorization_url
+        .query_pairs_mut()
+        .append_pair("client_id", &oauth_client.client_id)
+        .append_pair("redirect_uri", callback_url.as_str())
+        .append_pair("response_type", "code")
+        .append_pair("scope", GMAIL_SCOPES)
+        .append_pair("access_type", "offline")
+        .append_pair("prompt", "consent")
+        .append_pair("include_granted_scopes", "true")
+        .append_pair("code_challenge", challenge)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("state", state);
+    if let Some(login_hint) = login_hint {
+        authorization_url
+            .query_pairs_mut()
+            .append_pair("login_hint", login_hint);
+    }
+    Ok(authorization_url)
 }

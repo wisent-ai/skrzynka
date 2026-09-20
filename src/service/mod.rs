@@ -6,7 +6,10 @@ use crate::{
     db::Database,
     error::AppError,
     gmail::{GmailOAuthBroker, GmailProfile},
-    models::{Mailbox, SkarbiecItemMetadata, StatusResponse, MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS},
+    models::{
+        Mailbox, SkarbiecItemMetadata, StatusResponse, MAX_POLL_INTERVAL_SECONDS,
+        MIN_POLL_INTERVAL_SECONDS,
+    },
     skarbiec::SkarbiecResolver,
 };
 use serde::Serialize;
@@ -22,7 +25,6 @@ mod sync;
 
 /// Due mailboxes are polled this often; each mailbox's own interval decides whether it is due.
 const POLL_TICK: Duration = Duration::from_secs(15);
-
 
 #[derive(Clone)]
 pub struct AppState {
@@ -50,13 +52,32 @@ pub struct GmailOAuthStatusError {
     pub retryable: bool,
 }
 
+/// What every Gmail connection path can do for one account right now.
+///
+/// The counted verdicts are the point: `usable_paths` of zero says reception
+/// cannot be connected today, whatever the vault happens to contain.
 #[derive(Serialize)]
-pub struct GmailDelegationStatus {
-    pub configured: bool,
-    pub service_account: Option<String>,
-    pub client_id: Option<String>,
-    pub scope: &'static str,
-    pub admin_console_url: &'static str,
+pub struct GmailConnectionReadiness {
+    pub account: Option<String>,
+    pub mailbox_id: Option<Uuid>,
+    pub receiving_skarbiec_item_id: Option<String>,
+    pub usable_paths: usize,
+    pub paths: Vec<GmailConnectionPath>,
+}
+
+/// One connection path, its verdict, and what was observed reaching it.
+///
+/// `observed` carries only non-secret facts an operator has to quote to
+/// somebody else — a client ID, a redirect URI, an admin console URL, the
+/// Skarbiec item that was authenticated — never a credential.
+#[derive(Serialize)]
+pub struct GmailConnectionPath {
+    pub path: &'static str,
+    pub verdict: &'static str,
+    pub code: Option<String>,
+    pub detail: String,
+    pub action: String,
+    pub observed: std::collections::BTreeMap<&'static str, String>,
 }
 
 impl AppState {
@@ -132,4 +153,3 @@ impl AppState {
         });
     }
 }
-

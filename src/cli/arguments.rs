@@ -58,9 +58,14 @@ pub(super) struct ServeArgs {
 
 #[derive(Subcommand)]
 pub(super) enum GmailCommand {
-    /// Report whether the delegated-mail service account is configured, and
-    /// which client ID the Workspace admin must grant.
-    Delegation,
+    /// Report which Gmail connection paths this account can actually use,
+    /// each verdict measured against Google.
+    Connection {
+        /// The account to measure. Without it only the account-independent
+        /// state of each path is reported.
+        #[arg(long)]
+        email: Option<String>,
+    },
     /// Authorize one Google identity through the loopback OAuth callback.
     Authorize {
         #[arg(long)]

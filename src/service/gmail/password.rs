@@ -186,12 +186,10 @@ async fn verify_gmail_app_password(
     password: &str,
     skarbiec_item_id: &str,
 ) -> Result<(), AppError> {
-    let email = email.to_string();
+    let owned_email = email.to_string();
     let password = password.to_string();
-    let skarbiec_item_id = skarbiec_item_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        mail::verify_gmail_app_password(&email, &password, &skarbiec_item_id)
-    })
-    .await
-    .map_err(|_| AppError::internal("Gmail credential verification stopped unexpectedly"))?
+    tokio::task::spawn_blocking(move || mail::verify_gmail_app_password(&owned_email, &password))
+        .await
+        .map_err(|_| AppError::internal("Gmail credential verification stopped unexpectedly"))?
+        .map_err(|refusal| refusal.into_error(email, skarbiec_item_id))
 }

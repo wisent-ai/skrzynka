@@ -29,11 +29,22 @@ pub(super) async fn start_gmail_oauth(
     )))
 }
 
-pub(super) async fn gmail_delegation_status_handler(
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct GmailConnectionQuery {
+    email: Option<String>,
+}
+
+pub(super) async fn gmail_connection_readiness_handler(
     State(state): State<AppState>,
-    Extension(_auth): Extension<AuthContext>,
+    Extension(auth): Extension<AuthContext>,
+    Query(query): Query<GmailConnectionQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.gmail_delegation_status().await)))
+    Ok(Json(json!(
+        state
+            .gmail_connection_readiness(&auth.organization_id, query.email.as_deref())
+            .await?
+    )))
 }
 
 #[derive(Deserialize)]

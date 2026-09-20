@@ -32,6 +32,18 @@ pub struct GmailProfile {
     pub email: String,
 }
 
+/// What Google answered about one OAuth client and one loopback redirect.
+///
+/// `refusal` is the OAuth error code Google put in the landing URL it sent the
+/// browser to, so `redirect_uri_mismatch` here is Google's own word and not
+/// this product's inference.
+#[derive(Debug, Clone, Serialize)]
+pub struct GmailRedirectProbe {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub refusal: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct StartGmailOAuthRequest {
     pub skarbiec_item_id: String,
@@ -105,4 +117,3 @@ struct FlowRecord {
     status: GmailOAuthFlowStatus,
     pending: Option<PendingFlow>,
 }
-

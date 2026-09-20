@@ -1,13 +1,21 @@
 //! The Skarbiec CLI transport: get and set one item, with bounded output and a timeout.
 
-use super::{invalid_item, validate_item_id, SkarbiecResolver, MAX_SKARBIEC_RESPONSE_BYTES, SKARBIEC_COMMAND_TIMEOUT_SECONDS};
+use super::{
+    invalid_item, validate_item_id, SkarbiecResolver, MAX_SKARBIEC_RESPONSE_BYTES,
+    SKARBIEC_COMMAND_TIMEOUT_SECONDS,
+};
 use crate::error::AppError;
 use serde_json::Value;
 use std::{process::Stdio, time::Duration};
 use tokio::{io::AsyncWriteExt, process::Command};
 
 impl SkarbiecResolver {
-    pub(super) async fn set_item(&self, item_id: &str, kind: &str, payload: &Value) -> Result<(), AppError> {
+    pub(super) async fn set_item(
+        &self,
+        item_id: &str,
+        kind: &str,
+        payload: &Value,
+    ) -> Result<(), AppError> {
         validate_item_id(item_id)?;
         let bytes = serde_json::to_vec(payload)
             .map_err(|_| AppError::internal("Gmail credential payload could not be encoded"))?;
@@ -83,7 +91,10 @@ impl SkarbiecResolver {
         })
     }
 
-    pub(super) async fn output(&self, arguments: &[&str]) -> Result<std::process::Output, AppError> {
+    pub(super) async fn output(
+        &self,
+        arguments: &[&str],
+    ) -> Result<std::process::Output, AppError> {
         let mut command = Command::new(&self.binary);
         command.args(arguments);
         command.kill_on_drop(true);

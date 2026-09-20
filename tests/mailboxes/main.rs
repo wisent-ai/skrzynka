@@ -6,8 +6,11 @@
 //! arithmetic: `fixture` builds and tears down the throwaway mailbox and
 //! holds the shared assertions. `lifecycle` covers enable, disable, removal and
 //! schema migration; `credentials` covers profile creation, Gmail refusals and
-//! the explicitly selected live-provider pagination regression.
+//! the explicitly selected live-provider pagination regression; `readiness`
+//! covers the report that says which Gmail connection paths an account can
+//! actually use.
 
 mod credentials;
 mod fixture;
 mod lifecycle;
+mod readiness;

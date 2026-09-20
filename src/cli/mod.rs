@@ -1,7 +1,9 @@
 //! The command line: dispatch from the parsed arguments to the Gmail, mailbox and message
 //! subcommands, and the loopback server.
 
-use crate::{db::Database, error::AppError, onboarding, service::AppState, skarbiec::SkarbiecResolver};
+use crate::{
+    db::Database, error::AppError, onboarding, service::AppState, skarbiec::SkarbiecResolver,
+};
 use axum::http::StatusCode;
 use serde_json::json;
 use std::path::PathBuf;
@@ -43,7 +45,14 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
     };
     let database = Database::open(database_path)?;
     let resolver = SkarbiecResolver::new(cli.skarbiec_bin);
-    let state = || AppState::new(database.clone(), resolver.clone(), CLI_POLL_INTERVAL_SECONDS, DEFAULT_CALLBACK_BASE_URL);
+    let state = || {
+        AppState::new(
+            database.clone(),
+            resolver.clone(),
+            CLI_POLL_INTERVAL_SECONDS,
+            DEFAULT_CALLBACK_BASE_URL,
+        )
+    };
     match cli.command {
         Command::Serve(args) => serve(database, resolver, args).await,
         Command::Status => {
@@ -56,7 +65,11 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                 skarbiec_item,
                 bind,
             } => authorize_gmail(database, resolver, skarbiec_item, bind).await,
-            GmailCommand::Delegation => print_json(&state()?.gmail_delegation_status().await),
+            GmailCommand::Connection { email } => print_json(
+                &state()?
+                    .gmail_connection_readiness(LOCAL_CLI_ORGANIZATION, email.as_deref())
+                    .await?,
+            ),
             GmailCommand::Delegate {
                 email,
                 display_name,

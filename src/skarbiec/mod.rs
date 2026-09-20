@@ -2,7 +2,10 @@
 //! item-shape helpers; the sub-modules extend it with the CLI transport, item reads and
 //! writes, mailbox resolution and Google token minting.
 
-use crate::{error::AppError, models::{MAX_HOST_LENGTH, MAX_ITEM_ID_LENGTH}};
+use crate::{
+    error::AppError,
+    models::{MAX_HOST_LENGTH, MAX_ITEM_ID_LENGTH},
+};
 use chrono::Utc;
 use reqwest::Client;
 use serde_json::Value;
@@ -24,7 +27,7 @@ const SKARBIEC_COMMAND_TIMEOUT_SECONDS: u64 = 15;
 const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "skrzynka-google-oauth-desktop";
 const GOOGLE_SERVICE_ACCOUNT_ITEM_ID: &str = "skrzynka-google-service-account";
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
-const GMAIL_DELEGATION_SCOPE: &str = "https://mail.google.com/";
+pub const GMAIL_DELEGATION_SCOPE: &str = "https://mail.google.com/";
 pub const GOOGLE_ADMIN_DELEGATION_URL: &str =
     "https://admin.google.com/ac/owl/domainwidedelegation";
 

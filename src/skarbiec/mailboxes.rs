@@ -1,10 +1,17 @@
 //! Mailbox credentials and configuration resolved from a Skarbiec item.
 
-use super::{invalid_item, optional_port, optional_text, profile_error, required_text, validate_hostname, validate_item_id, ResolvedCredentials, SkarbiecResolver, DEFAULT_POLL_INTERVAL_SECONDS, GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID};
+use super::{
+    invalid_item, optional_port, optional_text, profile_error, required_text, validate_hostname,
+    validate_item_id, ResolvedCredentials, SkarbiecResolver, DEFAULT_POLL_INTERVAL_SECONDS,
+    GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
+};
 use crate::{
     db::MailboxConfig,
     error::AppError,
-    models::{CreateMailboxRequest, SmtpSecurity, MAX_DISPLAY_NAME_CHARS, MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS},
+    models::{
+        CreateMailboxRequest, SmtpSecurity, MAX_DISPLAY_NAME_CHARS, MAX_POLL_INTERVAL_SECONDS,
+        MIN_POLL_INTERVAL_SECONDS,
+    },
 };
 use lettre::Address;
 use serde_json::Value;
@@ -173,5 +180,4 @@ impl SkarbiecResolver {
             poll_interval_seconds,
         })
     }
-
 }
