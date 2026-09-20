@@ -24,7 +24,8 @@ The observable result is one local inbox with mailbox identity preserved on ever
 
 - Connect one personal Gmail account or one Workspace user with an app-specific password and no administrator or OAuth client: `skrzynka gmail app-password --email user@gmail.com` reads the secret only from stdin, proves it with Gmail IMAP before saving anything, and writes a dedicated bundle to Skarbiec. Add `--mailbox <id-or-address>` to attach that bundle as the receiving credential of an existing mailbox while preserving its address, display name, SMTP profile, and sending credential. Without `--mailbox`, an address match is reconnected as before; otherwise Skrzynka creates the fixed Gmail mailbox profile. `POST /v1/gmail/app-password` provides API parity by accepting an existing `skarbiec_item_id` and the same optional `mailbox` selector, never the secret.
 - Connect Google identities discovered in Skarbiec through Gmail OAuth; Skrzynka configures Gmail, stores the durable authorization back in Skarbiec, and performs IMAP/SMTP authentication with XOAUTH2.
-- Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. `skrzynka gmail delegation` prints the client ID, the scope and the console URL. Skrzynka never performs that grant: it exists only in the admin console, so a missing grant is reported as `GOOGLE_DELEGATION_NOT_GRANTED` naming the three values an administrator needs.
+- Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. Skrzynka never performs that grant: it exists only in the admin console, so a missing grant is reported as `GOOGLE_DELEGATION_NOT_GRANTED` naming the three values an administrator needs.
+- Ask which of those three paths an account can actually use, and get an answer measured against Google rather than read off the vault: `skrzynka gmail connection --email user@gmail.com` (or `GET /v1/gmail/connection?email=`) performs a real IMAP login with the stored password, hands Google the authorization URL a real flow would hand it and reads the code Google returns, and mints a real delegated token for a Workspace address. Each path is `usable`, `refused` or `unproven`, with the refusal code, the provider's own words, the non-secret facts observed, and the exact next step. A consumer `@gmail.com` address is refused for delegation as `GOOGLE_DELEGATION_NOT_APPLICABLE` without calling Google, because no administrator can grant it.
 - Adopt any number of existing mailboxes by exact Skarbiec item ID with
   `skrzynka mailbox import`; CLI, API, and desktop use the same credential
   resolver, IMAP normalizer, and atomic SQLite commit.
@@ -101,6 +102,25 @@ advanced cursor. Unsupported provider rows are counted by reason rather than
 silently disappearing. Skipping import leaves an empty usable installation.
 See the [executable examples](https://skrzynka.wisent.com/docs/examples) and the
 [onboarding contract](https://skrzynka.wisent.com/docs/onboarding).
+
+Before reaching for any of the three Gmail paths, ask which one this account
+can actually use. Every verdict is measured when you ask: the stored password
+is put through a real `imap.gmail.com:993` login, the stored OAuth client and
+this process's loopback redirect are handed to Google once and its answer read
+back, and a Workspace address gets a real delegated token mint.
+
+```sh
+target/debug/skrzynka gmail connection --email user@gmail.com
+```
+
+It reports `app_password`, `oauth` and `delegation`, each `usable`, `refused`
+or `unproven`, with the refusal code, what was observed, and the exact next
+step. `usable_paths` counts the ones that authenticated. A path is never
+`usable` because a Skarbiec item exists: `unproven` is what a readable
+declaration earns. Without `--email` only the account-independent state of
+each path is reported. The command exits 0 whenever the report was produced,
+including when no path works; it exits 1 only when the argument is not an
+address or the address names more than one mailbox.
 
 For one Gmail account, generate an app-specific password in that account, then
 pass it to Skrzynka only through stdin:
