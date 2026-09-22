@@ -11,7 +11,7 @@
     "darwin-arm64": {
       "runner_platform": "darwin-arm64",
       "quality": [
-        {"name": "test:mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
+        {"name": "real-mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
       ],
       "build": {"argv": ["bash", "release/build.sh"]},
       "stage": {
@@ -23,7 +23,7 @@
     "linux-amd64": {
       "runner_platform": "linux-amd64",
       "quality": [
-        {"name": "test:mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
+        {"name": "real-mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
       ],
       "build": {"argv": ["bash", "release/build.sh"]},
       "stage": {
