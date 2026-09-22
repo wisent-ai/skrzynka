@@ -4,7 +4,7 @@ use super::super::AppState;
 use crate::{
     error::AppError,
     mail,
-    models::{CreateMailboxRequest, Mailbox, SmtpSecurity},
+    models::{CreateMailboxRequest, Mailbox},
     skarbiec::{ResolvedCredentials, SkarbiecResolver},
 };
 use lettre::Address;
@@ -36,18 +36,16 @@ impl AppState {
         verify_gmail_app_password(&email, password, &item_id).await?;
         let item_id = self
             .resolver
-            .save_gmail_app_password(&email, password)
+            .save_gmail_app_password(&email, password, display_name.as_deref(), target.as_ref())
             .await?;
         let result = match target {
-            Some(mailbox) => self.attach_gmail_password_mailbox(mailbox, item_id.clone()),
+            Some(mailbox) => {
+                self.attach_gmail_password_mailbox(mailbox, item_id.clone())
+                    .await
+            }
             None => {
-                self.ensure_gmail_password_mailbox(
-                    organization_id,
-                    item_id.clone(),
-                    email.clone(),
-                    display_name,
-                )
-                .await
+                self.ensure_gmail_password_mailbox(organization_id, item_id.clone(), email.clone())
+                    .await
             }
         };
         result.map_err(|error| {
@@ -89,33 +87,40 @@ impl AppState {
             }
         };
         verify_gmail_app_password(&email, &password, skarbiec_item_id).await?;
+        let item_id = self
+            .resolver
+            .save_gmail_app_password(&email, &password, display_name.as_deref(), target.as_ref())
+            .await?;
         match target {
-            Some(mailbox) => {
-                self.attach_gmail_password_mailbox(mailbox, skarbiec_item_id.to_string())
-            }
+            Some(mailbox) => self.attach_gmail_password_mailbox(mailbox, item_id).await,
             None => {
-                self.ensure_gmail_password_mailbox(
-                    organization_id,
-                    skarbiec_item_id.to_string(),
-                    email,
-                    display_name,
-                )
-                .await
+                self.ensure_gmail_password_mailbox(organization_id, item_id, email)
+                    .await
             }
         }
     }
 
-    pub(super) fn attach_gmail_password_mailbox(
+    pub(super) async fn attach_gmail_password_mailbox(
         &self,
         mut mailbox: Mailbox,
         skarbiec_item_id: String,
     ) -> Result<Mailbox, AppError> {
-        if mailbox.smtp_skarbiec_item_id.is_none() {
-            mailbox.smtp_skarbiec_item_id = Some(mailbox.skarbiec_item_id.clone());
-        }
-        mailbox.skarbiec_item_id = skarbiec_item_id;
-        mailbox.imap_host = "imap.gmail.com".to_string();
-        mailbox.imap_port = 993;
+        let config = self
+            .resolver
+            .resolve_mailbox_config(&CreateMailboxRequest {
+                skarbiec_item_id,
+                poll_interval_seconds: Some(mailbox.poll_interval_seconds),
+            })
+            .await?;
+        mailbox.skarbiec_item_id = config.skarbiec_item_id;
+        mailbox.smtp_skarbiec_item_id = config.smtp_skarbiec_item_id;
+        mailbox.display_name = config.display_name;
+        mailbox.email = config.email;
+        mailbox.imap_host = config.imap_host;
+        mailbox.imap_port = config.imap_port;
+        mailbox.smtp_host = config.smtp_host;
+        mailbox.smtp_port = config.smtp_port;
+        mailbox.smtp_security = config.smtp_security;
         mailbox.enabled = true;
         self.database.update_mailbox(&mailbox)
     }
@@ -124,7 +129,6 @@ impl AppState {
         organization_id: &str,
         skarbiec_item_id: String,
         email: String,
-        display_name: Option<String>,
     ) -> Result<Mailbox, AppError> {
         let mut matches = self
             .database
@@ -149,24 +153,15 @@ impl AppState {
                 ),
             ));
         }
-        if let Some(mut mailbox) = matches.pop() {
-            mailbox.skarbiec_item_id = skarbiec_item_id;
-            mailbox.imap_host = "imap.gmail.com".to_string();
-            mailbox.imap_port = 993;
-            mailbox.enabled = true;
-            return self.database.update_mailbox(&mailbox);
+        if let Some(mailbox) = matches.pop() {
+            return self
+                .attach_gmail_password_mailbox(mailbox, skarbiec_item_id)
+                .await;
         }
         self.create_mailbox(
             organization_id,
             CreateMailboxRequest {
                 skarbiec_item_id,
-                display_name: display_name.or_else(|| Some(email.clone())),
-                email: Some(email),
-                imap_host: Some("imap.gmail.com".to_string()),
-                imap_port: Some(993),
-                smtp_host: Some("smtp.gmail.com".to_string()),
-                smtp_port: Some(587),
-                smtp_security: Some(SmtpSecurity::Starttls),
                 poll_interval_seconds: None,
             },
         )

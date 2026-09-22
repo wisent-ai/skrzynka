@@ -7,7 +7,7 @@ use crate::{
         GmailOAuthCallback, GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, StartGmailOAuthRequest,
         StartGmailOAuthResponse,
     },
-    models::{CreateMailboxRequest, Mailbox, SmtpSecurity},
+    models::{CreateMailboxRequest, Mailbox},
 };
 use lettre::Address;
 use std::str::FromStr;
@@ -36,7 +36,10 @@ impl AppState {
         self.resolver
             .delegated_access_token(&probe_key, email)
             .await?;
-        let item_id = self.resolver.save_gmail_delegation(email).await?;
+        let item_id = self
+            .resolver
+            .save_gmail_delegation(email, display_name.as_deref())
+            .await?;
         if let Some(mailbox) = self
             .database
             .list_mailboxes(organization_id)?
@@ -49,13 +52,6 @@ impl AppState {
             organization_id,
             CreateMailboxRequest {
                 skarbiec_item_id: item_id,
-                display_name: display_name.or_else(|| Some(email.to_string())),
-                email: Some(email.to_string()),
-                imap_host: None,
-                imap_port: None,
-                smtp_host: None,
-                smtp_port: None,
-                smtp_security: Some(SmtpSecurity::Starttls),
                 poll_interval_seconds: None,
             },
         )
@@ -134,13 +130,6 @@ impl AppState {
             &authorization.organization_id,
             CreateMailboxRequest {
                 skarbiec_item_id: authorization.credential_item_id.clone(),
-                display_name: Some(authorization.email.clone()),
-                email: Some(authorization.email.clone()),
-                imap_host: None,
-                imap_port: None,
-                smtp_host: None,
-                smtp_port: None,
-                smtp_security: Some(SmtpSecurity::Starttls),
                 poll_interval_seconds: None,
             },
         )

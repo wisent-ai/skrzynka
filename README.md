@@ -87,14 +87,14 @@ Its JSON result
 reports mailbox state, imported, unchanged, conflicting, and rejected message
 counts, rejection reasons, and `has_more`. Repeat the same command while
 `has_more` is true; an equal mailbox UID is unchanged and is never inserted
-twice. A `login` item can be imported by also supplying `--email`,
-`--imap-host`, `--smtp-host`, and the applicable ports/security mode.
+twice. The selected Skarbiec item must supply the account address and server
+profile. There are no local account-profile overrides.
 
 The equivalent reusable surfaces are **Connect and import** in Skrzynka Desktop
-and authenticated `POST /v1/imports/mailbox` with the same non-secret mailbox
-profile JSON accepted by `POST /v1/mailboxes`. The secret is never accepted in
+and authenticated `POST /v1/imports/mailbox` with the same item-reference JSON
+accepted by `POST /v1/mailboxes`. The secret is never accepted in
 argv or the API, and the result does not return it or provider message bodies.
-A changed profile for an already attached item or differing normalized data for
+A changed receiving address or IMAP endpoint, or differing normalized data for
 a retained UID is a conflict: the old mailbox, messages, and cursor are
 preserved and the fetched page is not partially committed. Authentication,
 source, fetch, and normalization errors likewise leave no new mailbox or
@@ -214,7 +214,9 @@ For password-backed providers, Skrzynka persists the exact item selected by the 
 | `smtp_security` | no | `starttls` (default) or `tls` |
 | `display_name` | no | Human-readable mailbox name |
 
-Non-secret connection values supplied during `mailbox add` take precedence over bundle values. Each mailbox stores a receiving `skarbiec_item_id` and an optional `smtp_skarbiec_item_id`; IMAP always uses the receiving item, while replies and originated messages use the SMTP item when present and otherwise fall back to the receiving item. `gmail app-password` reads the password from stdin, proves it through IMAP, and then writes a canonical `skarbiec.item.v2` bundle with `auth_method: "password"`, the account as both `username` and `email`, and Gmail's fixed IMAP/SMTP profile. A new mailbox uses that whole profile. With `--mailbox`, the CLI attaches it only for receiving and preserves the selected row's external identity and complete sending profile; the API accepts the same selector in its optional `mailbox` field. Skarbiec remains the only credential store and no secret crosses the desktop API. Gmail OAuth instead stores the refresh token in a dedicated Skarbiec bundle, references Skrzynka's fixed Desktop OAuth client item, and resolves a short-lived access token only at connection time. Delegated Gmail stores no mailbox secret at all: its bundle references `skrzynka-google-service-account`, and Skrzynka signs a per-user JWT assertion to mint the short-lived token.
+Skarbiec stores account profiles and credentials. `mailbox add` and `mailbox import` accept only `--skarbiec-item` and optional local `--poll-seconds`; CLI profile flags and API profile overrides are refused. SQLite keeps the imported non-secret snapshot and mail-processing state, not a separately editable account definition. Re-import atomically adopts source display-name and SMTP changes with the fetched page (`mailbox_state: updated`). A changed receiving address or IMAP endpoint is refused because the retained UID cursor cannot safely identify another source. Local PATCH changes only enabled state and polling.
+
+Each imported profile has a receiving `skarbiec_item_id` and may contain `smtp_skarbiec_item_id` for a separate sending credential. Gmail connection methods persist complete bundles in Skarbiec before adoption. App-password alias attachment stores the public address, display name, SMTP profile and sending reference there as well, while retaining the local mailbox ID and mail. OAuth stores its refresh token in Skarbiec; delegation stores a service-account reference. No mailbox secret crosses the desktop API or enters SQLite.
 
 The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret`, and one `value` field of type `oauth_client`; that value is the unmodified JSON downloaded for a Google OAuth client whose application type is **Desktop app**. Skrzynka accepts only the `installed` client shape and Google's canonical authorization and token endpoints.
 

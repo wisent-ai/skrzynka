@@ -1,7 +1,7 @@
 //! Every subcommand and argument the `skrzynka` binary accepts.
 
-use crate::models::{CreateMailboxRequest, SmtpSecurity};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use crate::models::CreateMailboxRequest;
+use clap::{Args, Parser, Subcommand};
 use std::{net::SocketAddr, path::PathBuf};
 use uuid::Uuid;
 
@@ -119,20 +119,6 @@ pub(super) struct AddMailboxArgs {
     #[arg(long)]
     pub(super) skarbiec_item: String,
     #[arg(long)]
-    pub(super) display_name: Option<String>,
-    #[arg(long)]
-    pub(super) email: Option<String>,
-    #[arg(long)]
-    pub(super) imap_host: Option<String>,
-    #[arg(long)]
-    pub(super) imap_port: Option<u16>,
-    #[arg(long)]
-    pub(super) smtp_host: Option<String>,
-    #[arg(long)]
-    pub(super) smtp_port: Option<u16>,
-    #[arg(long, value_enum)]
-    smtp_security: Option<CliSmtpSecurity>,
-    #[arg(long)]
     pub(super) poll_seconds: Option<u64>,
 }
 
@@ -140,29 +126,7 @@ impl AddMailboxArgs {
     pub(super) fn into_request(self) -> CreateMailboxRequest {
         CreateMailboxRequest {
             skarbiec_item_id: self.skarbiec_item,
-            display_name: self.display_name,
-            email: self.email,
-            imap_host: self.imap_host,
-            imap_port: self.imap_port,
-            smtp_host: self.smtp_host,
-            smtp_port: self.smtp_port,
-            smtp_security: self.smtp_security.map(Into::into),
             poll_interval_seconds: self.poll_seconds,
-        }
-    }
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-pub(super) enum CliSmtpSecurity {
-    Starttls,
-    Tls,
-}
-
-impl From<CliSmtpSecurity> for SmtpSecurity {
-    fn from(value: CliSmtpSecurity) -> Self {
-        match value {
-            CliSmtpSecurity::Starttls => Self::Starttls,
-            CliSmtpSecurity::Tls => Self::Tls,
         }
     }
 }

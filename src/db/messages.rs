@@ -158,9 +158,21 @@ impl Database {
         let completed_at = Utc::now().to_rfc3339();
         transaction.execute(
             "UPDATE mailboxes SET last_uid=?2, last_sync_at=?3,
-                    last_error_code=NULL, last_error_message=NULL, updated_at=?3
+                    last_error_code=NULL, last_error_message=NULL, updated_at=?3,
+                    display_name=?4, smtp_skarbiec_item_id=?5, smtp_host=?6,
+                    smtp_port=?7, smtp_security=?8, poll_interval_seconds=?9
              WHERE id=?1",
-            params![mailbox.id.to_string(), i64::from(last_uid), completed_at],
+            params![
+                mailbox.id.to_string(),
+                i64::from(last_uid),
+                completed_at,
+                mailbox.display_name,
+                mailbox.smtp_skarbiec_item_id,
+                mailbox.smtp_host,
+                i64::from(mailbox.smtp_port),
+                mailbox.smtp_security.as_str(),
+                mailbox.poll_interval_seconds as i64,
+            ],
         )?;
         transaction.commit()?;
         drop(connection);

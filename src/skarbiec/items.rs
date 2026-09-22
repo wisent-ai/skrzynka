@@ -5,7 +5,11 @@ use super::{
     validate_item_id, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID,
     GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
 };
-use crate::{error::AppError, gmail::GmailProfile, models::SkarbiecItemMetadata};
+use crate::{
+    error::AppError,
+    gmail::GmailProfile,
+    models::{Mailbox, SkarbiecItemMetadata},
+};
 use lettre::Address;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -175,7 +179,11 @@ impl SkarbiecResolver {
     /// Persist a delegated Workspace mailbox credential. The bundle carries no
     /// secret of its own: access tokens are minted per connection from the
     /// service-account key referenced by `service_account_item_id`.
-    pub async fn save_gmail_delegation(&self, email: &str) -> Result<String, AppError> {
+    pub async fn save_gmail_delegation(
+        &self,
+        email: &str,
+        display_name: Option<&str>,
+    ) -> Result<String, AppError> {
         Address::from_str(email)
             .map_err(|_| invalid_item("delegated Google identity is not an email address"))?;
         let digest = format!(
@@ -188,6 +196,7 @@ impl SkarbiecResolver {
             "kind": "bundle",
             "fields": {
                 "username": email,
+                "display_name": display_name.unwrap_or(email),
                 "email": email,
                 "auth_method": "oauth2_service_account",
                 "oauth_provider": "google",
@@ -225,6 +234,8 @@ impl SkarbiecResolver {
         &self,
         email: &str,
         password: &str,
+        display_name: Option<&str>,
+        mailbox: Option<&Mailbox>,
     ) -> Result<String, AppError> {
         let item_id = Self::gmail_app_password_item_id(email)?;
         if password.is_empty() {
@@ -235,15 +246,20 @@ impl SkarbiecResolver {
             "kind": "bundle",
             "fields": {
                 "username": email,
-                "email": email,
+                "email": mailbox.map_or(email, |mailbox| mailbox.email.as_str()),
+                "display_name": mailbox
+                    .map(|mailbox| mailbox.display_name.as_str())
+                    .or(display_name)
+                    .unwrap_or(email),
                 "password": password,
                 "auth_method": "password",
                 "oauth_provider": "google",
                 "imap_host": "imap.gmail.com",
                 "imap_port": 993,
-                "smtp_host": "smtp.gmail.com",
-                "smtp_port": 587,
-                "smtp_security": "starttls"
+                "smtp_host": mailbox.map_or("smtp.gmail.com", |mailbox| mailbox.smtp_host.as_str()),
+                "smtp_port": mailbox.map_or(587, |mailbox| mailbox.smtp_port),
+                "smtp_security": mailbox.map_or("starttls", |mailbox| mailbox.smtp_security.as_str()),
+                "smtp_skarbiec_item_id": mailbox.map(Mailbox::outbound_skarbiec_item_id)
             },
             "context": {
                 "source_kind": "gmail_app_password",

@@ -41,36 +41,20 @@ impl MailboxFixture {
             .expect("system clock must follow the Unix epoch")
             .as_nanos();
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-        // This fixture is the one case that cannot live in the package's own
-        // build directory. It runs a real gpg-agent, whose socket path is a
-        // `sun_path` and so limited to 104 bytes;
-        // `<checkout>/target/tmp/<name>/gnupg/S.gpg-agent` is longer than
-        // that, and gpg answers "can't connect to the gpg-agent: File name
-        // too long" — measured on 2026-09-09, five of six cases failing.
-        // So the root is short and belongs to this product, next to the
-        // `~/.skrzynka` state its own commands use: never `/tmp`, which this
-        // machine sweeps on sight, and never `~/.stado/work`, which belongs
-        // to Stado. `Drop` removes the whole root, so nothing accumulates.
-        // The case name is carried into the directory so a leftover root says
-        // which test made it, bounded to twelve bytes because the gpg socket
-        // path above is the hard limit.
-        let label: String = test_name
-            .chars()
-            .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
-            .take(12)
-            .collect();
-        let root = PathBuf::from(env!("HOME"))
-            .join(".skrzynka")
-            .join("test-runs")
+        // Keep the GPG socket below Darwin's 104-byte Unix socket limit while
+        // retaining all isolated test state inside the checkout's build tree.
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/t")
             .join(format!(
-                "{label}-{:x}{:08x}{sequence:x}",
+                "{:x}{:08x}{sequence:x}",
                 std::process::id(),
                 unique & 0xffff_ffff
             ));
-        let gnupg = root.join("gnupg");
+        let gnupg = root.join("g");
         fs::create_dir_all(&gnupg).expect("create isolated GPG home");
         fs::set_permissions(&gnupg, fs::Permissions::from_mode(0o700))
             .expect("protect isolated GPG home");
+        fs::write(root.join("test-name"), test_name).expect("record isolated test identity");
 
         let fixture = Self {
             vault: root.join("vault.json"),
@@ -86,7 +70,7 @@ impl MailboxFixture {
 
     pub(crate) fn seed_mailbox_item(&self, item_id: &str) {
         let document = format!(
-            r#"{{"schema":"skarbiec.item.v2","kind":"bundle","fields":{{"username":"team@example.invalid","password":"{PASSWORD}","display_name":"Team Inbox","email":"team@example.invalid","imap_host":"imap.example.invalid","imap_port":"993","smtp_host":"smtp.example.invalid","smtp_port":"587","smtp_security":"starttls"}},"context":{{}}}}"#
+            r#"{{"schema":"skarbiec.item.v2","kind":"bundle","fields":{{"username":"team@example.invalid","password":"{PASSWORD}","display_name":"Team Inbox","email":"team@example.invalid","imap_host":"imap.example.invalid","imap_port":"993","smtp_host":"smtp.example.invalid","smtp_port":"587","smtp_security":"starttls"}},"context":{{"test_item":"{item_id}"}}}}"#
         );
         let output =
             self.skarbiec_with_stdin(&["set-json", item_id, "--type", "bundle"], &document);

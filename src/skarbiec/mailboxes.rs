@@ -103,52 +103,50 @@ impl SkarbiecResolver {
             }
         }
 
-        let email = request
-            .email
-            .clone()
-            .or_else(|| optional_text(fields.get("email")))
+        let email = optional_text(fields.get("email"))
             .or_else(|| username.contains('@').then_some(username.clone()))
-            .ok_or_else(|| profile_error("email is required"))?;
+            .ok_or_else(|| profile_error("Skarbiec item must supply the mailbox email"))?;
         Address::from_str(&email).map_err(|_| profile_error("email is not a valid address"))?;
 
-        let display_name = request
-            .display_name
-            .clone()
-            .or_else(|| optional_text(fields.get("display_name")))
-            .unwrap_or_else(|| email.clone());
-        let imap_host = request
-            .imap_host
-            .clone()
-            .or_else(|| optional_text(fields.get("imap_host")))
-            .ok_or_else(|| profile_error("imap_host is required"))?;
-        let smtp_host = request
-            .smtp_host
-            .clone()
-            .or_else(|| optional_text(fields.get("smtp_host")))
-            .ok_or_else(|| profile_error("smtp_host is required"))?;
+        let display_name =
+            optional_text(fields.get("display_name")).unwrap_or_else(|| email.clone());
+        let imap_host = optional_text(fields.get("imap_host"))
+            .ok_or_else(|| profile_error("Skarbiec item must supply imap_host"))?;
+        let smtp_host = optional_text(fields.get("smtp_host"))
+            .ok_or_else(|| profile_error("Skarbiec item must supply smtp_host"))?;
         validate_hostname(&imap_host, "imap_host")?;
         validate_hostname(&smtp_host, "smtp_host")?;
 
-        let smtp_security = request
-            .smtp_security
-            .or_else(|| {
-                optional_text(fields.get("smtp_security"))
-                    .and_then(|value| SmtpSecurity::from_str(&value).ok())
-            })
-            .unwrap_or(SmtpSecurity::Starttls);
-        let imap_port = request
-            .imap_port
-            .or_else(|| optional_port(fields.get("imap_port")))
-            .unwrap_or(993);
-        let smtp_port = request
-            .smtp_port
-            .or_else(|| optional_port(fields.get("smtp_port")))
-            .unwrap_or(match smtp_security {
+        let smtp_security = match fields.get("smtp_security") {
+            None => SmtpSecurity::Starttls,
+            Some(value) => value
+                .as_str()
+                .and_then(|text| SmtpSecurity::from_str(text).ok())
+                .ok_or_else(|| {
+                    profile_error("Skarbiec item smtp_security must be starttls or tls")
+                })?,
+        };
+        let port = |name: &str, default: u16| -> Result<u16, AppError> {
+            match fields.get(name) {
+                None => Ok(default),
+                Some(value) => optional_port(Some(value))
+                    .filter(|port| *port != 0)
+                    .ok_or_else(|| {
+                        profile_error(format!("Skarbiec item {name} must be between 1 and 65535"))
+                    }),
+            }
+        };
+        let imap_port = port("imap_port", 993)?;
+        let smtp_port = port(
+            "smtp_port",
+            match smtp_security {
                 SmtpSecurity::Starttls => 587,
                 SmtpSecurity::Tls => 465,
-            });
-        if imap_port == 0 || smtp_port == 0 {
-            return Err(profile_error("mail server ports must be nonzero"));
+            },
+        )?;
+        let smtp_skarbiec_item_id = optional_text(fields.get("smtp_skarbiec_item_id"));
+        if let Some(item_id) = smtp_skarbiec_item_id.as_deref() {
+            validate_item_id(item_id)?;
         }
         let poll_interval_seconds = request
             .poll_interval_seconds
@@ -169,7 +167,7 @@ impl SkarbiecResolver {
         Ok(MailboxConfig {
             organization_id: String::new(),
             skarbiec_item_id: request.skarbiec_item_id.clone(),
-            smtp_skarbiec_item_id: None,
+            smtp_skarbiec_item_id,
             display_name,
             email,
             imap_host,

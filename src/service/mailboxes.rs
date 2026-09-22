@@ -40,6 +40,7 @@ impl AppState {
         mut request: CreateMailboxRequest,
     ) -> Result<MailboxImportResult, AppError> {
         let _guard = self.operation_lock.lock().await;
+        let requested_poll_interval = request.poll_interval_seconds;
         if request.poll_interval_seconds.is_none() {
             request.poll_interval_seconds = Some(self.poll_interval_seconds);
         }
@@ -51,10 +52,16 @@ impl AppState {
             .into_iter()
             .find(|mailbox| mailbox.skarbiec_item_id == config.skarbiec_item_id);
         if let Some(mailbox) = existing.as_ref() {
-            if !mailbox_matches_config(mailbox, &config) {
+            if requested_poll_interval.is_none() {
+                config.poll_interval_seconds = mailbox.poll_interval_seconds;
+            }
+            if mailbox.email != config.email
+                || mailbox.imap_host != config.imap_host
+                || mailbox.imap_port != config.imap_port
+            {
                 return Err(AppError::conflict(
                     "MAILBOX_IMPORT_PROFILE_CONFLICT",
-                    "the Skarbiec item is already attached with different mailbox settings; no import data was changed",
+                    "the Skarbiec profile changes the receiving address or IMAP endpoint; the retained UID cursor cannot be reused and no import data was changed",
                 ));
             }
         }
@@ -65,10 +72,21 @@ impl AppState {
         let create_mailbox = existing.is_none();
         let mailbox_state = if create_mailbox {
             MailboxImportState::Imported
+        } else if existing
+            .as_ref()
+            .is_some_and(|mailbox| !mailbox_matches_config(mailbox, &config))
+        {
+            MailboxImportState::Updated
         } else {
             MailboxImportState::Unchanged
         };
-        let mailbox = existing.unwrap_or_else(|| mailbox_from_config(&config));
+        let mut mailbox = existing.unwrap_or_else(|| mailbox_from_config(&config));
+        mailbox.display_name = config.display_name;
+        mailbox.smtp_skarbiec_item_id = config.smtp_skarbiec_item_id;
+        mailbox.smtp_host = config.smtp_host;
+        mailbox.smtp_port = config.smtp_port;
+        mailbox.smtp_security = config.smtp_security;
+        mailbox.poll_interval_seconds = config.poll_interval_seconds;
         let source_item_id = config.skarbiec_item_id.clone();
         let database = self.database.clone();
         let (mailbox, imported, unchanged, fetched) = tokio::task::spawn_blocking(move || {
@@ -123,27 +141,6 @@ impl AppState {
         request: UpdateMailboxRequest,
     ) -> Result<Mailbox, AppError> {
         let mut mailbox = self.database.get_mailbox(organization_id, id)?;
-        if let Some(value) = request.display_name {
-            mailbox.display_name = value.trim().to_string();
-        }
-        if let Some(value) = request.email {
-            mailbox.email = value.trim().to_string();
-        }
-        if let Some(value) = request.imap_host {
-            mailbox.imap_host = value.trim().to_string();
-        }
-        if let Some(value) = request.imap_port {
-            mailbox.imap_port = value;
-        }
-        if let Some(value) = request.smtp_host {
-            mailbox.smtp_host = value.trim().to_string();
-        }
-        if let Some(value) = request.smtp_port {
-            mailbox.smtp_port = value;
-        }
-        if let Some(value) = request.smtp_security {
-            mailbox.smtp_security = value;
-        }
         if let Some(value) = request.poll_interval_seconds {
             mailbox.poll_interval_seconds = value;
         }

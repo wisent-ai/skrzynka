@@ -10,6 +10,7 @@
 //! covers the report that says which Gmail connection paths an account can
 //! actually use.
 
+mod account_sources;
 mod credentials;
 mod fixture;
 mod lifecycle;
