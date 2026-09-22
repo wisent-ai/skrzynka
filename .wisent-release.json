@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "product": "skrzynka",
+  "releases": true,
+  "version_source": {
+    "kind": "regex",
+    "path": "Cargo.toml",
+    "pattern": "(?m)^version\\s*=\\s*\"(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+)\"\\s*$"
+  },
+  "platforms": {
+    "darwin-arm64": {
+      "runner_platform": "darwin-arm64",
+      "quality": [
+        {"name": "test:mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
+      ],
+      "build": {"argv": ["bash", "release/build.sh"]},
+      "stage": {
+        "bin/skrzynka": "bin/skrzynka",
+        "evidence/build.jsonl": "evidence/build.jsonl",
+        "evidence/DIGESTS": "evidence/DIGESTS"
+      }
+    },
+    "linux-amd64": {
+      "runner_platform": "linux-amd64",
+      "quality": [
+        {"name": "test:mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
+      ],
+      "build": {"argv": ["bash", "release/build.sh"]},
+      "stage": {
+        "bin/skrzynka": "bin/skrzynka",
+        "evidence/build.jsonl": "evidence/build.jsonl",
+        "evidence/DIGESTS": "evidence/DIGESTS"
+      }
+    }
+  },
+  "promotion": {"channels": ["candidate"], "reconcile": false}
+}
