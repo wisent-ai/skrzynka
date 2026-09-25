@@ -10,10 +10,11 @@
   "platforms": {
     "darwin-arm64": {
       "runner_platform": "darwin-arm64",
-      "quality": [
+      "quality": [],
+      "build": {"argv": ["bash", "release/build.sh"]},
+      "tests": [
         {"name": "real-mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
       ],
-      "build": {"argv": ["bash", "release/build.sh"]},
       "stage": {
         "bin/skrzynka": "bin/skrzynka",
         "evidence/build.jsonl": "evidence/build.jsonl",
@@ -22,10 +23,11 @@
     },
     "linux-amd64": {
       "runner_platform": "linux-amd64",
-      "quality": [
+      "quality": [],
+      "build": {"argv": ["bash", "release/build.sh"]},
+      "tests": [
         {"name": "real-mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
       ],
-      "build": {"argv": ["bash", "release/build.sh"]},
       "stage": {
         "bin/skrzynka": "bin/skrzynka",
         "evidence/build.jsonl": "evidence/build.jsonl",
