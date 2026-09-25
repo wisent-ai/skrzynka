@@ -1,6 +1,6 @@
 /target/
 /.build/
-# `wisent-products cargo` writes its source and command records here on every
+# `stado product cargo` writes its source and command records here on every
 # `stado product install`, so an untracked copy made every install report the
 # source revision as dirty.
 /.wisent-output/
