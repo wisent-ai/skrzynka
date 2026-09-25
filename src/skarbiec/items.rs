@@ -8,7 +8,7 @@ use super::{
 use crate::{
     error::AppError,
     gmail::GmailProfile,
-    models::{Mailbox, SkarbiecItemMetadata},
+    models::SkarbiecItemMetadata,
 };
 use lettre::Address;
 use serde_json::{json, Value};
@@ -235,7 +235,6 @@ impl SkarbiecResolver {
         email: &str,
         password: &str,
         display_name: Option<&str>,
-        mailbox: Option<&Mailbox>,
     ) -> Result<String, AppError> {
         let item_id = Self::gmail_app_password_item_id(email)?;
         if password.is_empty() {
@@ -246,20 +245,16 @@ impl SkarbiecResolver {
             "kind": "bundle",
             "fields": {
                 "username": email,
-                "email": mailbox.map_or(email, |mailbox| mailbox.email.as_str()),
-                "display_name": mailbox
-                    .map(|mailbox| mailbox.display_name.as_str())
-                    .or(display_name)
-                    .unwrap_or(email),
+                "email": email,
+                "display_name": display_name.unwrap_or(email),
                 "password": password,
                 "auth_method": "password",
                 "oauth_provider": "google",
                 "imap_host": "imap.gmail.com",
                 "imap_port": 993,
-                "smtp_host": mailbox.map_or("smtp.gmail.com", |mailbox| mailbox.smtp_host.as_str()),
-                "smtp_port": mailbox.map_or(587, |mailbox| mailbox.smtp_port),
-                "smtp_security": mailbox.map_or("starttls", |mailbox| mailbox.smtp_security.as_str()),
-                "smtp_skarbiec_item_id": mailbox.map(Mailbox::outbound_skarbiec_item_id)
+                "smtp_host": "smtp.gmail.com",
+                "smtp_port": 587,
+                "smtp_security": "starttls"
             },
             "context": {
                 "source_kind": "gmail_app_password",

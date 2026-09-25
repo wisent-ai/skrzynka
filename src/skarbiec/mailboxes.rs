@@ -1,23 +1,77 @@
-//! Mailbox credentials and configuration resolved from a Skarbiec item.
+//! Mailbox credentials and configuration resolved from a Skarbiec item, and the
+//! declaration that makes an item a mailbox at all.
+//!
+//! Skarbiec owns the account list. An item is one of Skrzynka's mailboxes
+//! exactly when it carries [`MAILBOX_TAG`], the same way Brama reads an item
+//! as a subscription only when it carries `brama:subscription`. Skrzynka keeps
+//! mail and sync state for those items; it keeps no list of its own.
 
 use super::{
     invalid_item, optional_port, optional_text, profile_error, required_text, validate_hostname,
-    validate_item_id, ResolvedCredentials, SkarbiecResolver, DEFAULT_POLL_INTERVAL_SECONDS,
+    validate_item_id, ResolvedCredentials, SkarbiecResolver,
     GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
 };
 use crate::{
     db::MailboxConfig,
     error::AppError,
     models::{
-        CreateMailboxRequest, SmtpSecurity, MAX_DISPLAY_NAME_CHARS, MAX_POLL_INTERVAL_SECONDS,
-        MIN_POLL_INTERVAL_SECONDS,
+        SmtpSecurity, MAX_DISPLAY_NAME_CHARS, MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS,
     },
 };
 use lettre::Address;
 use serde_json::Value;
 use std::str::FromStr;
 
+/// The Skarbiec tag that declares an item one of Skrzynka's mailboxes.
+pub const MAILBOX_TAG: &str = "skrzynka:mailbox";
+
 impl SkarbiecResolver {
+    /// Every item the vault declares a mailbox, by id.
+    pub async fn declared_mailbox_items(&self) -> Result<Vec<String>, AppError> {
+        Ok(self
+            .list_items()
+            .await?
+            .into_iter()
+            .filter(|item| item.tags.iter().any(|tag| tag == MAILBOX_TAG))
+            .map(|item| item.id)
+            .collect())
+    }
+
+    /// Add or remove [`MAILBOX_TAG`] on one item, keeping every other tag it
+    /// carries. Nothing else about the item changes.
+    pub async fn set_mailbox_declared(&self, item_id: &str, declared: bool) -> Result<(), AppError> {
+        validate_item_id(item_id)?;
+        let item = self
+            .list_items()
+            .await?
+            .into_iter()
+            .find(|item| item.id == item_id)
+            .ok_or_else(|| {
+                invalid_item("selected Skarbiec item is missing, unreadable, or unavailable")
+            })?;
+        let mut tags = item
+            .tags
+            .into_iter()
+            .filter(|tag| tag != MAILBOX_TAG)
+            .collect::<Vec<_>>();
+        if declared {
+            tags.push(MAILBOX_TAG.to_string());
+        }
+        let joined = tags.join(",");
+        let output = self.output(&["retag", item_id, "--tags", &joined]).await?;
+        if !output.status.success() {
+            return Err(AppError::dependency(
+                "SKARBIEC_WRITE_FAILED",
+                format!(
+                    "Skarbiec refused to retag item '{item_id}': {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+                false,
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn resolve_credentials(
         &self,
         item_id: &str,
@@ -70,12 +124,16 @@ impl SkarbiecResolver {
         Ok(ResolvedCredentials::Password { username, password })
     }
 
+    /// The mailbox profile an item declares. Every value comes from the item;
+    /// `poll_interval_seconds` is read from it too and defaults to the
+    /// process setting.
     pub async fn resolve_mailbox_config(
         &self,
-        request: &CreateMailboxRequest,
+        item_id: &str,
+        default_poll_interval_seconds: u64,
     ) -> Result<MailboxConfig, AppError> {
-        validate_item_id(&request.skarbiec_item_id)?;
-        let payload = self.get_item(&request.skarbiec_item_id).await?;
+        validate_item_id(item_id)?;
+        let payload = self.get_item(item_id).await?;
         let kind = payload
             .get("kind")
             .and_then(Value::as_str)
@@ -148,9 +206,12 @@ impl SkarbiecResolver {
         if let Some(item_id) = smtp_skarbiec_item_id.as_deref() {
             validate_item_id(item_id)?;
         }
-        let poll_interval_seconds = request
-            .poll_interval_seconds
-            .unwrap_or(DEFAULT_POLL_INTERVAL_SECONDS);
+        let poll_interval_seconds = match fields.get("poll_interval_seconds") {
+            None => default_poll_interval_seconds,
+            Some(value) => value.as_u64().ok_or_else(|| {
+                profile_error("Skarbiec item poll_interval_seconds must be a whole number")
+            })?,
+        };
         if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS).contains(&poll_interval_seconds)
         {
             return Err(profile_error(
@@ -166,7 +227,7 @@ impl SkarbiecResolver {
 
         Ok(MailboxConfig {
             organization_id: String::new(),
-            skarbiec_item_id: request.skarbiec_item_id.clone(),
+            skarbiec_item_id: item_id.to_string(),
             smtp_skarbiec_item_id,
             display_name,
             email,

@@ -46,7 +46,7 @@
       "description": "Evidence section rendering a real terminal transcript, code sample, or factual table backed by the brief's required proof.",
       "content": "proof section heading, lede, and artifact",
       "status": "required",
-      "reason": "the brief requires a real first-local-mailbox command sequence (skrzynka status, mailbox add, sync, message list); a terminal transcript is the honest artifact"
+      "reason": "the brief requires a real first-local-mailbox command sequence (skrzynka status, mailbox declare, sync, message list); a terminal transcript is the honest artifact"
     },
     {
       "id": "landing.objection",

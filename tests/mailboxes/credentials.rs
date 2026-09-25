@@ -4,73 +4,6 @@ use std::fs;
 
 use super::fixture::*;
 #[test]
-fn gmail_app_password_mailbox_selector_refusals_leave_credentials_and_mailboxes_unchanged() {
-    const GMAIL_EMAIL: &str = "selector-refusal@gmail.com";
-    const GMAIL_ITEM: &str = "skrzynka-gmail-app-password-0d4931795b42e0dc4226";
-    const SHARED_ADDRESS: &str = "team@example.invalid";
-
-    let fixture = MailboxFixture::new("gmail-selector");
-    fixture.seed_mailbox_item("alpha-inbox");
-    fixture.seed_mailbox_item("beta-inbox");
-
-    let alpha_output = fixture.skrzynka(&["mailbox", "add", "--skarbiec-item", "alpha-inbox"]);
-    assert_success("add first same-address mailbox", &alpha_output);
-    let _: Value =
-        serde_json::from_slice(&alpha_output.stdout).expect("first mailbox add must return JSON");
-
-    let beta_output = fixture.skrzynka(&["mailbox", "add", "--skarbiec-item", "beta-inbox"]);
-    assert_success("add second same-address mailbox", &beta_output);
-    let _: Value =
-        serde_json::from_slice(&beta_output.stdout).expect("second mailbox add must return JSON");
-
-    let baseline = mailbox_receiving_state(&fixture);
-    fixture.assert_skarbiec_item_absent(GMAIL_ITEM);
-
-    let missing = fixture.skrzynka_with_stdin(
-        &[
-            "gmail",
-            "app-password",
-            "--email",
-            GMAIL_EMAIL,
-            "--mailbox",
-            UNKNOWN_MAILBOX,
-        ],
-        PASSWORD,
-    );
-    assert_exit_one_with(
-        &missing,
-        r#"{"error":{"code":"NOT_FOUND","message":"mailbox was not found","retryable":false}}"#,
-    );
-    assert_eq!(
-        mailbox_receiving_state(&fixture),
-        baseline,
-        "unknown selector refusal must not modify or add mailbox rows"
-    );
-    fixture.assert_skarbiec_item_absent(GMAIL_ITEM);
-
-    let ambiguous = fixture.skrzynka_with_stdin(
-        &[
-            "gmail",
-            "app-password",
-            "--email",
-            GMAIL_EMAIL,
-            "--mailbox",
-            SHARED_ADDRESS,
-        ],
-        PASSWORD,
-    );
-    assert_eq!(ambiguous.status.code(), Some(1));
-    let refusal: Value = serde_json::from_slice(&ambiguous.stderr).expect("structured refusal");
-    assert_eq!(refusal["error"]["code"], "MAILBOX_SELECTOR_AMBIGUOUS");
-    assert_eq!(
-        mailbox_receiving_state(&fixture),
-        baseline,
-        "ambiguous selector refusal must not modify or add mailbox rows"
-    );
-    fixture.assert_skarbiec_item_absent(GMAIL_ITEM);
-}
-
-#[test]
 #[ignore = "requires a real password-backed Skarbiec item and more than 200 INBOX UIDs"]
 fn provider_import_does_not_advance_past_unprocessed_mail() {
     use sha2::{Digest, Sha256};
@@ -119,7 +52,7 @@ fn provider_import_does_not_advance_past_unprocessed_mail() {
         "--skarbiec-bin",
         &skarbiec,
         "mailbox",
-        "import",
+        "declare",
         "--skarbiec-item",
         &item,
     ];
@@ -201,11 +134,11 @@ fn provider_import_does_not_advance_past_unprocessed_mail() {
     fs::remove_file(database).expect("remove isolated mail data; retain metadata report");
 }
 #[test]
-fn mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accounts() {
-    let fixture = MailboxFixture::new("add");
+fn a_declared_mailbox_persists_only_the_profile_and_refuses_profile_overrides() {
+    let fixture = MailboxFixture::new("declare-profile");
     fixture.seed_mailbox_item("team-inbox");
 
-    let created = fixture.add_mailbox("team-inbox");
+    let created = fixture.declare_in_vault("team-inbox");
     let id = MailboxFixture::mailbox_id(&created);
     let stored = fixture
         .connection()
@@ -253,15 +186,12 @@ fn mailbox_add_persists_only_the_profile_and_refuses_duplicate_or_invalid_accoun
         "the mailbox password must never enter SQLite"
     );
 
-    let duplicate = fixture.skrzynka(&["mailbox", "add", "--skarbiec-item", "team-inbox"]);
-    assert_exit_one_with(
-        &duplicate,
-        r#"{"error":{"code":"MAILBOX_ALREADY_EXISTS","message":"a mailbox already uses this Skarbiec item","retryable":false}}"#,
-    );
+    let relisted = fixture.listed_mailbox("team-inbox");
+    assert_eq!(relisted["id"], id, "listing again must not add a second mailbox");
 
     let override_attempt = fixture.skrzynka(&[
         "mailbox",
-        "add",
+        "declare",
         "--skarbiec-item",
         "team-inbox",
         "--email",

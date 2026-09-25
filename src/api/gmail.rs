@@ -71,7 +71,6 @@ pub(super) async fn connect_gmail_delegated(
 pub(super) struct ConnectGmailAppPasswordRequest {
     skarbiec_item_id: String,
     display_name: Option<String>,
-    mailbox: Option<String>,
 }
 
 pub(super) async fn connect_gmail_app_password(
@@ -86,7 +85,6 @@ pub(super) async fn connect_gmail_app_password(
                 &auth.organization_id,
                 &request.skarbiec_item_id,
                 request.display_name,
-                request.mailbox.as_deref(),
             )
             .await?
     )))

@@ -17,9 +17,9 @@ mod google;
 mod items;
 mod mailboxes;
 
+pub use mailboxes::MAILBOX_TAG;
+
 const MAX_SKARBIEC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
-/// A mailbox is polled every minute unless its profile says otherwise.
-const DEFAULT_POLL_INTERVAL_SECONDS: u64 = 60;
 /// A cached token is reused only while it has more than a minute left.
 const TOKEN_EXPIRY_MARGIN_SECONDS: i64 = 60;
 /// The Skarbiec CLI answers within seconds; longer than this is a stuck vault.

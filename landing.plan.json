@@ -65,7 +65,7 @@
       "kind": "proof",
       "id": "command-sequence-proof",
       "heading": "A real first-local-mailbox command sequence",
-      "lede": "Terminal transcript showing skrzynka status, mailbox add, sync, and message list operations.",
+      "lede": "The commands that take a mailbox Skarbiec declares to a readable local inbox: status, declare, sync, and message list.",
       "claimRefs": [
         0,
         1,
@@ -75,31 +75,20 @@
       "items": [],
       "artifact": {
         "type": "terminal",
-        "caption": "First-local-mailbox initialization and synchronization",
+        "caption": "Declaring a Skarbiec item a mailbox and reading its inbox",
         "lines": [
           "$ skrzynka status",
-          "skrzynka: no mailboxes configured",
+          "# database path, schema version, mailbox and message counts, whether skarbiec starts",
           "",
-          "$ skrzynka mailbox add personal --label 'Personal IMAP' --server imap.example.com --port 993 --tls",
-          "skrzynka: mailbox 'personal' added",
-          "",
-          "$ skrzynka mailbox add work --label 'Work IMAP' --server imap.work.com --port 993 --tls",
-          "skrzynka: mailbox 'work' added",
+          "$ skrzynka mailbox declare --skarbiec-item team-inbox",
+          "# tags team-inbox skrzynka:mailbox in Skarbiec and imports one INBOX page;",
+          "# prints mailbox_state, imported/unchanged/rejected counts and has_more",
           "",
           "$ skrzynka sync",
-          "skrzynka: synchronizing mailbox 'personal'...",
-          "skrzynka: 15 messages downloaded",
-          "skrzynka: synchronizing mailbox 'work'...",
-          "skrzynka: 47 messages downloaded",
-          "skrzynka: synchronization complete",
+          "# reads which items Skarbiec declares (reconciliation), then polls each mailbox",
           "",
           "$ skrzynka message list",
-          "ID  Mailbox   Subject                          Date",
-          "1   personal   Meeting reminder                 2024-01-15",
-          "2   personal   Newsletter                        2024-01-14",
-          "3   work       Project update                    2024-01-15",
-          "4   work       Team meeting notes                2024-01-15",
-          "..."
+          "# the normalized local inbox, newest first, without contacting the provider"
         ]
       }
     },

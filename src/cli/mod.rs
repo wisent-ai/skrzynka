@@ -84,7 +84,6 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
             GmailCommand::AppPassword {
                 email,
                 display_name,
-                mailbox,
             } => {
                 let password = read_gmail_app_password()?;
                 let state = state()?;
@@ -95,7 +94,6 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                             &email,
                             &password,
                             display_name,
-                            mailbox.as_deref(),
                         )
                         .await?,
                 )

@@ -139,6 +139,8 @@ pub struct SyncSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncAllSummary {
     pub completed_at: String,
+    /// What Skarbiec's declarations changed before the mailboxes were polled.
+    pub reconciliation: super::MailboxReconciliation,
     pub mailboxes: Vec<MailboxSyncResult>,
 }
 

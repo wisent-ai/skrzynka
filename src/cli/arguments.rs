@@ -1,6 +1,5 @@
 //! Every subcommand and argument the `skrzynka` binary accepts.
 
-use crate::models::CreateMailboxRequest;
 use clap::{Args, Parser, Subcommand};
 use std::{net::SocketAddr, path::PathBuf};
 use uuid::Uuid;
@@ -10,7 +9,7 @@ use uuid::Uuid;
     name = "skrzynka",
     version,
     about = "Receive and reply across multiple mailboxes without moving credentials out of Skarbiec",
-    after_help = "Safe first result: skrzynka mailbox import --skarbiec-item <ITEM_ID>; repeat while has_more=true"
+    after_help = "Mailboxes are the Skarbiec items tagged skrzynka:mailbox. Safe first result: skrzynka mailbox declare --skarbiec-item <ITEM_ID>; skrzynka sync while has_more=true"
 )]
 pub struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -86,27 +85,26 @@ pub(super) enum GmailCommand {
         email: String,
         #[arg(long)]
         display_name: Option<String>,
-        /// Attach receiving credentials to an existing mailbox selected by id or address.
-        #[arg(long)]
-        mailbox: Option<String>,
     },
 }
 
+/// Skarbiec owns the mailbox list: an item tagged `skrzynka:mailbox` is a
+/// mailbox. These commands read Skrzynka's state for those items and edit
+/// the tag; they keep no list of their own.
 #[derive(Subcommand)]
 pub(super) enum MailboxCommand {
-    Add(AddMailboxArgs),
-    /// Connect an existing account by Skarbiec item and atomically import one INBOX page.
-    Import(AddMailboxArgs),
+    /// Tag a Skarbiec item skrzynka:mailbox and import its first INBOX page.
+    Declare(DeclareMailboxArgs),
+    /// Remove the skrzynka:mailbox tag; the mailbox keeps its mail and stops polling.
+    Undeclare {
+        id: Uuid,
+    },
+    /// Every mailbox Skarbiec declares, after reading the vault.
     List,
     Show {
         id: Uuid,
     },
-    Enable {
-        id: Uuid,
-    },
-    Disable {
-        id: Uuid,
-    },
+    /// Delete the local mail of a mailbox Skarbiec no longer declares.
     Remove {
         id: Uuid,
         #[arg(long)]
@@ -115,20 +113,9 @@ pub(super) enum MailboxCommand {
 }
 
 #[derive(Args)]
-pub(super) struct AddMailboxArgs {
+pub(super) struct DeclareMailboxArgs {
     #[arg(long)]
     pub(super) skarbiec_item: String,
-    #[arg(long)]
-    pub(super) poll_seconds: Option<u64>,
-}
-
-impl AddMailboxArgs {
-    pub(super) fn into_request(self) -> CreateMailboxRequest {
-        CreateMailboxRequest {
-            skarbiec_item_id: self.skarbiec_item,
-            poll_interval_seconds: self.poll_seconds,
-        }
-    }
 }
 
 #[derive(Subcommand)]

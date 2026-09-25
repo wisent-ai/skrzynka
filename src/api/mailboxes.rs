@@ -1,10 +1,11 @@
-//! Mailbox routes: list, create, import, read, update, delete and sync.
+//! Mailbox routes: the mailboxes Skarbiec declares, the declaration itself,
+//! local mail removal, and sync.
 
 use super::parse_uuid;
 use crate::{
     auth::{AuthContext, OrganizationRole},
     error::AppError,
-    models::{CreateMailboxRequest, UpdateMailboxRequest},
+    models::DeclareMailboxRequest,
     service::AppState,
 };
 use axum::{
@@ -19,27 +20,34 @@ pub(super) async fn list_mailboxes(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.list_mailboxes(&auth.organization_id)?)))
+    Ok(Json(json!(
+        state.list_mailboxes(&auth.organization_id).await?
+    )))
 }
 
-pub(super) async fn create_mailbox(
+pub(super) async fn declare_mailbox(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Json(request): Json<CreateMailboxRequest>,
-) -> Result<(StatusCode, Json<Value>), AppError> {
-    auth.require_role(OrganizationRole::Admin)?;
-    let mailbox = state.create_mailbox(&auth.organization_id, request).await?;
-    Ok((StatusCode::CREATED, Json(json!(mailbox))))
-}
-
-pub(super) async fn import_mailbox(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
-    Json(request): Json<CreateMailboxRequest>,
+    Json(request): Json<DeclareMailboxRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Admin)?;
     Ok(Json(json!(
-        state.import_mailbox(&auth.organization_id, request).await?
+        state
+            .declare_mailbox(&auth.organization_id, &request.skarbiec_item_id)
+            .await?
+    )))
+}
+
+pub(super) async fn undeclare_mailbox(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
+    Ok(Json(json!(
+        state
+            .undeclare_mailbox(&auth.organization_id, parse_uuid(&id)?)
+            .await?
     )))
 }
 
@@ -51,20 +59,6 @@ pub(super) async fn get_mailbox(
     Ok(Json(json!(
         state.get_mailbox(&auth.organization_id, parse_uuid(&id)?)?
     )))
-}
-
-pub(super) async fn update_mailbox(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
-    Path(id): Path<String>,
-    Json(request): Json<UpdateMailboxRequest>,
-) -> Result<Json<Value>, AppError> {
-    auth.require_role(OrganizationRole::Admin)?;
-    Ok(Json(json!(state.update_mailbox(
-        &auth.organization_id,
-        parse_uuid(&id)?,
-        request,
-    )?)))
 }
 
 #[derive(Deserialize)]

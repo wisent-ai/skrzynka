@@ -81,11 +81,31 @@ impl std::str::FromStr for SmtpSecurity {
     }
 }
 
+/// Declare one Skarbiec item a mailbox: tag it in Skarbiec and import its
+/// first INBOX page. The item supplies every profile value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CreateMailboxRequest {
+pub struct DeclareMailboxRequest {
     pub skarbiec_item_id: String,
-    pub poll_interval_seconds: Option<u64>,
+}
+
+/// What one pass over Skarbiec's declared mailboxes changed in Skrzynka's
+/// state. `refused` names declared items whose profile could not be read,
+/// with the exact code and sentence.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MailboxReconciliation {
+    pub declared: usize,
+    pub created: Vec<Uuid>,
+    pub updated: Vec<Uuid>,
+    pub undeclared: Vec<Uuid>,
+    pub refused: Vec<MailboxDeclarationRefusal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailboxDeclarationRefusal {
+    pub skarbiec_item_id: String,
+    pub code: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -119,13 +139,6 @@ pub struct MailboxImportResult {
     pub messages: ImportItemCounts,
     pub rejected_by_reason: BTreeMap<String, usize>,
     pub has_more: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-pub struct UpdateMailboxRequest {
-    pub poll_interval_seconds: Option<u64>,
-    pub enabled: Option<bool>,
 }
 
 mod messages;

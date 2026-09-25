@@ -25,8 +25,8 @@ use gmail::{
     gmail_oauth_callback, gmail_oauth_status, start_gmail_oauth,
 };
 use mailboxes::{
-    create_mailbox, delete_mailbox, get_mailbox, import_mailbox, list_mailboxes, sync_all,
-    sync_mailbox, update_mailbox,
+    declare_mailbox, delete_mailbox, get_mailbox, list_mailboxes, sync_all, sync_mailbox,
+    undeclare_mailbox,
 };
 use messages::{
     create_outbound, create_reply, get_message, get_outbound, list_mailbox_outbound, list_messages,
@@ -46,14 +46,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/v1/gmail/delegate", post(connect_gmail_delegated))
         .route("/v1/gmail/app-password", post(connect_gmail_app_password))
-        .route("/v1/mailboxes", get(list_mailboxes).post(create_mailbox))
-        .route("/v1/imports/mailbox", post(import_mailbox))
+        .route("/v1/mailboxes", get(list_mailboxes))
+        .route("/v1/mailboxes/declare", post(declare_mailbox))
         .route(
             "/v1/mailboxes/:id",
-            get(get_mailbox)
-                .patch(update_mailbox)
-                .delete(delete_mailbox),
+            get(get_mailbox).delete(delete_mailbox),
         )
+        .route("/v1/mailboxes/:id/undeclare", post(undeclare_mailbox))
         .route("/v1/mailboxes/:id/sync", post(sync_mailbox))
         .route("/v1/sync", post(sync_all))
         .route("/v1/messages", get(list_messages))

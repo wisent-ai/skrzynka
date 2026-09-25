@@ -1,4 +1,8 @@
-//! Mailbox records: creation, adoption of an existing IMAP mailbox, reads, updates, deletion.
+//! Mailboxes as Skarbiec declares them. An item is a mailbox exactly when it
+//! carries [`MAILBOX_TAG`]; Skrzynka keeps only the mail it imported and where
+//! synchronization stands. Reconciliation brings that state in line with the
+//! vault, and declaring or undeclaring edits the tag in Skarbiec and then
+//! reconciles, so there is no second list to drift from the first.
 
 use super::AppState;
 use crate::{
@@ -6,87 +10,150 @@ use crate::{
     error::AppError,
     mail,
     models::{
-        CreateMailboxRequest, ImportItemCounts, Mailbox, MailboxImportResult, MailboxImportSource,
-        MailboxImportState, UpdateMailboxRequest, MAX_DISPLAY_NAME_CHARS, MAX_HOST_LENGTH,
-        MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS,
+        ImportItemCounts, Mailbox, MailboxDeclarationRefusal, MailboxImportResult,
+        MailboxImportSource, MailboxImportState, MailboxReconciliation,
     },
+    skarbiec::MAILBOX_TAG,
 };
 use chrono::Utc;
-use lettre::Address;
-use std::str::FromStr;
 use uuid::Uuid;
 
 impl AppState {
-    pub async fn create_mailbox(
+    /// Bring Skrzynka's mailboxes in line with what Skarbiec declares.
+    ///
+    /// A declared item gets a mailbox whose profile is the item's; a mailbox
+    /// whose item no longer carries the tag stops being polled and keeps its
+    /// mail. New mailboxes are created in `create_for`; the background poll
+    /// passes `None`, because only a caller knows which organization it is.
+    pub async fn reconcile_mailboxes(
         &self,
-        organization_id: &str,
-        mut request: CreateMailboxRequest,
-    ) -> Result<Mailbox, AppError> {
-        if request.poll_interval_seconds.is_none() {
-            request.poll_interval_seconds = Some(self.poll_interval_seconds);
+        create_for: Option<&str>,
+    ) -> Result<MailboxReconciliation, AppError> {
+        let declared = self.resolver.declared_mailbox_items().await?;
+        let existing = self.database.list_all_mailboxes()?;
+        let mut report = MailboxReconciliation {
+            declared: declared.len(),
+            ..Default::default()
+        };
+        for item_id in &declared {
+            let row = existing
+                .iter()
+                .find(|mailbox| &mailbox.skarbiec_item_id == item_id);
+            let mut config = match self
+                .resolver
+                .resolve_mailbox_config(item_id, self.poll_interval_seconds)
+                .await
+            {
+                Ok(config) => config,
+                Err(error) => {
+                    if let Some(mailbox) = row {
+                        self.database
+                            .record_sync_failure(mailbox.id, error.code, &error.message)?;
+                    }
+                    report.refused.push(MailboxDeclarationRefusal {
+                        skarbiec_item_id: item_id.clone(),
+                        code: error.code.to_string(),
+                        message: error.message,
+                    });
+                    continue;
+                }
+            };
+            match row {
+                Some(mailbox) => {
+                    config.organization_id = mailbox.organization_id.clone();
+                    if let Some(refusal) = endpoint_conflict(mailbox, &config) {
+                        self.database
+                            .record_sync_failure(mailbox.id, &refusal.code, &refusal.message)?;
+                        report.refused.push(refusal);
+                        continue;
+                    }
+                    if !mailbox.enabled || !mailbox_matches_config(mailbox, &config) {
+                        let mut updated = mailbox.clone();
+                        apply_config(&mut updated, &config);
+                        updated.enabled = true;
+                        self.database.update_mailbox(&updated)?;
+                        report.updated.push(mailbox.id);
+                    }
+                }
+                None => {
+                    if let Some(organization_id) = create_for {
+                        config.organization_id = organization_id.to_string();
+                        report.created.push(self.database.create_mailbox(&config)?.id);
+                    }
+                }
+            }
         }
-        let mut config = self.resolver.resolve_mailbox_config(&request).await?;
-        config.organization_id = organization_id.to_string();
-        self.database.create_mailbox(&config)
+        for mailbox in existing
+            .iter()
+            .filter(|mailbox| mailbox.enabled && !declared.contains(&mailbox.skarbiec_item_id))
+        {
+            let mut undeclared = mailbox.clone();
+            undeclared.enabled = false;
+            self.database.update_mailbox(&undeclared)?;
+            self.database.record_sync_failure(
+                mailbox.id,
+                "MAILBOX_NOT_DECLARED",
+                &format!(
+                    "Skarbiec item '{}' does not carry {MAILBOX_TAG}; Skrzynka keeps its mail and no longer polls it",
+                    mailbox.skarbiec_item_id
+                ),
+            )?;
+            report.undeclared.push(mailbox.id);
+        }
+        Ok(report)
     }
 
-    /// Adopt an existing IMAP mailbox by Skarbiec item reference and import one
-    /// bounded provider page. Credentials are resolved only inside Skrzynka;
-    /// the provider page is fully fetched and normalized before SQLite commits
-    /// the mailbox, messages, and cursor in one transaction.
-    pub async fn import_mailbox(
+    /// Declare one Skarbiec item a mailbox and import its first INBOX page.
+    ///
+    /// The tag is written to Skarbiec first, so the declaration outlives this
+    /// process; the page is then fully fetched and normalized before SQLite
+    /// commits the mailbox, messages, and cursor in one transaction.
+    pub async fn declare_mailbox(
         &self,
         organization_id: &str,
-        mut request: CreateMailboxRequest,
+        skarbiec_item_id: &str,
     ) -> Result<MailboxImportResult, AppError> {
+        let mut config = self
+            .resolver
+            .resolve_mailbox_config(skarbiec_item_id, self.poll_interval_seconds)
+            .await?;
+        let credentials = self.resolver.resolve_credentials(skarbiec_item_id).await?;
+        self.resolver
+            .set_mailbox_declared(skarbiec_item_id, true)
+            .await?;
         let _guard = self.operation_lock.lock().await;
-        let requested_poll_interval = request.poll_interval_seconds;
-        if request.poll_interval_seconds.is_none() {
-            request.poll_interval_seconds = Some(self.poll_interval_seconds);
-        }
-        let mut config = self.resolver.resolve_mailbox_config(&request).await?;
-        config.organization_id = organization_id.to_string();
         let existing = self
             .database
-            .list_mailboxes(organization_id)?
+            .list_all_mailboxes()?
             .into_iter()
-            .find(|mailbox| mailbox.skarbiec_item_id == config.skarbiec_item_id);
-        if let Some(mailbox) = existing.as_ref() {
-            if requested_poll_interval.is_none() {
-                config.poll_interval_seconds = mailbox.poll_interval_seconds;
-            }
-            if mailbox.email != config.email
-                || mailbox.imap_host != config.imap_host
-                || mailbox.imap_port != config.imap_port
-            {
-                return Err(AppError::conflict(
-                    "MAILBOX_IMPORT_PROFILE_CONFLICT",
-                    "the Skarbiec profile changes the receiving address or IMAP endpoint; the retained UID cursor cannot be reused and no import data was changed",
-                ));
-            }
-        }
-        let credentials = self
-            .resolver
-            .resolve_credentials(&config.skarbiec_item_id)
-            .await?;
-        let create_mailbox = existing.is_none();
-        let mailbox_state = if create_mailbox {
-            MailboxImportState::Imported
-        } else if existing
+            .find(|mailbox| mailbox.skarbiec_item_id == skarbiec_item_id);
+        config.organization_id = existing.as_ref().map_or_else(
+            || organization_id.to_string(),
+            |mailbox| mailbox.organization_id.clone(),
+        );
+        if let Some(refusal) = existing
             .as_ref()
-            .is_some_and(|mailbox| !mailbox_matches_config(mailbox, &config))
+            .and_then(|mailbox| endpoint_conflict(mailbox, &config))
         {
-            MailboxImportState::Updated
-        } else {
-            MailboxImportState::Unchanged
+            return Err(AppError::conflict(
+                "MAILBOX_IMPORT_PROFILE_CONFLICT",
+                refusal.message,
+            ));
+        }
+        let create_mailbox = existing.is_none();
+        let mailbox_state = match existing.as_ref() {
+            None => MailboxImportState::Imported,
+            Some(mailbox) if !mailbox.enabled || !mailbox_matches_config(mailbox, &config) => {
+                MailboxImportState::Updated
+            }
+            Some(_) => MailboxImportState::Unchanged,
         };
         let mut mailbox = existing.unwrap_or_else(|| mailbox_from_config(&config));
-        mailbox.display_name = config.display_name;
-        mailbox.smtp_skarbiec_item_id = config.smtp_skarbiec_item_id;
-        mailbox.smtp_host = config.smtp_host;
-        mailbox.smtp_port = config.smtp_port;
-        mailbox.smtp_security = config.smtp_security;
-        mailbox.poll_interval_seconds = config.poll_interval_seconds;
+        apply_config(&mut mailbox, &config);
+        mailbox.enabled = true;
+        if !create_mailbox {
+            mailbox = self.database.update_mailbox(&mailbox)?;
+        }
         let source_item_id = config.skarbiec_item_id.clone();
         let database = self.database.clone();
         let (mailbox, imported, unchanged, fetched) = tokio::task::spawn_blocking(move || {
@@ -126,7 +193,23 @@ impl AppState {
         })
     }
 
-    pub fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
+    /// Stop treating one mailbox's item as a mailbox: remove the tag in
+    /// Skarbiec, then reconcile. The mailbox keeps its mail and stops polling.
+    pub async fn undeclare_mailbox(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+    ) -> Result<Mailbox, AppError> {
+        let mailbox = self.database.get_mailbox(organization_id, id)?;
+        self.resolver
+            .set_mailbox_declared(&mailbox.skarbiec_item_id, false)
+            .await?;
+        self.reconcile_mailboxes(None).await?;
+        self.database.get_mailbox(organization_id, id)
+    }
+
+    pub async fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
+        self.reconcile_mailboxes(Some(organization_id)).await?;
         self.database.list_mailboxes(organization_id)
     }
 
@@ -134,24 +217,19 @@ impl AppState {
         self.database.get_mailbox(organization_id, id)
     }
 
-    pub fn update_mailbox(
-        &self,
-        organization_id: &str,
-        id: Uuid,
-        request: UpdateMailboxRequest,
-    ) -> Result<Mailbox, AppError> {
-        let mut mailbox = self.database.get_mailbox(organization_id, id)?;
-        if let Some(value) = request.poll_interval_seconds {
-            mailbox.poll_interval_seconds = value;
-        }
-        if let Some(value) = request.enabled {
-            mailbox.enabled = value;
-        }
-        validate_mailbox(&mailbox)?;
-        self.database.update_mailbox(&mailbox)
-    }
-
+    /// Delete one mailbox's local mail. Only a mailbox Skarbiec no longer
+    /// declares can go: a declared one would be recreated by the next pass.
     pub fn delete_mailbox(&self, organization_id: &str, id: Uuid) -> Result<(), AppError> {
+        let mailbox = self.database.get_mailbox(organization_id, id)?;
+        if mailbox.enabled {
+            return Err(AppError::conflict(
+                "MAILBOX_STILL_DECLARED",
+                format!(
+                    "Skarbiec item '{}' still carries {MAILBOX_TAG}; undeclare the mailbox before removing its local mail",
+                    mailbox.skarbiec_item_id
+                ),
+            ));
+        }
         self.database.delete_mailbox(organization_id, id)
     }
 }
@@ -195,46 +273,27 @@ fn mailbox_matches_config(mailbox: &Mailbox, config: &MailboxConfig) -> bool {
         && mailbox.poll_interval_seconds == config.poll_interval_seconds
 }
 
-fn validate_mailbox(mailbox: &Mailbox) -> Result<(), AppError> {
-    if mailbox.display_name.is_empty()
-        || mailbox.display_name.chars().count() > MAX_DISPLAY_NAME_CHARS
-    {
-        return Err(AppError::invalid(
-            "MAILBOX_PROFILE_INVALID",
-            "display_name must contain between 1 and 200 characters",
-        ));
-    }
-    Address::from_str(&mailbox.email).map_err(|_| {
-        AppError::invalid("MAILBOX_PROFILE_INVALID", "email is not a valid address")
-    })?;
-    for (name, value) in [
-        ("imap_host", mailbox.imap_host.as_str()),
-        ("smtp_host", mailbox.smtp_host.as_str()),
-    ] {
-        if value.is_empty()
-            || value.len() > MAX_HOST_LENGTH
-            || value.contains("://")
-            || value.chars().any(char::is_whitespace)
-        {
-            return Err(AppError::invalid(
-                "MAILBOX_PROFILE_INVALID",
-                format!("{name} must be a hostname without a URL scheme"),
-            ));
-        }
-    }
-    if mailbox.imap_port == 0 || mailbox.smtp_port == 0 {
-        return Err(AppError::invalid(
-            "MAILBOX_PROFILE_INVALID",
-            "mail server ports must be nonzero",
-        ));
-    }
-    if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS)
-        .contains(&mailbox.poll_interval_seconds)
-    {
-        return Err(AppError::invalid(
-            "MAILBOX_PROFILE_INVALID",
-            "poll_interval_seconds must be between 15 and 86400",
-        ));
-    }
-    Ok(())
+/// A declared item whose receiving address or IMAP endpoint changed: the
+/// retained UID cursor belongs to the old mailbox and cannot be reused.
+fn endpoint_conflict(
+    mailbox: &Mailbox,
+    config: &MailboxConfig,
+) -> Option<MailboxDeclarationRefusal> {
+    (mailbox.email != config.email
+        || mailbox.imap_host != config.imap_host
+        || mailbox.imap_port != config.imap_port)
+        .then(|| MailboxDeclarationRefusal {
+            skarbiec_item_id: config.skarbiec_item_id.clone(),
+            code: "MAILBOX_IMPORT_PROFILE_CONFLICT".to_string(),
+            message: "the Skarbiec profile changes the receiving address or IMAP endpoint; the retained UID cursor cannot be reused and no import data was changed".to_string(),
+        })
+}
+
+fn apply_config(mailbox: &mut Mailbox, config: &MailboxConfig) {
+    mailbox.smtp_skarbiec_item_id = config.smtp_skarbiec_item_id.clone();
+    mailbox.display_name = config.display_name.clone();
+    mailbox.smtp_host = config.smtp_host.clone();
+    mailbox.smtp_port = config.smtp_port;
+    mailbox.smtp_security = config.smtp_security;
+    mailbox.poll_interval_seconds = config.poll_interval_seconds;
 }

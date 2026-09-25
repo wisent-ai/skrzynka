@@ -4,35 +4,50 @@ use std::process::{Command, Stdio};
 use super::fixture::*;
 
 #[test]
-fn mailbox_disable_changes_only_enabled_state_and_refuses_unknown_accounts() {
-    let fixture = MailboxFixture::new("disable");
+fn a_mailbox_exists_while_its_skarbiec_item_carries_the_tag() {
+    let fixture = MailboxFixture::new("declared-by-tag");
     fixture.seed_mailbox_item("team-inbox");
-    let mailbox = fixture.add_mailbox("team-inbox");
-    let id = MailboxFixture::mailbox_id(&mailbox);
+    let mailbox = fixture.declare_in_vault("team-inbox");
+    assert_eq!(mailbox["enabled"], true);
+    assert_eq!(mailbox["email"], "team@example.invalid");
+    let id = MailboxFixture::mailbox_id(&mailbox).to_owned();
 
-    let disabled = fixture.skrzynka(&["mailbox", "disable", id]);
-    fixture.assert_success("disable mailbox", disabled);
-    let state = fixture
-        .connection()
-        .query_row(
-            "SELECT enabled, skarbiec_item_id, email, last_uid FROM mailboxes WHERE id=?1",
-            [id],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
-                ))
-            },
-        )
-        .expect("read disabled mailbox state");
+    fixture.set_vault_tags("team-inbox", "");
+    let undeclared = fixture.listed_mailbox("team-inbox");
+    assert_eq!(undeclared["id"], id.as_str());
+    assert_eq!(undeclared["enabled"], false);
+    assert_eq!(undeclared["last_error_code"], "MAILBOX_NOT_DECLARED");
     assert_eq!(
-        state,
-        (0, "team-inbox".into(), "team@example.invalid".into(), 0)
+        undeclared["last_error_message"],
+        "Skarbiec item 'team-inbox' does not carry skrzynka:mailbox; Skrzynka keeps its mail and no longer polls it"
     );
 
-    let unknown = fixture.skrzynka(&["mailbox", "disable", UNKNOWN_MAILBOX]);
+    fixture.set_vault_tags("team-inbox", "skrzynka:mailbox");
+    let redeclared = fixture.listed_mailbox("team-inbox");
+    assert_eq!(redeclared["id"], id.as_str());
+    assert_eq!(redeclared["enabled"], true);
+}
+
+#[test]
+fn undeclare_removes_only_the_mailbox_tag_and_keeps_the_mailbox() {
+    let fixture = MailboxFixture::new("undeclare");
+    fixture.seed_mailbox_item("team-inbox");
+    fixture.set_vault_tags("team-inbox", "team,skrzynka:mailbox");
+    let mailbox = fixture.listed_mailbox("team-inbox");
+    let id = MailboxFixture::mailbox_id(&mailbox);
+
+    let undeclared = fixture.skrzynka(&["mailbox", "undeclare", id]);
+    assert_success("undeclare mailbox", &undeclared);
+    assert_eq!(fixture.vault_tags("team-inbox"), vec!["team".to_owned()]);
+    let enabled: bool = fixture
+        .connection()
+        .query_row("SELECT enabled FROM mailboxes WHERE id=?1", [id], |row| {
+            row.get(0)
+        })
+        .expect("read undeclared mailbox");
+    assert!(!enabled);
+
+    let unknown = fixture.skrzynka(&["mailbox", "undeclare", UNKNOWN_MAILBOX]);
     assert_exit_one_with(
         &unknown,
         r#"{"error":{"code":"NOT_FOUND","message":"mailbox was not found","retryable":false}}"#,
@@ -40,51 +55,28 @@ fn mailbox_disable_changes_only_enabled_state_and_refuses_unknown_accounts() {
 }
 
 #[test]
-fn mailbox_enable_changes_only_enabled_state_and_refuses_unknown_accounts() {
-    let fixture = MailboxFixture::new("enable");
-    fixture.seed_mailbox_item("team-inbox");
-    let mailbox = fixture.add_mailbox("team-inbox");
-    let id = MailboxFixture::mailbox_id(&mailbox);
-    fixture.assert_success(
-        "prepare disabled mailbox",
-        fixture.skrzynka(&["mailbox", "disable", id]),
-    );
-
-    let enabled = fixture.skrzynka(&["mailbox", "enable", id]);
-    fixture.assert_success("enable mailbox", enabled);
-    let state = fixture
-        .connection()
-        .query_row(
-            "SELECT enabled, skarbiec_item_id, email, last_uid FROM mailboxes WHERE id=?1",
-            [id],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
-                ))
-            },
-        )
-        .expect("read enabled mailbox state");
-    assert_eq!(
-        state,
-        (1, "team-inbox".into(), "team@example.invalid".into(), 0)
-    );
-
-    let unknown = fixture.skrzynka(&["mailbox", "enable", UNKNOWN_MAILBOX]);
-    assert_exit_one_with(
-        &unknown,
-        r#"{"error":{"code":"NOT_FOUND","message":"mailbox was not found","retryable":false}}"#,
-    );
+fn a_mailbox_cannot_be_added_beside_skarbiec() {
+    let fixture = MailboxFixture::new("no-local-add");
+    let refused = fixture.skrzynka(&["mailbox", "add", "--skarbiec-item", "team-inbox"]);
+    assert_eq!(refused.status.code(), Some(2));
 }
 
 #[test]
-fn mailbox_remove_requires_confirmation_deletes_local_state_and_preserves_skarbiec() {
+fn mailbox_remove_requires_undeclare_and_confirmation_and_preserves_skarbiec() {
     let fixture = MailboxFixture::new("remove");
     fixture.seed_mailbox_item("team-inbox");
-    let mailbox = fixture.add_mailbox("team-inbox");
+    let mailbox = fixture.declare_in_vault("team-inbox");
     let id = MailboxFixture::mailbox_id(&mailbox);
+
+    let declared = fixture.skrzynka(&["mailbox", "remove", id, "--confirm"]);
+    assert_exit_one_with(
+        &declared,
+        r#"{"error":{"code":"MAILBOX_STILL_DECLARED","message":"Skarbiec item 'team-inbox' still carries skrzynka:mailbox; undeclare the mailbox before removing its local mail","retryable":false}}"#,
+    );
+    fixture.assert_success(
+        "undeclare before removal",
+        fixture.skrzynka(&["mailbox", "undeclare", id]),
+    );
 
     let unconfirmed = fixture.skrzynka(&["mailbox", "remove", id]);
     assert_exit_one_with(

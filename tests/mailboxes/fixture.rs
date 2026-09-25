@@ -77,10 +77,45 @@ impl MailboxFixture {
         self.assert_success("seed real Skarbiec mailbox bundle", output);
     }
 
-    pub(crate) fn add_mailbox(&self, item_id: &str) -> Value {
-        let output = self.skrzynka(&["mailbox", "add", "--skarbiec-item", item_id]);
-        assert_success("add mailbox fixture", &output);
-        serde_json::from_slice(&output.stdout).expect("mailbox add must return JSON")
+    /// Tag the item `skrzynka:mailbox` in the isolated vault the way an
+    /// operator would, then let `mailbox list` reconcile it into a mailbox.
+    /// No IMAP server is contacted.
+    pub(crate) fn declare_in_vault(&self, item_id: &str) -> Value {
+        self.set_vault_tags(item_id, "skrzynka:mailbox");
+        self.listed_mailbox(item_id)
+    }
+
+    pub(crate) fn set_vault_tags(&self, item_id: &str, tags: &str) {
+        let output = self.skarbiec(&["retag", item_id, "--tags", tags]);
+        assert_success("retag the Skarbiec item", &output);
+    }
+
+    /// The mailbox `mailbox list` reports for one Skarbiec item.
+    pub(crate) fn listed_mailbox(&self, item_id: &str) -> Value {
+        let output = self.skrzynka(&["mailbox", "list"]);
+        assert_success("list declared mailboxes", &output);
+        let mailboxes: Vec<Value> =
+            serde_json::from_slice(&output.stdout).expect("mailbox list must return JSON");
+        mailboxes
+            .into_iter()
+            .find(|mailbox| mailbox["skarbiec_item_id"] == item_id)
+            .expect("the declared item must be listed as a mailbox")
+    }
+
+    /// The tags Skarbiec reports for one item.
+    pub(crate) fn vault_tags(&self, item_id: &str) -> Vec<String> {
+        let output = self.skarbiec(&["list"]);
+        assert_success("list Skarbiec items", &output);
+        let items: Vec<Value> =
+            serde_json::from_slice(&output.stdout).expect("skarbiec list must return JSON");
+        items
+            .into_iter()
+            .find(|item| item["id"] == item_id)
+            .and_then(|item| item["tags"].as_array().cloned())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|tag| tag.as_str().map(str::to_owned))
+            .collect()
     }
 
     pub(crate) fn skrzynka(&self, args: &[&str]) -> Output {
@@ -93,28 +128,6 @@ impl MailboxFixture {
             .args(args);
         self.isolated_environment(&mut command);
         command.output().expect("run real Skrzynka binary")
-    }
-
-    pub(crate) fn skrzynka_with_stdin(&self, args: &[&str], input: &str) -> Output {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_skrzynka"));
-        command
-            .arg("--database")
-            .arg(&self.database)
-            .arg("--skarbiec-bin")
-            .arg(&self.skarbiec)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        self.isolated_environment(&mut command);
-        let mut child = command.spawn().expect("start real Skrzynka binary");
-        child
-            .stdin
-            .take()
-            .expect("open Skrzynka stdin")
-            .write_all(input.as_bytes())
-            .expect("write Gmail app password");
-        child.wait_with_output().expect("collect Skrzynka output")
     }
 
     pub(crate) fn skarbiec(&self, args: &[&str]) -> Output {
@@ -158,16 +171,6 @@ impl MailboxFixture {
         mailbox["id"].as_str().expect("mailbox id must be text")
     }
 
-    pub(crate) fn assert_skarbiec_item_absent(&self, item_id: &str) {
-        let output = self.skarbiec(&["get", item_id]);
-        assert!(
-            !output.status.success(),
-            "Skarbiec item '{item_id}' must not exist\nstdout: {}\nstderr: {}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
     pub(crate) fn assert_success(&self, context: &str, output: Output) {
         assert!(
             output.status.success(),
@@ -204,29 +207,4 @@ pub(crate) fn stderr(output: &Output) -> String {
 pub(crate) fn assert_exit_one_with(output: &Output, expected: &str) {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(stderr(output), expected);
-}
-
-pub(crate) fn mailbox_receiving_state(
-    fixture: &MailboxFixture,
-) -> Vec<(String, String, Option<String>, String, i64)> {
-    let connection = fixture.connection();
-    let mut statement = connection
-        .prepare(
-            "SELECT id, skarbiec_item_id, smtp_skarbiec_item_id, imap_host, enabled
-             FROM mailboxes ORDER BY id",
-        )
-        .expect("prepare mailbox receiving-state query");
-    statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-            ))
-        })
-        .expect("read mailbox receiving state")
-        .collect::<Result<Vec<_>, _>>()
-        .expect("collect mailbox receiving state")
 }

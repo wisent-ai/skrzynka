@@ -7,7 +7,7 @@ use crate::{
         GmailOAuthCallback, GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, StartGmailOAuthRequest,
         StartGmailOAuthResponse,
     },
-    models::{CreateMailboxRequest, Mailbox},
+    models::Mailbox,
 };
 use lettre::Address;
 use std::str::FromStr;
@@ -16,7 +16,7 @@ use uuid::Uuid;
 impl AppState {
     /// Connect a Workspace mailbox through domain-wide delegation: prove the
     /// grant by minting a token for the address, persist the credential bundle
-    /// in Skarbiec, then create or return the mailbox.
+    /// in Skarbiec, then declare it a mailbox there.
     ///
     /// The grant itself is not Skrzynka's to perform. It exists only in the
     /// Workspace admin console, so a missing grant is reported as
@@ -40,22 +40,7 @@ impl AppState {
             .resolver
             .save_gmail_delegation(email, display_name.as_deref())
             .await?;
-        if let Some(mailbox) = self
-            .database
-            .list_mailboxes(organization_id)?
-            .into_iter()
-            .find(|mailbox| mailbox.skarbiec_item_id == item_id)
-        {
-            return Ok(mailbox);
-        }
-        self.create_mailbox(
-            organization_id,
-            CreateMailboxRequest {
-                skarbiec_item_id: item_id,
-                poll_interval_seconds: None,
-            },
-        )
-        .await
+        self.declare_and_reconcile(organization_id, &item_id).await
     }
 
     pub async fn start_gmail_oauth(
@@ -118,20 +103,9 @@ impl AppState {
         &self,
         authorization: &crate::gmail::GmailAuthorization,
     ) -> Result<Mailbox, AppError> {
-        if let Some(mailbox) = self
-            .database
-            .list_mailboxes(&authorization.organization_id)?
-            .into_iter()
-            .find(|mailbox| mailbox.skarbiec_item_id == authorization.credential_item_id)
-        {
-            return Ok(mailbox);
-        }
-        self.create_mailbox(
+        self.declare_and_reconcile(
             &authorization.organization_id,
-            CreateMailboxRequest {
-                skarbiec_item_id: authorization.credential_item_id.clone(),
-                poll_interval_seconds: None,
-            },
+            &authorization.credential_item_id,
         )
         .await
     }

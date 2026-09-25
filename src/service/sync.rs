@@ -4,7 +4,7 @@ use super::AppState;
 use crate::{
     error::AppError,
     mail,
-    models::{Mailbox, MailboxSyncResult, SyncAllSummary, SyncSummary},
+    models::{Mailbox, MailboxReconciliation, MailboxSyncResult, SyncAllSummary, SyncSummary},
 };
 use chrono::Utc;
 use uuid::Uuid;
@@ -72,16 +72,27 @@ impl AppState {
     }
 
     pub async fn sync_all(&self, organization_id: &str) -> Result<SyncAllSummary, AppError> {
+        let reconciliation = self.reconcile_mailboxes(Some(organization_id)).await?;
         let mailboxes = self
             .database
             .list_mailboxes(organization_id)?
             .into_iter()
             .filter(|mailbox| mailbox.enabled)
             .collect::<Vec<_>>();
-        self.sync_mailboxes(mailboxes).await
+        self.sync_mailboxes(reconciliation, mailboxes).await
     }
 
+    /// The background poll. A vault that cannot be read this tick does not
+    /// stop mail that is already declared: the tick polls what it has and the
+    /// next one reads Skarbiec again.
     pub(super) async fn sync_due(&self) -> Result<SyncAllSummary, AppError> {
+        let reconciliation = match self.reconcile_mailboxes(None).await {
+            Ok(reconciliation) => reconciliation,
+            Err(error) => {
+                tracing::warn!(code = error.code, message = %error.message, "Skarbiec mailbox declarations could not be read");
+                MailboxReconciliation::default()
+            }
+        };
         let now = Utc::now();
         let mailboxes = self
             .database
@@ -103,11 +114,12 @@ impl AppState {
                     .unwrap_or(true)
             })
             .collect::<Vec<_>>();
-        self.sync_mailboxes(mailboxes).await
+        self.sync_mailboxes(reconciliation, mailboxes).await
     }
 
     pub(super) async fn sync_mailboxes(
         &self,
+        reconciliation: MailboxReconciliation,
         mailboxes: Vec<Mailbox>,
     ) -> Result<SyncAllSummary, AppError> {
         let mut results = Vec::with_capacity(mailboxes.len());
@@ -131,6 +143,7 @@ impl AppState {
         }
         Ok(SyncAllSummary {
             completed_at: Utc::now().to_rfc3339(),
+            reconciliation,
             mailboxes: results,
         })
     }
