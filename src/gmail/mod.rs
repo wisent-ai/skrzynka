@@ -14,8 +14,8 @@ mod diagnosis;
 mod exchange;
 
 pub use diagnosis::{
-    authorization_operands, diagnose_authorization, google_imap_password_rejected,
-    redirect_not_registered,
+    app_password_action, authorization_operands, diagnose_authorization,
+    google_imap_password_rejected, redirect_not_registered,
 };
 
 const GMAIL_SCOPES: &str = "openid email https://mail.google.com/";

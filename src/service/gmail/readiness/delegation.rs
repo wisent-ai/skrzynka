@@ -63,9 +63,7 @@ impl AppState {
                      only inside a Workspace domain. No administrator can grant it for this \
                      address."
                 ),
-                action: format!(
-                    "printf '%s' <app-password> | skrzynka gmail app-password --email {account}"
-                ),
+                action: crate::gmail::app_password_action(account),
                 observed,
             };
         }

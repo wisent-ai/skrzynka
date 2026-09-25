@@ -144,13 +144,9 @@ fn nothing_to_authenticate(account: Option<&str>) -> GmailConnectionPath {
     }
 }
 
-/// The exact command that connects this account, with the secret on stdin
-/// where the credential contract requires it.
+/// The exact command that connects this account: Weles creates the app
+/// password and hands it to Skrzynka on stdin, so no secret is typed or placed
+/// in argv.
 fn connect_action(account: Option<&str>) -> String {
-    match account {
-        Some(account) => {
-            format!("printf '%s' <app-password> | skrzynka gmail app-password --email {account}")
-        }
-        None => "skrzynka gmail app-password --email <address>".to_string(),
-    }
+    crate::gmail::app_password_action(account.unwrap_or("<address>"))
 }

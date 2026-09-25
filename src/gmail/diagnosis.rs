@@ -55,19 +55,29 @@ pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError 
     )
 }
 
+/// The command that obtains an app-specific password for `account` without a
+/// person: Weles signs the account's Skarbiec Google login in, creates the
+/// password on Google's App passwords page, and pipes it to
+/// `skrzynka gmail app-password`. Every refusal that needs an app password
+/// names this one command rather than asking somebody to make one by hand.
+pub fn app_password_action(account: &str) -> String {
+    format!("weles app-password --login-item <Skarbiec Google login of {account}>")
+}
+
 /// The refusal when Google IMAP rejects a password credential.
 ///
 /// The same refusal covers an ordinary account password and an invalid or
-/// revoked app-specific password. It names the one path that needs neither a
-/// Workspace administrator nor an OAuth client, and then the report that says
-/// which paths this account can actually use — it does not recommend
-/// authorizing, because whether OAuth can complete here is measured, not
-/// assumed. It never places a secret in argv.
+/// revoked app-specific password. It names the command that creates an app
+/// password and hands it back here, and then the report that says which
+/// paths this account can actually use — it does not recommend authorizing,
+/// because whether OAuth can complete here is measured, not assumed. It never
+/// places a secret in argv.
 pub fn google_imap_password_rejected(mailbox_email: &str, skarbiec_item_id: &str) -> AppError {
     AppError::dependency(
         "GMAIL_IMAP_PASSWORD_REJECTED",
         format!(
-            "Google refused IMAP authentication for mailbox {mailbox_email} using the password credential associated with Skarbiec item '{skarbiec_item_id}'. Supply a valid Google app-specific password through stdin to `skrzynka gmail app-password --email {mailbox_email}`. Run `skrzynka gmail connection --email {mailbox_email}` for which connection paths this account can actually use."
+            "Google refused IMAP authentication for mailbox {mailbox_email} using the password credential associated with Skarbiec item '{skarbiec_item_id}'. Create an app-specific password and store it here with `{}`. Run `skrzynka gmail connection --email {mailbox_email}` for which connection paths this account can actually use.",
+            app_password_action(mailbox_email)
         ),
         false,
     )

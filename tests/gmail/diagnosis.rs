@@ -75,7 +75,7 @@ fn google_imap_password_rejected_names_mailbox_credential_item_and_the_report() 
     );
     assert_eq!(
         error.message,
-        "Google refused IMAP authentication for mailbox user@gmail.com using the password credential associated with Skarbiec item 'gmail-personal'. Supply a valid Google app-specific password through stdin to `skrzynka gmail app-password --email user@gmail.com`. Run `skrzynka gmail connection --email user@gmail.com` for which connection paths this account can actually use."
+        "Google refused IMAP authentication for mailbox user@gmail.com using the password credential associated with Skarbiec item 'gmail-personal'. Create an app-specific password and store it here with `weles app-password --login-item <Skarbiec Google login of user@gmail.com>`. Run `skrzynka gmail connection --email user@gmail.com` for which connection paths this account can actually use."
     );
     // The refusal used to recommend `gmail authorize` to every account. That
     // path depends on an OAuth client whose redirect registration is a fact

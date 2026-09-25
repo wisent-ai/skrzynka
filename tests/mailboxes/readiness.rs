@@ -99,11 +99,12 @@ fn a_consumer_account_is_refused_for_delegation_without_asking_google() {
         "someone@gmail.com is a consumer Google account, and domain-wide delegation exists only \
          inside a Workspace domain. No administrator can grant it for this address."
     );
-    // The refusal hands over the path that does work for a consumer account
-    // rather than the console URL no administrator can act on.
+    // The refusal hands over the path that does work for a consumer account —
+    // the Weles command that creates the app password — rather than the
+    // console URL no administrator can act on.
     assert_eq!(
         delegation["action"],
-        "printf '%s' <app-password> | skrzynka gmail app-password --email someone@gmail.com"
+        "weles app-password --login-item <Skarbiec Google login of someone@gmail.com>"
     );
     // The service account is still reported, because an operator reading this
     // needs to recognise the key that was checked.
