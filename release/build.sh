@@ -6,6 +6,16 @@ output_dir=${WISENT_OUTPUT_DIR:?WISENT_OUTPUT_DIR is required}
 platform=${WISENT_PLATFORM:?WISENT_PLATFORM is required}
 version=${WISENT_VERSION:?WISENT_VERSION is required}
 : "${CARGO_TARGET_DIR:?The builder-owned CARGO_TARGET_DIR is required}"
+# A fleet builder's job environment carries a minimal PATH; rustup installs
+# cargo under ~/.cargo/bin, so a build that only asked PATH exited 127.
+if ! command -v cargo >/dev/null; then
+  PATH="$HOME/.cargo/bin:$PATH"
+  export PATH
+fi
+command -v cargo >/dev/null || {
+  printf 'cargo is not installed for this builder\n' >&2
+  exit 69
+}
 
 case "$platform" in
   darwin-arm64) expected_os=Darwin; expected_arch=arm64 ;;

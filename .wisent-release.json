@@ -13,7 +13,7 @@
       "quality": [],
       "build": {"argv": ["bash", "release/build.sh"]},
       "tests": [
-        {"name": "real-mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
+        {"name": "real-mailboxes", "argv": ["bash", "release/test.sh"]}
       ],
       "stage": {
         "bin/skrzynka": "bin/skrzynka",
@@ -26,7 +26,7 @@
       "quality": [],
       "build": {"argv": ["bash", "release/build.sh"]},
       "tests": [
-        {"name": "real-mailboxes", "argv": ["cargo", "test", "--locked", "--release", "--test", "mailboxes", "--", "--include-ignored"]}
+        {"name": "real-mailboxes", "argv": ["bash", "release/test.sh"]}
       ],
       "stage": {
         "bin/skrzynka": "bin/skrzynka",
