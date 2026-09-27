@@ -187,7 +187,10 @@ fn a_declared_mailbox_persists_only_the_profile_and_refuses_profile_overrides() 
     );
 
     let relisted = fixture.listed_mailbox("team-inbox");
-    assert_eq!(relisted["id"], id, "listing again must not add a second mailbox");
+    assert_eq!(
+        relisted["id"], id,
+        "listing again must not add a second mailbox"
+    );
 
     let override_attempt = fixture.skrzynka(&[
         "mailbox",

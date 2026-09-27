@@ -117,7 +117,9 @@ fn mailbox_remove_requires_undeclare_and_confirmation_and_preserves_skarbiec() {
 
 #[test]
 fn schema_three_migration_adds_smtp_credential_without_rewriting_mail_history() {
-    let fixture = MailboxFixture::without_skarbiec("schema-three-migration");
+    // `mailbox list` reads the mailboxes from Skarbiec by their tag, so the
+    // migration runs beside an initialized (empty) vault.
+    let fixture = MailboxFixture::new("schema-three-migration");
     let connection = Connection::open(&fixture.database).expect("open schema-three database");
     connection
         .execute_batch(

@@ -12,14 +12,39 @@ use std::time::{SystemTime, UNIX_EPOCH};
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 pub(crate) const UNKNOWN_MAILBOX: &str = "00000000-0000-0000-0000-000000000001";
 pub(crate) const PASSWORD: &str = "correct-horse-battery-staple";
+/// Darwin's limit on a Unix socket path, and the longest socket gpg-agent
+/// makes in its home.
+const SOCKET_PATH_LIMIT: usize = 104;
+const LONGEST_AGENT_SOCKET: &str = "S.gpg-agent.browser";
+/// Where a short name for a deep GPG home is kept, under the test's own HOME.
+const SHORT_GNUPG_LINKS: &str = ".skrzynka-test-gnupg";
 
 pub(crate) struct MailboxFixture {
     pub(crate) root: PathBuf,
+    /// The GPG home as every command is given it: the real directory, or a
+    /// short link to it when the real path would put the agent's socket past
+    /// the limit (a Stado snapshot or a fleet builder's work tree is deep).
     pub(crate) gnupg: PathBuf,
+    gnupg_link: Option<PathBuf>,
     pub(crate) vault: PathBuf,
     pub(crate) audit: PathBuf,
     pub(crate) database: PathBuf,
     pub(crate) skarbiec: OsString,
+}
+
+/// `real`, or a short symlink to it when `real` would not fit a socket path.
+fn socket_safe_gnupg(real: &PathBuf, name: &str) -> (PathBuf, Option<PathBuf>) {
+    let socket = real.join(LONGEST_AGENT_SOCKET);
+    if socket.as_os_str().len() < SOCKET_PATH_LIMIT {
+        return (real.clone(), None);
+    }
+    let home = std::env::var_os("HOME").expect("a HOME for the short GPG link");
+    let links = PathBuf::from(home).join(SHORT_GNUPG_LINKS);
+    fs::create_dir_all(&links).expect("create the short GPG link directory");
+    let link = links.join(name);
+    let _ = fs::remove_file(&link);
+    std::os::unix::fs::symlink(real, &link).expect("link the isolated GPG home");
+    (link.clone(), Some(link))
 }
 
 impl MailboxFixture {
@@ -41,20 +66,23 @@ impl MailboxFixture {
             .expect("system clock must follow the Unix epoch")
             .as_nanos();
         let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-        // Keep the GPG socket below Darwin's 104-byte Unix socket limit while
-        // retaining all isolated test state inside the checkout's build tree.
+        let name = format!(
+            "{:x}{:08x}{sequence:x}",
+            std::process::id(),
+            unique & 0xffff_ffff
+        );
+        // All isolated test state stays inside the checkout's build tree; only
+        // the GPG home gets a short name when that tree is too deep for the
+        // agent's socket.
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("target/t")
-            .join(format!(
-                "{:x}{:08x}{sequence:x}",
-                std::process::id(),
-                unique & 0xffff_ffff
-            ));
-        let gnupg = root.join("g");
-        fs::create_dir_all(&gnupg).expect("create isolated GPG home");
-        fs::set_permissions(&gnupg, fs::Permissions::from_mode(0o700))
+            .join(&name);
+        let real_gnupg = root.join("g");
+        fs::create_dir_all(&real_gnupg).expect("create isolated GPG home");
+        fs::set_permissions(&real_gnupg, fs::Permissions::from_mode(0o700))
             .expect("protect isolated GPG home");
         fs::write(root.join("test-name"), test_name).expect("record isolated test identity");
+        let (gnupg, gnupg_link) = socket_safe_gnupg(&real_gnupg, &name);
 
         let fixture = Self {
             vault: root.join("vault.json"),
@@ -64,6 +92,7 @@ impl MailboxFixture {
                 .unwrap_or_else(|| OsString::from("skarbiec")),
             root,
             gnupg,
+            gnupg_link,
         };
         fixture
     }
@@ -188,6 +217,9 @@ impl Drop for MailboxFixture {
             .args(["--kill", "all"])
             .status();
         let _ = fs::remove_dir_all(&self.root);
+        if let Some(link) = &self.gnupg_link {
+            let _ = fs::remove_file(link);
+        }
     }
 }
 

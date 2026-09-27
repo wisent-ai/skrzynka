@@ -52,7 +52,7 @@ fn every_connection_path_is_reported_and_none_is_usable_without_its_declaration(
     assert_eq!(app_password["code"], "GMAIL_APP_PASSWORD_NOT_STORED");
     assert_eq!(
         app_password["action"],
-        "skrzynka gmail app-password --email <address>"
+        "weles app-password --login-item <Skarbiec Google login of <address>>"
     );
 
     // Both remaining paths rest on a fixed Skarbiec item. Neither is in this
