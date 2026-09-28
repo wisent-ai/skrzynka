@@ -157,7 +157,8 @@ pub struct MailboxSyncResult {
 pub struct StatusResponse {
     pub product: &'static str,
     pub version: &'static str,
-    pub database_path: String,
+    /// The fleet database Skrzynka's state lives in, as Stado names it.
+    pub database: &'static str,
     pub schema_version: u32,
     pub mailbox_count: usize,
     pub enabled_mailbox_count: usize,

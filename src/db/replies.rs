@@ -6,7 +6,7 @@ use crate::{
     models::{DeliveryStatus, ReplyAttempt},
 };
 use chrono::Utc;
-use rusqlite::{params, OptionalExtension, Row};
+use super::sql::{self, params, OptionalExtension, Row};
 use uuid::Uuid;
 
 impl Database {
@@ -32,7 +32,7 @@ impl Database {
         let result = self.lock()?.execute(
             "INSERT INTO reply_attempts (
                 id, message_id, idempotency_key, body, status, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?5)",
+             ) VALUES ($1, $2, $3, $4, 'pending', $5, $5)",
             params![
                 id.to_string(),
                 message_id.to_string(),
@@ -66,9 +66,9 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let sent_at = (status == DeliveryStatus::Sent).then_some(now.as_str());
         self.lock()?.execute(
-            "UPDATE reply_attempts SET status=?2, provider_message_id=?3,
-                    error_code=?4, error_message=?5, updated_at=?6,
-                    sent_at=COALESCE(?7, sent_at) WHERE id=?1",
+            "UPDATE reply_attempts SET status=$2, provider_message_id=$3,
+                    error_code=$4, error_message=$5, updated_at=$6,
+                    sent_at=COALESCE($7, sent_at) WHERE id=$1",
             params![
                 id.to_string(),
                 status.as_str(),
@@ -88,7 +88,7 @@ impl Database {
                 "SELECT id, message_id, idempotency_key, body, status,
                         provider_message_id, error_code, error_message,
                         created_at, updated_at, sent_at
-                 FROM reply_attempts WHERE id=?1",
+                 FROM reply_attempts WHERE id=$1",
                 [id.to_string()],
                 reply_from_row,
             )
@@ -113,7 +113,7 @@ impl Database {
              FROM reply_attempts
              JOIN messages ON messages.id=reply_attempts.message_id
              JOIN mailboxes ON mailboxes.id=messages.mailbox_id
-             WHERE reply_attempts.message_id=?1 AND mailboxes.organization_id=?2
+             WHERE reply_attempts.message_id=$1 AND mailboxes.organization_id=$2
              ORDER BY reply_attempts.created_at DESC",
         )?;
         let rows = statement.query_map(
@@ -139,7 +139,7 @@ impl Database {
                  FROM reply_attempts
                  JOIN messages ON messages.id=reply_attempts.message_id
                  JOIN mailboxes ON mailboxes.id=messages.mailbox_id
-                 WHERE reply_attempts.idempotency_key=?1 AND mailboxes.organization_id=?2",
+                 WHERE reply_attempts.idempotency_key=$1 AND mailboxes.organization_id=$2",
                 params![key, organization_id],
                 reply_from_row,
             )
@@ -148,7 +148,7 @@ impl Database {
     }
 }
 
-fn reply_from_row(row: &Row<'_>) -> rusqlite::Result<ReplyAttempt> {
+fn reply_from_row(row: &Row<'_>) -> sql::Result<ReplyAttempt> {
     Ok(ReplyAttempt {
         id: parse_uuid(row.get::<_, String>(0)?)?,
         message_id: parse_uuid(row.get::<_, String>(1)?)?,

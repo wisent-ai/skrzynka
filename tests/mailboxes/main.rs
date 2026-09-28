@@ -1,5 +1,5 @@
-//! The mailbox suite: real `skrzynka` runs against an isolated Skarbiec and
-//! database, one story per case.
+//! The mailbox suite: real `skrzynka` runs against an isolated Skarbiec and a
+//! journey-owned organization in the fleet database, one story per case.
 //!
 //! This was one file of 647 lines until 2026-09-09, and no file in this
 //! workshop may exceed three hundred. The seams are meaningful rather than

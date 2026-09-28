@@ -27,11 +27,7 @@ fn declare_refuses_incomplete_skarbiec_profile_without_creating_local_account() 
         .as_str()
         .unwrap()
         .contains("imap_host"));
-    let retained: u64 = fixture
-        .connection()
-        .query_row("SELECT COUNT(*) FROM mailboxes", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(retained, 0);
+    assert_eq!(fixture.mailbox_count(), 0);
     assert!(fixture.vault_tags("source-inbox").is_empty());
 
     document["fields"]["imap_host"] = "imap.example.invalid".into();
@@ -44,11 +40,8 @@ fn declare_refuses_incomplete_skarbiec_profile_without_creating_local_account() 
     assert_eq!(account["imap_host"], document["fields"]["imap_host"]);
     assert_eq!(account["email"], document["fields"]["email"]);
     assert_eq!(account["skarbiec_item_id"], "source-inbox");
-    let retained: String = fixture
-        .connection()
-        .query_row("SELECT imap_host FROM mailboxes", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(retained, "imap.example.invalid");
+    let retained = fixture.shown_mailbox(MailboxFixture::mailbox_id(&account));
+    assert_eq!(retained["imap_host"], "imap.example.invalid");
 }
 
 #[test]
@@ -68,11 +61,7 @@ fn invalid_source_security_does_not_fall_back_to_a_different_transport() {
     assert_eq!(import.status.code(), Some(1));
     let refusal: Value = serde_json::from_slice(&import.stderr).unwrap();
     assert_eq!(refusal["error"]["code"], "MAILBOX_PROFILE_INVALID");
-    let retained: u64 = fixture
-        .connection()
-        .query_row("SELECT COUNT(*) FROM mailboxes", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(retained, 0);
+    assert_eq!(fixture.mailbox_count(), 0);
 
     // Tagged in Skarbiec directly, the invalid item is reported, not adopted.
     fixture.set_vault_tags("source-inbox", "skrzynka:mailbox");

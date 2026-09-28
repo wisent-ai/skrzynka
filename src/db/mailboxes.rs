@@ -1,12 +1,12 @@
 //! Mailbox rows: creation, listing, update, deletion and sync bookkeeping.
 
+use super::sql::{self, params, OptionalExtension, Row};
 use super::{
     checked_u16, checked_u32, checked_u64, is_unique_constraint, parse_enum, parse_uuid, Database,
     MailboxConfig,
 };
 use crate::{error::AppError, models::Mailbox};
 use chrono::Utc;
-use rusqlite::{params, OptionalExtension, Row};
 use uuid::Uuid;
 
 impl Database {
@@ -19,7 +19,7 @@ impl Database {
                 display_name, email, imap_host, imap_port,
                 smtp_host, smtp_port, smtp_security, poll_interval_seconds,
                 enabled, last_uid, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, 0, ?13, ?13)",
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 0, $13, $13)",
             params![
                 id.to_string(),
                 config.organization_id,
@@ -32,7 +32,7 @@ impl Database {
                 config.smtp_host,
                 i64::from(config.smtp_port),
                 config.smtp_security.as_str(),
-                config.poll_interval_seconds as i64,
+                i64::try_from(config.poll_interval_seconds).unwrap_or(i64::MAX),
                 now,
             ],
         );
@@ -53,8 +53,8 @@ impl Database {
                     display_name, email, imap_host, imap_port, smtp_host, smtp_port,
                     smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
                     last_error_code, last_error_message, created_at, updated_at
-             FROM mailboxes WHERE organization_id=?1
-             ORDER BY display_name COLLATE NOCASE, email",
+             FROM mailboxes WHERE organization_id=$1
+             ORDER BY lower(display_name), email",
         )?;
         let rows = statement.query_map([organization_id], mailbox_from_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -67,10 +67,18 @@ impl Database {
                     display_name, email, imap_host, imap_port, smtp_host, smtp_port,
                     smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
                     last_error_code, last_error_message, created_at, updated_at
-             FROM mailboxes ORDER BY display_name COLLATE NOCASE, email",
+             FROM mailboxes ORDER BY lower(display_name), email",
         )?;
-        let rows = statement.query_map([], mailbox_from_row)?;
+        let rows = statement.query_map(params![], mailbox_from_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// One organization's mailboxes, or every organization's for `None`.
+    pub fn mailboxes_of(&self, organization_id: Option<&str>) -> Result<Vec<Mailbox>, AppError> {
+        match organization_id {
+            Some(organization_id) => self.list_mailboxes(organization_id),
+            None => self.list_all_mailboxes(),
+        }
     }
 
     pub fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
@@ -80,7 +88,7 @@ impl Database {
                         display_name, email, imap_host, imap_port, smtp_host, smtp_port,
                         smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
                         last_error_code, last_error_message, created_at, updated_at
-                 FROM mailboxes WHERE id = ?1 AND organization_id = ?2",
+                 FROM mailboxes WHERE id = $1 AND organization_id = $2",
                 params![id.to_string(), organization_id],
                 mailbox_from_row,
             )
@@ -95,7 +103,7 @@ impl Database {
                         display_name, email, imap_host, imap_port, smtp_host, smtp_port,
                         smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
                         last_error_code, last_error_message, created_at, updated_at
-                 FROM mailboxes WHERE id = ?1",
+                 FROM mailboxes WHERE id = $1",
                 [id.to_string()],
                 mailbox_from_row,
             )
@@ -106,11 +114,11 @@ impl Database {
     pub fn update_mailbox(&self, mailbox: &Mailbox) -> Result<Mailbox, AppError> {
         let now = Utc::now().to_rfc3339();
         let changed = self.lock()?.execute(
-            "UPDATE mailboxes SET skarbiec_item_id=?3, smtp_skarbiec_item_id=?4,
-                    display_name=?5, email=?6, imap_host=?7, imap_port=?8,
-                    smtp_host=?9, smtp_port=?10, smtp_security=?11,
-                    poll_interval_seconds=?12, enabled=?13, updated_at=?14
-             WHERE id=?1 AND organization_id=?2",
+            "UPDATE mailboxes SET skarbiec_item_id=$3, smtp_skarbiec_item_id=$4,
+                    display_name=$5, email=$6, imap_host=$7, imap_port=$8,
+                    smtp_host=$9, smtp_port=$10, smtp_security=$11,
+                    poll_interval_seconds=$12, enabled=$13, updated_at=$14
+             WHERE id=$1 AND organization_id=$2",
             params![
                 mailbox.id.to_string(),
                 mailbox.organization_id,
@@ -123,8 +131,8 @@ impl Database {
                 mailbox.smtp_host,
                 i64::from(mailbox.smtp_port),
                 mailbox.smtp_security.as_str(),
-                mailbox.poll_interval_seconds as i64,
-                mailbox.enabled as i64,
+                i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX),
+                mailbox.enabled,
                 now,
             ],
         )?;
@@ -136,7 +144,7 @@ impl Database {
 
     pub fn delete_mailbox(&self, organization_id: &str, id: Uuid) -> Result<(), AppError> {
         let changed = self.lock()?.execute(
-            "DELETE FROM mailboxes WHERE id=?1 AND organization_id=?2",
+            "DELETE FROM mailboxes WHERE id=$1 AND organization_id=$2",
             params![id.to_string(), organization_id],
         )?;
         if changed == 0 {
@@ -148,15 +156,15 @@ impl Database {
     pub fn record_sync_failure(&self, id: Uuid, code: &str, message: &str) -> Result<(), AppError> {
         let now = Utc::now().to_rfc3339();
         self.lock()?.execute(
-            "UPDATE mailboxes SET last_error_code=?2, last_error_message=?3,
-                    updated_at=?4 WHERE id=?1",
+            "UPDATE mailboxes SET last_error_code=$2, last_error_message=$3,
+                    updated_at=$4 WHERE id=$1",
             params![id.to_string(), code, message, now],
         )?;
         Ok(())
     }
 }
 
-fn mailbox_from_row(row: &Row<'_>) -> rusqlite::Result<Mailbox> {
+fn mailbox_from_row(row: &Row<'_>) -> sql::Result<Mailbox> {
     Ok(Mailbox {
         id: parse_uuid(row.get::<_, String>(0)?)?,
         organization_id: row.get(1)?,

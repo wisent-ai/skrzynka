@@ -1,18 +1,18 @@
 //! Message rows: the import commit and message reads.
 
+use super::sql::{self, params, OptionalExtension, Row};
 use super::{checked_u32, is_unique_constraint, parse_uuid, Database};
 use crate::{
     error::AppError,
     models::{Mailbox, Message, NewMessage},
 };
 use chrono::Utc;
-use rusqlite::{params, OptionalExtension, Row};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 impl Database {
     /// Commit a newly adopted mailbox (when `create_mailbox` is true), every
-    /// validated message, and the source cursor in one SQLite transaction.
+    /// validated message, and the source cursor in one database transaction.
     /// Existing UIDs are compared before mutation: identical rows are
     /// unchanged, while a different payload for the same provider UID refuses
     /// the entire page as a conflict.
@@ -54,7 +54,7 @@ impl Database {
                     "SELECT external_uid, provider_message_id, in_reply_to,
                             references_header, sender, reply_to, recipients,
                             subject, sent_at, body_text, snippet
-                     FROM messages WHERE mailbox_id=?1 AND external_uid=?2",
+                     FROM messages WHERE mailbox_id=$1 AND external_uid=$2",
                     params![mailbox.id.to_string(), i64::from(message.external_uid)],
                     |row| {
                         Ok(NewMessage {
@@ -95,7 +95,7 @@ impl Database {
                     display_name, email, imap_host, imap_port,
                     smtp_host, smtp_port, smtp_security, poll_interval_seconds,
                     enabled, last_uid, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, 0, ?13, ?13)",
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 0, $13, $13)",
                 params![
                     mailbox.id.to_string(),
                     mailbox.organization_id,
@@ -108,7 +108,7 @@ impl Database {
                     mailbox.smtp_host,
                     i64::from(mailbox.smtp_port),
                     mailbox.smtp_security.as_str(),
-                    mailbox.poll_interval_seconds as i64,
+                    i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX),
                     mailbox.created_at,
                 ],
             );
@@ -135,7 +135,7 @@ impl Database {
                     id, mailbox_id, external_uid, provider_message_id, in_reply_to,
                     references_header, sender, reply_to, recipients, subject,
                     sent_at, received_at, body_text, snippet
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
                 params![
                     Uuid::new_v4().to_string(),
                     mailbox.id.to_string(),
@@ -157,11 +157,11 @@ impl Database {
         }
         let completed_at = Utc::now().to_rfc3339();
         transaction.execute(
-            "UPDATE mailboxes SET last_uid=?2, last_sync_at=?3,
-                    last_error_code=NULL, last_error_message=NULL, updated_at=?3,
-                    display_name=?4, smtp_skarbiec_item_id=?5, smtp_host=?6,
-                    smtp_port=?7, smtp_security=?8, poll_interval_seconds=?9
-             WHERE id=?1",
+            "UPDATE mailboxes SET last_uid=$2, last_sync_at=$3,
+                    last_error_code=NULL, last_error_message=NULL, updated_at=$3,
+                    display_name=$4, smtp_skarbiec_item_id=$5, smtp_host=$6,
+                    smtp_port=$7, smtp_security=$8, poll_interval_seconds=$9
+             WHERE id=$1",
             params![
                 mailbox.id.to_string(),
                 i64::from(last_uid),
@@ -171,7 +171,7 @@ impl Database {
                 mailbox.smtp_host,
                 i64::from(mailbox.smtp_port),
                 mailbox.smtp_security.as_str(),
-                mailbox.poll_interval_seconds as i64,
+                i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX),
             ],
         )?;
         transaction.commit()?;
@@ -194,8 +194,8 @@ impl Database {
                     messages.recipients, messages.subject, messages.sent_at,
                     messages.received_at, messages.body_text, messages.snippet
              FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
-             WHERE messages.mailbox_id=?1 AND mailboxes.organization_id=?2
-             ORDER BY messages.received_at DESC LIMIT ?3 OFFSET ?4"
+             WHERE messages.mailbox_id=$1 AND mailboxes.organization_id=$2
+             ORDER BY messages.received_at DESC LIMIT $3 OFFSET $4"
         } else {
             "SELECT messages.id, messages.mailbox_id, messages.external_uid,
                     messages.provider_message_id, messages.in_reply_to,
@@ -203,8 +203,8 @@ impl Database {
                     messages.recipients, messages.subject, messages.sent_at,
                     messages.received_at, messages.body_text, messages.snippet
              FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
-             WHERE mailboxes.organization_id=?1
-             ORDER BY messages.received_at DESC LIMIT ?2 OFFSET ?3"
+             WHERE mailboxes.organization_id=$1
+             ORDER BY messages.received_at DESC LIMIT $2 OFFSET $3"
         };
         let mut statement = connection.prepare(sql)?;
         let rows = if let Some(mailbox_id) = mailbox_id {
@@ -235,7 +235,7 @@ impl Database {
                         messages.recipients, messages.subject, messages.sent_at,
                         messages.received_at, messages.body_text, messages.snippet
                  FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
-                 WHERE messages.id=?1 AND mailboxes.organization_id=?2",
+                 WHERE messages.id=$1 AND mailboxes.organization_id=$2",
                 params![id.to_string(), organization_id],
                 message_from_row,
             )
@@ -244,7 +244,7 @@ impl Database {
     }
 }
 
-fn message_from_row(row: &Row<'_>) -> rusqlite::Result<Message> {
+fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {
     Ok(Message {
         id: parse_uuid(row.get::<_, String>(0)?)?,
         mailbox_id: parse_uuid(row.get::<_, String>(1)?)?,

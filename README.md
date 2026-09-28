@@ -31,7 +31,7 @@ The observable result is one local inbox with mailbox identity preserved on ever
   only the mail it imported and where synchronization stands. Tag an item in
   Skarbiec, or run `skrzynka mailbox declare --skarbiec-item <ID>`, and the
   next `mailbox list` or `sync` reads it. CLI, API, and desktop use the same
-  credential resolver, IMAP normalizer, and atomic SQLite commit.
+  credential resolver, IMAP normalizer, and atomic database commit.
 - Read password-backed `login` items with explicit non-secret server settings
   or complete `bundle` profiles.
 - Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox
@@ -39,7 +39,7 @@ The observable result is one local inbox with mailbox identity preserved on ever
 - List mailboxes and messages without exposing credentials.
 - Reply through the originating mailbox over SMTP with required TLS and preserved thread headers.
 - Originate mail from a connected mailbox with `skrzynka message send --mailbox <id-or-address> --to <address> --subject <text> --body-file <path>` (or `POST /v1/mailboxes/:id/outbound`). An outbound message carries its own recipients, cc and subject, walks the same delivery states as a reply, and is claimed by its idempotency key before anything reaches the provider, so a repeated call returns the first attempt instead of sending twice. `skrzynka message outbound` reads what went out.
-- Record synchronization, reply, and outbound state in a local SQLite database, including actionable mailbox errors, the provider's own SMTP refusal text, and ambiguous-send protection.
+- Record synchronization, reply, and outbound state in the fleet database `skrzynka`, including actionable mailbox errors, the provider's own SMTP refusal text, and ambiguous-send protection.
 - Keep the HTTP surface on loopback; startup refuses a non-loopback bind address.
 - Authenticate every `/v1` API request through the shared Wisent identity service and scope durable mailbox, message, reply, and outbound access to the selected organization.
 
@@ -85,7 +85,7 @@ cargo run -- message list
 `mailbox declare` reads the item's profile, tags the item `skrzynka:mailbox`
 in Skarbiec, resolves the credential only inside Skrzynka, fetches and
 validates up to 200 INBOX messages in ascending UID order, then commits the
-mailbox, accepted messages, and UID cursor in one SQLite transaction. Taking
+mailbox, accepted messages, and UID cursor in one database transaction. Taking
 the oldest remaining UIDs before applying the page limit prevents skipped mail.
 Its JSON result reports mailbox state, imported, unchanged, conflicting, and
 rejected message counts, rejection reasons, and `has_more`. Run `skrzynka sync`
@@ -227,9 +227,9 @@ For password-backed providers, Skrzynka persists the exact item selected by the 
 | `display_name` | no | Human-readable mailbox name |
 | `poll_interval_seconds` | no | Seconds between polls, 15–86400; defaults to the service setting |
 
-Skarbiec stores the account list, the account profiles, and the credentials: the tag `skrzynka:mailbox` declares an item a mailbox. `mailbox declare` accepts only `--skarbiec-item`; CLI profile flags and API profile overrides are refused. SQLite keeps the imported non-secret snapshot and mail-processing state, not a separately editable account definition. Every reconciliation adopts source display-name, SMTP, and poll-interval changes (`mailbox_state: updated` on declare). A changed receiving address or IMAP endpoint is refused because the retained UID cursor cannot safely identify another source.
+Skarbiec stores the account list, the account profiles, and the credentials: the tag `skrzynka:mailbox` declares an item a mailbox. `mailbox declare` accepts only `--skarbiec-item`; CLI profile flags and API profile overrides are refused. The fleet database keeps the imported non-secret snapshot and mail-processing state, not a separately editable account definition. Every reconciliation adopts source display-name, SMTP, and poll-interval changes (`mailbox_state: updated` on declare). A changed receiving address or IMAP endpoint is refused because the retained UID cursor cannot safely identify another source.
 
-Each declared profile has a receiving `skarbiec_item_id` and may contain `smtp_skarbiec_item_id` for a separate sending credential. Gmail connection methods persist complete bundles in Skarbiec and declare them there. OAuth stores its refresh token in Skarbiec; delegation stores a service-account reference. No mailbox secret crosses the desktop API or enters SQLite.
+Each declared profile has a receiving `skarbiec_item_id` and may contain `smtp_skarbiec_item_id` for a separate sending credential. Gmail connection methods persist complete bundles in Skarbiec and declare them there. OAuth stores its refresh token in Skarbiec; delegation stores a service-account reference. No mailbox secret crosses the desktop API or enters the database.
 
 The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret`, and one `value` field of type `oauth_client`; that value is the unmodified JSON downloaded for a Google OAuth client whose application type is **Desktop app**. Skrzynka accepts only the `installed` client shape and Google's canonical authorization and token endpoints.
 
@@ -253,13 +253,18 @@ All three roles can read organization resources, synchronize mailboxes, send rep
 
 ## Operating model
 
-Skrzynka is an operated local product. Its SQLite database defaults to `~/.local/share/skrzynka/skrzynka.db`; it contains organization-scoped mailbox metadata, normalized inbound message content, reply bodies and delivery state, and every originated message's recipients, cc, subject, full plain-text body, delivery status, provider message id, and refusal, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
+Skrzynka is an operated product whose state lives in the fleet database `skrzynka`, which Stado provisions (`stado database create skrzynka --consumer skrzynka`) and names; every host and organization reads the same record. It contains organization-scoped mailbox metadata, normalized inbound message content, reply bodies and delivery state, and every originated message's recipients, cc, subject, full plain-text body, delivery status, provider message id, and refusal, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
 
-Both default locations need a home directory. Without `HOME`, a command that
-does not pass `--database <PATH>` is refused with `DATABASE_PATH_REQUIRED`, and
-`skrzynka onboarding` without `XDG_STATE_HOME` or `HOME` is refused with
-`neither XDG_STATE_HOME nor HOME is set`; nothing is written into the working
-directory instead.
+Every command connects in four steps, and a failure answers `DATABASE_UNREACHABLE` naming the step:
+
+1. `stado database resolve skrzynka --consumer skrzynka --json` names the Skarbiec item holding the address (`skrzynka-database`).
+2. `stado service directory connect skarbiec --consumer skrzynka --json` gives the Skarbiec route.
+3. `stado secrets get skrzynka-database --field pooler_url` and `--field ca_certificate`, as consumer `skrzynka-database-client` with the bearer in `~/.stado/skrzynka-database-client-skarbiec-token`, give the pooler URL and the provider's root certificate.
+4. Skrzynka connects over TLS verified against that certificate and creates any missing table.
+
+Stado and that bearer are found under `SKRZYNKA_FLEET_HOME`, else `HOME`; with neither set a command is refused with `neither SKRZYNKA_FLEET_HOME nor HOME is set`, and `skrzynka onboarding` without `XDG_STATE_HOME` or `HOME` is refused with `neither XDG_STATE_HOME nor HOME is set`; nothing is guessed.
+
+The CLI acts for one organization, `--organization <ID>` (default `legacy-local`). A command that names its organization reconciles only that organization's mailboxes against the Skarbiec declarations it reads; only the background poll of `skrzynka serve` reconciles every organization, against the vault of the host it runs on.
 
 The source is one module per concern, each a folder of files under 300 lines:
 `cli` (arguments and subcommands), `api` (router and handlers), `service`
@@ -269,15 +274,16 @@ messages and outbound mail), `db` (schema and one file per table), `skarbiec`
 (the OAuth broker and its diagnosis), `onboarding`, `models`, `mail`, `auth`
 and `error`. `cargo test --locked` runs `tests/gmail/` against the diagnosis
 helpers and `tests/mailboxes/` against the real binary with an isolated
-Skarbiec, including the refusals above.
+Skarbiec and a journey-owned organization in the fleet database, which each
+case empties when it ends, including the refusals above.
 
-Back up the database while the service is stopped. Restoring the database restores mailbox references, normalized messages, reply attempts, and outbound messages, but Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka deletes that local mailbox and cascades through its messages, reply attempts, and outbound messages, destroying the installation's record that the mailbox originated those messages; it does not delete the Skarbiec item or provider mailbox.
+The fleet database is Supabase Postgres; its backups follow that project. Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka deletes that mailbox and cascades through its messages, reply attempts, and outbound messages, destroying the record that the mailbox originated those messages; it does not delete the Skarbiec item or provider mailbox. Mail kept only in a former local `skrzynka.db` is not carried over: declaring the same Skarbiec item again imports the provider's INBOX anew.
 
 ## Status and support
 
 - **Maturity:** development contract, version `0.2.0`; no stable release channel exists yet.
 - **Distribution:** source from this repository. A moving `main` branch is not an immutable release coordinate.
-- **Compatibility:** SQLite schema version 4; loopback API version 1; IMAP4rev1 over TLS and SMTP with STARTTLS or implicit TLS.
+- **Compatibility:** fleet database schema version 5; loopback API version 1 (`status` reports `database`, the fleet database's name, where it reported `database_path`); IMAP4rev1 over TLS and SMTP with STARTTLS or implicit TLS.
 - **Defects and proposals:** [GitHub Issues](https://github.com/wisent-ai/skrzynka/issues).
 - **Private security reports:** use GitHub's private vulnerability reporting for this repository; do not put credentials or message contents in an issue.
 - **Community:** [Wisent Discord](https://discord.gg/qRjpkthq54).

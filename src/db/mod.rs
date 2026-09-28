@@ -1,13 +1,13 @@
-//! The local SQLite state: schema, connection, and the per-entity row operations in the
-//! sub-modules, which extend `Database` with mailbox, message, reply and outbound methods.
+//! Skrzynka's state in the fleet database `skrzynka`: schema, connection, and the
+//! per-entity row operations in the sub-modules, which extend `Database` with mailbox,
+//! message, reply and outbound methods.
 
 use crate::{error::AppError, models::SmtpSecurity};
 use axum::http::StatusCode;
-use rusqlite::Connection;
+use postgres::Client;
 use std::{
-    path::{Path, PathBuf},
     str::FromStr,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex},
 };
 use uuid::Uuid;
 
@@ -15,8 +15,16 @@ mod mailboxes;
 mod messages;
 mod outbound;
 mod replies;
+pub mod sql;
 
-pub const SCHEMA_VERSION: u32 = 4;
+use sql::{params, OptionalExtension, Session};
+
+/// The schema this build writes. A database that records a newer one was written by a
+/// newer Skrzynka, which this build refuses to touch.
+pub const SCHEMA_VERSION: u32 = 5;
+/// The database's name in Stado.
+pub const DATABASE_NAME: &str = "skrzynka";
+const SCHEMA: &str = include_str!("sql/schema.sql");
 
 #[derive(Debug, Clone)]
 pub struct MailboxConfig {
@@ -35,181 +43,80 @@ pub struct MailboxConfig {
 
 #[derive(Clone)]
 pub struct Database {
-    path: PathBuf,
-    connection: Arc<Mutex<Connection>>,
+    client: Arc<Mutex<Client>>,
 }
 
 impl Database {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, AppError> {
-        let path = path.as_ref().to_path_buf();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| {
-                tracing::error!(error = %error, path = %parent.display(), "state directory creation failed");
-                AppError::internal("local state directory could not be created")
-            })?;
-        }
-        let connection = Connection::open(&path)?;
-        connection.pragma_update(None, "journal_mode", "WAL")?;
-        connection.pragma_update(None, "foreign_keys", "ON")?;
-        connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version > SCHEMA_VERSION {
-            return Err(AppError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_SCHEMA_UNSUPPORTED",
-                format!(
-                    "database schema {version} is not supported by this build (expected at most {SCHEMA_VERSION})"
-                ),
-                false,
-            ));
-        }
-        connection.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS mailboxes (
-                id TEXT PRIMARY KEY,
-                organization_id TEXT NOT NULL,
-                skarbiec_item_id TEXT NOT NULL UNIQUE,
-                smtp_skarbiec_item_id TEXT,
-                display_name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                imap_host TEXT NOT NULL,
-                imap_port INTEGER NOT NULL,
-                smtp_host TEXT NOT NULL,
-                smtp_port INTEGER NOT NULL,
-                smtp_security TEXT NOT NULL CHECK (smtp_security IN ('starttls', 'tls')),
-                poll_interval_seconds INTEGER NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1,
-                last_uid INTEGER NOT NULL DEFAULT 0,
-                last_sync_at TEXT,
-                last_error_code TEXT,
-                last_error_message TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                mailbox_id TEXT NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
-                external_uid INTEGER NOT NULL,
-                provider_message_id TEXT,
-                in_reply_to TEXT,
-                references_header TEXT,
-                sender TEXT NOT NULL,
-                reply_to TEXT,
-                recipients TEXT NOT NULL,
-                subject TEXT NOT NULL,
-                sent_at TEXT,
-                received_at TEXT NOT NULL,
-                body_text TEXT NOT NULL,
-                snippet TEXT NOT NULL,
-                UNIQUE(mailbox_id, external_uid)
-            );
-            CREATE INDEX IF NOT EXISTS messages_received_idx
-                ON messages(received_at DESC);
-            CREATE INDEX IF NOT EXISTS messages_mailbox_idx
-                ON messages(mailbox_id, received_at DESC);
-            CREATE TABLE IF NOT EXISTS reply_attempts (
-                id TEXT PRIMARY KEY,
-                message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-                idempotency_key TEXT NOT NULL UNIQUE,
-                body TEXT NOT NULL,
-                status TEXT NOT NULL CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'uncertain')),
-                provider_message_id TEXT,
-                error_code TEXT,
-                error_message TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                sent_at TEXT
-            );
-            CREATE INDEX IF NOT EXISTS replies_message_idx
-                ON reply_attempts(message_id, created_at DESC);
-            CREATE TABLE IF NOT EXISTS outbound_messages (
-                id TEXT PRIMARY KEY,
-                mailbox_id TEXT NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
-                idempotency_key TEXT NOT NULL UNIQUE,
-                recipients TEXT NOT NULL,
-                cc TEXT,
-                subject TEXT NOT NULL,
-                body TEXT NOT NULL,
-                status TEXT NOT NULL CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'uncertain')),
-                provider_message_id TEXT,
-                error_code TEXT,
-                error_message TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                sent_at TEXT
-            );
-            CREATE INDEX IF NOT EXISTS outbound_mailbox_idx
-                ON outbound_messages(mailbox_id, created_at DESC);
-            ",
-        )?;
-        match version {
-            0 => connection.pragma_update(None, "user_version", SCHEMA_VERSION)?,
-            1 => {
-                connection.execute(
-                    "ALTER TABLE mailboxes ADD COLUMN organization_id TEXT NOT NULL DEFAULT 'legacy-local'",
-                    [],
-                )?;
-                connection.execute(
-                    "ALTER TABLE mailboxes ADD COLUMN smtp_skarbiec_item_id TEXT",
-                    [],
-                )?;
-                connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-            }
-            2 | 3 => {
-                connection.execute(
-                    "ALTER TABLE mailboxes ADD COLUMN smtp_skarbiec_item_id TEXT",
-                    [],
-                )?;
-                connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-            }
-            _ => {}
-        }
+    /// Connect to the fleet database, create the tables it lacks, and settle sends a
+    /// stopped process left in `sending`.
+    pub fn open() -> Result<Self, AppError> {
         let database = Self {
-            path,
-            connection: Arc::new(Mutex::new(connection)),
+            client: Arc::new(Mutex::new(sql::fleet::connect()?)),
         };
+        {
+            let session = database.lock()?;
+            session.execute_batch(SCHEMA)?;
+            let version = session
+                .query_row(
+                    "SELECT value FROM schema_meta WHERE key='schema_version'",
+                    params![],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?
+                .unwrap_or_default();
+            if version > i64::from(SCHEMA_VERSION) {
+                return Err(AppError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "DATABASE_SCHEMA_UNSUPPORTED",
+                    format!(
+                        "database schema {version} is not supported by this build (expected at most {SCHEMA_VERSION})"
+                    ),
+                    false,
+                ));
+            }
+            session.execute(
+                "INSERT INTO schema_meta (key, value) VALUES ('schema_version', $1)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                [i64::from(SCHEMA_VERSION)],
+            )?;
+        }
         database.recover_interrupted_sends()?;
         Ok(database)
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
+    pub fn name(&self) -> &'static str {
+        DATABASE_NAME
     }
 
-    fn lock(&self) -> Result<MutexGuard<'_, Connection>, AppError> {
-        self.connection
+    fn lock(&self) -> Result<Session<'_>, AppError> {
+        self.client
             .lock()
-            .map_err(|_| AppError::internal("local state lock was poisoned"))
+            .map(Session::new)
+            .map_err(|_| AppError::internal("database client lock was poisoned"))
     }
 
     pub fn counts(&self, organization_id: &str) -> Result<(usize, usize, usize), AppError> {
-        let connection = self.lock()?;
-        let mailboxes: usize = connection.query_row(
-            "SELECT COUNT(*) FROM mailboxes WHERE organization_id=?1",
-            [organization_id],
-            |row| row.get(0),
-        )?;
-        let enabled: usize = connection.query_row(
-            "SELECT COUNT(*) FROM mailboxes WHERE organization_id=?1 AND enabled=1",
-            [organization_id],
-            |row| row.get(0),
-        )?;
-        let messages: usize = connection.query_row(
+        let session = self.lock()?;
+        let count = |sql: &str| -> Result<usize, AppError> {
+            let value = session.query_row(sql, [organization_id], |row| row.get::<_, i64>(0))?;
+            usize::try_from(value).map_err(|_| AppError::internal("a count was negative"))
+        };
+        let mailboxes = count("SELECT COUNT(*) FROM mailboxes WHERE organization_id=$1")?;
+        let enabled = count("SELECT COUNT(*) FROM mailboxes WHERE organization_id=$1 AND enabled")?;
+        let messages = count(
             "SELECT COUNT(*) FROM messages
              JOIN mailboxes ON mailboxes.id=messages.mailbox_id
-             WHERE mailboxes.organization_id=?1",
-            [organization_id],
-            |row| row.get(0),
+             WHERE mailboxes.organization_id=$1",
         )?;
         Ok((mailboxes, enabled, messages))
     }
 }
 
-fn parse_uuid(value: String) -> rusqlite::Result<Uuid> {
+fn parse_uuid(value: String) -> sql::Result<Uuid> {
     Uuid::parse_str(&value).map_err(|error| conversion_error(0, error))
 }
 
-fn parse_enum<T>(value: String, column: usize) -> rusqlite::Result<T>
+fn parse_enum<T>(value: String, column: usize) -> sql::Result<T>
 where
     T: FromStr,
     T::Err: std::error::Error + Send + Sync + 'static,
@@ -219,29 +126,25 @@ where
         .map_err(|error| conversion_error(column, error))
 }
 
-fn checked_u16(value: i64, column: usize) -> rusqlite::Result<u16> {
+fn checked_u16(value: i64, column: usize) -> sql::Result<u16> {
     u16::try_from(value).map_err(|error| conversion_error(column, error))
 }
 
-fn checked_u32(value: i64, column: usize) -> rusqlite::Result<u32> {
+fn checked_u32(value: i64, column: usize) -> sql::Result<u32> {
     u32::try_from(value).map_err(|error| conversion_error(column, error))
 }
 
-fn checked_u64(value: i64, column: usize) -> rusqlite::Result<u64> {
+fn checked_u64(value: i64, column: usize) -> sql::Result<u64> {
     u64::try_from(value).map_err(|error| conversion_error(column, error))
 }
 
-fn conversion_error(
-    column: usize,
-    error: impl std::error::Error + Send + Sync + 'static,
-) -> rusqlite::Error {
-    rusqlite::Error::FromSqlConversionFailure(column, rusqlite::types::Type::Text, Box::new(error))
+fn conversion_error(column: usize, error: impl std::error::Error) -> sql::Error {
+    sql::Error::Conversion {
+        column,
+        detail: error.to_string(),
+    }
 }
 
-fn is_unique_constraint(error: &rusqlite::Error) -> bool {
-    matches!(
-        error,
-        rusqlite::Error::SqliteFailure(code, _)
-            if code.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
-    )
+fn is_unique_constraint(error: &sql::Error) -> bool {
+    error.is_unique_violation()
 }

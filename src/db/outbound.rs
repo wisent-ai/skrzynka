@@ -6,7 +6,7 @@ use crate::{
     models::{DeliveryStatus, OutboundMessage},
 };
 use chrono::Utc;
-use rusqlite::{params, OptionalExtension, Row};
+use super::sql::{self, params, OptionalExtension, Row};
 use uuid::Uuid;
 
 impl Database {
@@ -44,7 +44,7 @@ impl Database {
             "INSERT INTO outbound_messages (
                 id, mailbox_id, idempotency_key, recipients, cc, subject, body,
                 status, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?8)",
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $8)",
             params![
                 id.to_string(),
                 mailbox_id.to_string(),
@@ -84,9 +84,9 @@ impl Database {
         let now = Utc::now().to_rfc3339();
         let sent_at = (status == DeliveryStatus::Sent).then_some(now.as_str());
         self.lock()?.execute(
-            "UPDATE outbound_messages SET status=?2, provider_message_id=?3,
-                    error_code=?4, error_message=?5, updated_at=?6,
-                    sent_at=COALESCE(?7, sent_at) WHERE id=?1",
+            "UPDATE outbound_messages SET status=$2, provider_message_id=$3,
+                    error_code=$4, error_message=$5, updated_at=$6,
+                    sent_at=COALESCE($7, sent_at) WHERE id=$1",
             params![
                 id.to_string(),
                 status.as_str(),
@@ -117,7 +117,7 @@ impl Database {
                         outbound_messages.sent_at
                  FROM outbound_messages
                  JOIN mailboxes ON mailboxes.id=outbound_messages.mailbox_id
-                 WHERE outbound_messages.id=?1 AND mailboxes.organization_id=?2",
+                 WHERE outbound_messages.id=$1 AND mailboxes.organization_id=$2",
                 params![id.to_string(), organization_id],
                 outbound_from_row,
             )
@@ -144,8 +144,8 @@ impl Database {
                     outbound_messages.sent_at
              FROM outbound_messages
              JOIN mailboxes ON mailboxes.id=outbound_messages.mailbox_id
-             WHERE outbound_messages.mailbox_id=?1 AND mailboxes.organization_id=?2
-             ORDER BY outbound_messages.created_at DESC LIMIT ?3 OFFSET ?4"
+             WHERE outbound_messages.mailbox_id=$1 AND mailboxes.organization_id=$2
+             ORDER BY outbound_messages.created_at DESC LIMIT $3 OFFSET $4"
         } else {
             "SELECT outbound_messages.id, outbound_messages.mailbox_id,
                     outbound_messages.idempotency_key, outbound_messages.recipients,
@@ -157,8 +157,8 @@ impl Database {
                     outbound_messages.sent_at
              FROM outbound_messages
              JOIN mailboxes ON mailboxes.id=outbound_messages.mailbox_id
-             WHERE mailboxes.organization_id=?1
-             ORDER BY outbound_messages.created_at DESC LIMIT ?2 OFFSET ?3"
+             WHERE mailboxes.organization_id=$1
+             ORDER BY outbound_messages.created_at DESC LIMIT $2 OFFSET $3"
         };
         let mut statement = connection.prepare(sql)?;
         let rows = if let Some(mailbox_id) = mailbox_id {
@@ -186,7 +186,7 @@ impl Database {
                 "SELECT id, mailbox_id, idempotency_key, recipients, cc, subject,
                         body, status, provider_message_id, error_code,
                         error_message, created_at, updated_at, sent_at
-                 FROM outbound_messages WHERE id=?1",
+                 FROM outbound_messages WHERE id=$1",
                 [id.to_string()],
                 outbound_from_row,
             )
@@ -211,8 +211,8 @@ impl Database {
                         outbound_messages.sent_at
                  FROM outbound_messages
                  JOIN mailboxes ON mailboxes.id=outbound_messages.mailbox_id
-                 WHERE outbound_messages.idempotency_key=?1
-                   AND mailboxes.organization_id=?2",
+                 WHERE outbound_messages.idempotency_key=$1
+                   AND mailboxes.organization_id=$2",
                 params![key, organization_id],
                 outbound_from_row,
             )
@@ -230,21 +230,21 @@ impl Database {
             "UPDATE reply_attempts SET status='uncertain',
                     error_code='REPLY_UNCERTAIN',
                     error_message='send was interrupted before terminal SMTP evidence was recorded',
-                    updated_at=?1 WHERE status='sending'",
+                    updated_at=$1 WHERE status='sending'",
             [&now],
         )?;
         connection.execute(
             "UPDATE outbound_messages SET status='uncertain',
                     error_code='OUTBOUND_UNCERTAIN',
                     error_message='send was interrupted before terminal SMTP evidence was recorded',
-                    updated_at=?1 WHERE status='sending'",
+                    updated_at=$1 WHERE status='sending'",
             [&now],
         )?;
         Ok(())
     }
 }
 
-fn outbound_from_row(row: &Row<'_>) -> rusqlite::Result<OutboundMessage> {
+fn outbound_from_row(row: &Row<'_>) -> sql::Result<OutboundMessage> {
     Ok(OutboundMessage {
         id: parse_uuid(row.get::<_, String>(0)?)?,
         mailbox_id: parse_uuid(row.get::<_, String>(1)?)?,

@@ -94,10 +94,10 @@ impl IntoResponse for AppError {
     }
 }
 
-impl From<rusqlite::Error> for AppError {
-    fn from(error: rusqlite::Error) -> Self {
+impl From<crate::db::sql::Error> for AppError {
+    fn from(error: crate::db::sql::Error) -> Self {
         tracing::error!(error = %error, "database operation failed");
-        Self::internal("local state could not be updated")
+        Self::internal("state in the fleet database could not be updated")
     }
 }
 

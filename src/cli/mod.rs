@@ -6,7 +6,6 @@ use crate::{
 };
 use axum::http::StatusCode;
 use serde_json::json;
-use std::path::PathBuf;
 
 mod arguments;
 mod gmail;
@@ -20,7 +19,6 @@ use mailbox::run_mailbox;
 use message::run_message;
 
 const DEFAULT_CALLBACK_BASE_URL: &str = "http://127.0.0.1:8788";
-const LOCAL_CLI_ORGANIZATION: &str = "legacy-local";
 /// While the browser authorizes Gmail, the flow is re-read four times a second.
 const AUTHORIZATION_POLL_MILLIS: u64 = 250;
 /// A one-shot CLI command never polls; the interval only has to satisfy the service's bounds.
@@ -39,11 +37,8 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         onboarding::run(*reset)?;
         return Ok(());
     }
-    let database_path = match cli.database {
-        Some(path) => path,
-        None => default_database_path()?,
-    };
-    let database = Database::open(database_path)?;
+    let organization = cli.organization.as_str();
+    let database = Database::open()?;
     let resolver = SkarbiecResolver::new(cli.skarbiec_bin);
     let state = || {
         AppState::new(
@@ -56,18 +51,18 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
     match cli.command {
         Command::Serve(args) => serve(database, resolver, args).await,
         Command::Status => {
-            let status = state()?.status(LOCAL_CLI_ORGANIZATION).await?;
+            let status = state()?.status(organization).await?;
             print_json(&status)
         }
-        Command::Mailbox { command } => run_mailbox(state()?, command).await,
+        Command::Mailbox { command } => run_mailbox(state()?, organization, command).await,
         Command::Gmail { command } => match command {
             GmailCommand::Authorize {
                 skarbiec_item,
                 bind,
-            } => authorize_gmail(database, resolver, skarbiec_item, bind).await,
+            } => authorize_gmail(database, resolver, organization, skarbiec_item, bind).await,
             GmailCommand::Connection { email } => print_json(
                 &state()?
-                    .gmail_connection_readiness(LOCAL_CLI_ORGANIZATION, email.as_deref())
+                    .gmail_connection_readiness(organization, email.as_deref())
                     .await?,
             ),
             GmailCommand::Delegate {
@@ -77,7 +72,7 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                 let state = state()?;
                 print_json(
                     &state
-                        .connect_gmail_delegated(LOCAL_CLI_ORGANIZATION, &email, display_name)
+                        .connect_gmail_delegated(organization, &email, display_name)
                         .await?,
                 )
             }
@@ -90,7 +85,7 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                 print_json(
                     &state
                         .connect_gmail_app_password(
-                            LOCAL_CLI_ORGANIZATION,
+                            organization,
                             &email,
                             &password,
                             display_name,
@@ -99,12 +94,12 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                 )
             }
         },
-        Command::Message { command } => run_message(state()?, command).await,
+        Command::Message { command } => run_message(state()?, organization, command).await,
         Command::Sync { mailbox } => {
             let state = state()?;
             match mailbox {
-                Some(id) => print_json(&state.sync_mailbox(LOCAL_CLI_ORGANIZATION, id).await?),
-                None => print_json(&state.sync_all(LOCAL_CLI_ORGANIZATION).await?),
+                Some(id) => print_json(&state.sync_mailbox(organization, id).await?),
+                None => print_json(&state.sync_all(organization).await?),
             }
         }
         Command::Version => unreachable!(),
@@ -145,17 +140,4 @@ pub(super) fn print_json(value: &impl serde::Serialize) -> Result<(), AppError> 
         .map_err(|_| AppError::internal("result could not be encoded as JSON"))?;
     println!("{output}");
     Ok(())
-}
-
-/// The database under the home directory when `--database` is not given. Without a home
-/// directory there is no default, and that is refused rather than a file in the working
-/// directory.
-fn default_database_path() -> Result<PathBuf, AppError> {
-    let home = std::env::var_os("HOME").ok_or_else(|| {
-        AppError::invalid(
-            "DATABASE_PATH_REQUIRED",
-            "HOME is not set, so there is no default database path; pass --database <PATH>",
-        )
-    })?;
-    Ok(PathBuf::from(home).join(".local/share/skrzynka/skrzynka.db"))
 }

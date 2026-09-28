@@ -19,18 +19,17 @@ use chrono::Utc;
 use uuid::Uuid;
 
 impl AppState {
-    /// Bring Skrzynka's mailboxes in line with what Skarbiec declares.
-    ///
-    /// A declared item gets a mailbox whose profile is the item's; a mailbox
-    /// whose item no longer carries the tag stops being polled and keeps its
-    /// mail. New mailboxes are created in `create_for`; the background poll
-    /// passes `None`, because only a caller knows which organization it is.
+    /// Bring Skrzynka's mailboxes in line with what Skarbiec declares: a declared
+    /// item gets a mailbox whose profile is the item's; a mailbox whose item lost
+    /// the tag stops being polled and keeps its mail. A caller naming its
+    /// organization (`create_for`, where new mailboxes go) touches only that
+    /// organization's mailboxes; the background poll passes `None` and all.
     pub async fn reconcile_mailboxes(
         &self,
         create_for: Option<&str>,
     ) -> Result<MailboxReconciliation, AppError> {
         let declared = self.resolver.declared_mailbox_items().await?;
-        let existing = self.database.list_all_mailboxes()?;
+        let existing = self.database.mailboxes_of(create_for)?;
         let mut report = MailboxReconciliation {
             declared: declared.len(),
             ..Default::default()
@@ -106,8 +105,8 @@ impl AppState {
     /// Declare one Skarbiec item a mailbox and import its first INBOX page.
     ///
     /// The tag is written to Skarbiec first, so the declaration outlives this
-    /// process; the page is then fully fetched and normalized before SQLite
-    /// commits the mailbox, messages, and cursor in one transaction.
+    /// process; the page is then fully fetched and normalized before the fleet
+    /// database commits the mailbox, messages, and cursor in one transaction.
     pub async fn declare_mailbox(
         &self,
         organization_id: &str,
@@ -124,7 +123,7 @@ impl AppState {
         let _guard = self.operation_lock.lock().await;
         let existing = self
             .database
-            .list_all_mailboxes()?
+            .list_mailboxes(organization_id)?
             .into_iter()
             .find(|mailbox| mailbox.skarbiec_item_id == skarbiec_item_id);
         config.organization_id = existing.as_ref().map_or_else(
@@ -204,7 +203,7 @@ impl AppState {
         self.resolver
             .set_mailbox_declared(&mailbox.skarbiec_item_id, false)
             .await?;
-        self.reconcile_mailboxes(None).await?;
+        self.reconcile_mailboxes(Some(organization_id)).await?;
         self.database.get_mailbox(organization_id, id)
     }
 

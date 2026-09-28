@@ -3,7 +3,7 @@ name = "skrzynka"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.82"
-description = "Multi-mailbox email operations with credentials resolved from Skarbiec"
+description = "Multi-mailbox email operations on the Wisent fleet database with credentials resolved from Skarbiec"
 license = "Apache-2.0"
 repository = "https://github.com/wisent-ai/skrzynka"
 
@@ -17,7 +17,9 @@ imap = "3.0.0-alpha.15"
 jsonwebtoken = "9"
 lettre = "0.11"
 mailparse = "0.15"
-rusqlite = { version = "0.32", features = ["bundled"] }
+native-tls = "0.2"
+postgres = "0.19"
+postgres-native-tls = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

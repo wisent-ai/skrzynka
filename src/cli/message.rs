@@ -1,6 +1,6 @@
 //! The message subcommands: reading mail, replying and sending.
 
-use super::{arguments::MessageCommand, print_json, LOCAL_CLI_ORGANIZATION};
+use super::{arguments::MessageCommand, print_json};
 use crate::{
     error::AppError,
     models::{CreateOutboundRequest, CreateReplyRequest, MAX_BODY_BYTES},
@@ -9,14 +9,18 @@ use crate::{
 use std::path::Path;
 use uuid::Uuid;
 
-pub(super) async fn run_message(state: AppState, command: MessageCommand) -> Result<(), AppError> {
+pub(super) async fn run_message(
+    state: AppState,
+    organization: &str,
+    command: MessageCommand,
+) -> Result<(), AppError> {
     match command {
         MessageCommand::List {
             mailbox,
             limit,
             offset,
-        } => print_json(&state.list_messages(LOCAL_CLI_ORGANIZATION, mailbox, limit, offset)?),
-        MessageCommand::Show { id } => print_json(&state.get_message(LOCAL_CLI_ORGANIZATION, id)?),
+        } => print_json(&state.list_messages(organization, mailbox, limit, offset)?),
+        MessageCommand::Show { id } => print_json(&state.get_message(organization, id)?),
         MessageCommand::Reply {
             id,
             body_file,
@@ -27,7 +31,7 @@ pub(super) async fn run_message(state: AppState, command: MessageCommand) -> Res
                 idempotency_key: idempotency_key.unwrap_or_else(|| Uuid::new_v4().to_string()),
                 body,
             };
-            print_json(&state.reply(LOCAL_CLI_ORGANIZATION, id, request).await?)
+            print_json(&state.reply(organization, id, request).await?)
         }
         MessageCommand::Send {
             mailbox,
@@ -37,7 +41,7 @@ pub(super) async fn run_message(state: AppState, command: MessageCommand) -> Res
             body_file,
             idempotency_key,
         } => {
-            let mailbox = state.resolve_mailbox(LOCAL_CLI_ORGANIZATION, &mailbox)?;
+            let mailbox = state.resolve_mailbox(organization, &mailbox)?;
             let body = read_body_file(&body_file, "OUTBOUND_FILE_INVALID")?;
             let request = CreateOutboundRequest {
                 idempotency_key: idempotency_key.unwrap_or_else(|| Uuid::new_v4().to_string()),
@@ -48,7 +52,7 @@ pub(super) async fn run_message(state: AppState, command: MessageCommand) -> Res
             };
             print_json(
                 &state
-                    .send_outbound(LOCAL_CLI_ORGANIZATION, mailbox.id, request)
+                    .send_outbound(organization, mailbox.id, request)
                     .await?,
             )
         }
@@ -59,11 +63,11 @@ pub(super) async fn run_message(state: AppState, command: MessageCommand) -> Res
         } => {
             let mailbox_id = match mailbox {
                 Some(selector) => {
-                    Some(state.resolve_mailbox(LOCAL_CLI_ORGANIZATION, &selector)?.id)
+                    Some(state.resolve_mailbox(organization, &selector)?.id)
                 }
                 None => None,
             };
-            print_json(&state.list_outbound(LOCAL_CLI_ORGANIZATION, mailbox_id, limit, offset)?)
+            print_json(&state.list_outbound(organization, mailbox_id, limit, offset)?)
         }
     }
 }

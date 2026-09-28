@@ -94,7 +94,7 @@ impl AppState {
             .await?;
         self.reconcile_mailboxes(Some(organization_id)).await?;
         self.database
-            .list_all_mailboxes()?
+            .list_mailboxes(organization_id)?
             .into_iter()
             .find(|mailbox| mailbox.skarbiec_item_id == skarbiec_item_id)
             .ok_or_else(|| AppError::not_found("mailbox"))

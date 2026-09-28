@@ -1,6 +1,6 @@
 //! The Gmail subcommands: the browser authorization and the app-password prompt.
 
-use super::{print_json, AUTHORIZATION_POLL_MILLIS, LOCAL_CLI_ORGANIZATION};
+use super::{print_json, AUTHORIZATION_POLL_MILLIS};
 use crate::{
     db::Database, error::AppError, gmail::StartGmailOAuthRequest, service::AppState,
     skarbiec::SkarbiecResolver,
@@ -14,6 +14,7 @@ use std::{
 pub(super) async fn authorize_gmail(
     database: Database,
     resolver: SkarbiecResolver,
+    organization: &str,
     skarbiec_item: String,
     bind: SocketAddr,
 ) -> Result<(), AppError> {
@@ -32,7 +33,7 @@ pub(super) async fn authorize_gmail(
         .map_err(|_| AppError::internal("loopback OAuth callback address could not be bound"))?;
     let flow = state
         .start_gmail_oauth(
-            LOCAL_CLI_ORGANIZATION,
+            organization,
             StartGmailOAuthRequest {
                 skarbiec_item_id: skarbiec_item,
             },
@@ -47,7 +48,7 @@ pub(super) async fn authorize_gmail(
         );
     loop {
         let status = state
-            .gmail_oauth_status(LOCAL_CLI_ORGANIZATION, flow.flow_id)
+            .gmail_oauth_status(organization, flow.flow_id)
             .await?;
         if status.status == "completed" {
             server.abort();

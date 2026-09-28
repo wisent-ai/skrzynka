@@ -12,8 +12,9 @@ use uuid::Uuid;
     after_help = "Mailboxes are the Skarbiec items tagged skrzynka:mailbox. Safe first result: skrzynka mailbox declare --skarbiec-item <ITEM_ID>; skrzynka sync while has_more=true"
 )]
 pub struct Cli {
-    #[arg(long, global = true, value_name = "PATH")]
-    pub(super) database: Option<PathBuf>,
+    /// The organization a command acts for in the fleet database.
+    #[arg(long, global = true, default_value = "legacy-local", value_name = "ID")]
+    pub(super) organization: String,
     #[arg(long, global = true, default_value = "skarbiec", value_name = "PATH")]
     pub(super) skarbiec_bin: PathBuf,
     #[command(subcommand)]

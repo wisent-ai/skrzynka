@@ -1,4 +1,3 @@
-use rusqlite::Connection;
 use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
@@ -28,7 +27,12 @@ pub(crate) struct MailboxFixture {
     gnupg_link: Option<PathBuf>,
     pub(crate) vault: PathBuf,
     pub(crate) audit: PathBuf,
-    pub(crate) database: PathBuf,
+    /// The organization this journey's mailboxes live under in the fleet
+    /// database; unique to the fixture, and emptied when it is dropped.
+    pub(crate) organization: String,
+    /// The account's own home, where Stado and the database bearer live,
+    /// while every command runs under the fixture's isolated HOME.
+    fleet_home: OsString,
     pub(crate) skarbiec: OsString,
 }
 
@@ -71,7 +75,7 @@ impl MailboxFixture {
             std::process::id(),
             unique & 0xffff_ffff
         );
-        // All isolated test state stays inside the checkout's build tree; only
+        // All isolated file state stays inside the checkout's build tree; only
         // the GPG home gets a short name when that tree is too deep for the
         // agent's socket.
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -84,17 +88,17 @@ impl MailboxFixture {
         fs::write(root.join("test-name"), test_name).expect("record isolated test identity");
         let (gnupg, gnupg_link) = socket_safe_gnupg(&real_gnupg, &name);
 
-        let fixture = Self {
+        Self {
             vault: root.join("vault.json"),
             audit: root.join("audit.jsonl"),
-            database: root.join("skrzynka.db"),
+            organization: format!("skrzynka-journey-{name}"),
+            fleet_home: std::env::var_os("HOME").expect("a HOME holding Stado"),
             skarbiec: std::env::var_os("SKRZYNKA_TEST_SKARBIEC_BIN")
                 .unwrap_or_else(|| OsString::from("skarbiec")),
             root,
             gnupg,
             gnupg_link,
-        };
-        fixture
+        }
     }
 
     pub(crate) fn seed_mailbox_item(&self, item_id: &str) {
@@ -121,14 +125,36 @@ impl MailboxFixture {
 
     /// The mailbox `mailbox list` reports for one Skarbiec item.
     pub(crate) fn listed_mailbox(&self, item_id: &str) -> Value {
-        let output = self.skrzynka(&["mailbox", "list"]);
-        assert_success("list declared mailboxes", &output);
-        let mailboxes: Vec<Value> =
-            serde_json::from_slice(&output.stdout).expect("mailbox list must return JSON");
-        mailboxes
+        self.listed_mailboxes()
             .into_iter()
             .find(|mailbox| mailbox["skarbiec_item_id"] == item_id)
             .expect("the declared item must be listed as a mailbox")
+    }
+
+    /// Every mailbox `mailbox list` reports for the organization.
+    pub(crate) fn listed_mailboxes(&self) -> Vec<Value> {
+        let output = self.skrzynka(&["mailbox", "list"]);
+        assert_success("list declared mailboxes", &output);
+        serde_json::from_slice(&output.stdout).expect("mailbox list must return JSON")
+    }
+
+    /// The organization's mailbox count as `status` reports it, which reads
+    /// the fleet database without reconciling Skarbiec declarations.
+    pub(crate) fn mailbox_count(&self) -> u64 {
+        let output = self.skrzynka(&["status"]);
+        assert_success("read status", &output);
+        let status: Value =
+            serde_json::from_slice(&output.stdout).expect("status must return JSON");
+        status["mailbox_count"]
+            .as_u64()
+            .expect("status carries mailbox_count")
+    }
+
+    /// One stored mailbox as `mailbox show` reads it back.
+    pub(crate) fn shown_mailbox(&self, id: &str) -> Value {
+        let output = self.skrzynka(&["mailbox", "show", id]);
+        assert_success("show the stored mailbox", &output);
+        serde_json::from_slice(&output.stdout).expect("mailbox show must return JSON")
     }
 
     /// The tags Skarbiec reports for one item.
@@ -150,8 +176,8 @@ impl MailboxFixture {
     pub(crate) fn skrzynka(&self, args: &[&str]) -> Output {
         let mut command = Command::new(env!("CARGO_BIN_EXE_skrzynka"));
         command
-            .arg("--database")
-            .arg(&self.database)
+            .arg("--organization")
+            .arg(&self.organization)
             .arg("--skarbiec-bin")
             .arg(&self.skarbiec)
             .args(args);
@@ -189,11 +215,8 @@ impl MailboxFixture {
             .env("HOME", &self.root)
             .env("GNUPGHOME", &self.gnupg)
             .env("SKARBIEC_VAULT_FILE", &self.vault)
-            .env("SKARBIEC_AUDIT_FILE", &self.audit);
-    }
-
-    pub(crate) fn connection(&self) -> Connection {
-        Connection::open(&self.database).expect("open isolated Skrzynka database")
+            .env("SKARBIEC_AUDIT_FILE", &self.audit)
+            .env("SKRZYNKA_FLEET_HOME", &self.fleet_home);
     }
 
     pub(crate) fn mailbox_id(mailbox: &Value) -> &str {
@@ -212,6 +235,16 @@ impl MailboxFixture {
 
 impl Drop for MailboxFixture {
     fn drop(&mut self) {
+        // Leave nothing of this journey in the fleet database: every mailbox
+        // of its organization is undeclared and removed, and its mail with it.
+        let listed = self.skrzynka(&["mailbox", "list"]);
+        let mailboxes: Vec<Value> = serde_json::from_slice(&listed.stdout).unwrap_or_default();
+        for mailbox in &mailboxes {
+            if let Some(id) = mailbox["id"].as_str() {
+                let _ = self.skrzynka(&["mailbox", "undeclare", id]);
+                let _ = self.skrzynka(&["mailbox", "remove", id, "--confirm"]);
+            }
+        }
         let _ = Command::new("gpgconf")
             .env("GNUPGHOME", &self.gnupg)
             .args(["--kill", "all"])

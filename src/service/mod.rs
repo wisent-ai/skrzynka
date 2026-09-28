@@ -113,7 +113,7 @@ impl AppState {
         Ok(StatusResponse {
             product: "skrzynka",
             version: env!("CARGO_PKG_VERSION"),
-            database_path: self.database.path().display().to_string(),
+            database: self.database.name(),
             schema_version: crate::db::SCHEMA_VERSION,
             mailbox_count,
             enabled_mailbox_count,
