@@ -4,11 +4,7 @@
 
 use crate::{error::AppError, models::SmtpSecurity};
 use axum::http::StatusCode;
-use postgres::Client;
-use std::{
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
 mod mailboxes;
@@ -17,7 +13,7 @@ mod outbound;
 mod replies;
 pub mod sql;
 
-use sql::{params, OptionalExtension, Session};
+use sql::{params, Client, OptionalExtension};
 
 /// The schema this build writes. A database that records a newer one was written by a
 /// newer Skrzynka, which this build refuses to touch.
@@ -43,7 +39,7 @@ pub struct MailboxConfig {
 
 #[derive(Clone)]
 pub struct Database {
-    client: Arc<Mutex<Client>>,
+    client: Arc<Client>,
 }
 
 impl Database {
@@ -51,7 +47,7 @@ impl Database {
     /// stopped process left in `sending`.
     pub fn open() -> Result<Self, AppError> {
         let database = Self {
-            client: Arc::new(Mutex::new(sql::fleet::connect()?)),
+            client: Arc::new(sql::connect()?),
         };
         {
             let session = database.lock()?;
@@ -88,11 +84,8 @@ impl Database {
         DATABASE_NAME
     }
 
-    fn lock(&self) -> Result<Session<'_>, AppError> {
-        self.client
-            .lock()
-            .map(Session::new)
-            .map_err(|_| AppError::internal("database client lock was poisoned"))
+    fn lock(&self) -> Result<&Client, AppError> {
+        Ok(&self.client)
     }
 
     pub fn counts(&self, organization_id: &str) -> Result<(usize, usize, usize), AppError> {
@@ -139,10 +132,9 @@ fn checked_u64(value: i64, column: usize) -> sql::Result<u64> {
 }
 
 fn conversion_error(column: usize, error: impl std::error::Error) -> sql::Error {
-    sql::Error::Conversion {
-        column,
-        detail: error.to_string(),
-    }
+    sql::Error::Conversion(format!(
+        "column {column} holds a value Skrzynka cannot read: {error}"
+    ))
 }
 
 fn is_unique_constraint(error: &sql::Error) -> bool {

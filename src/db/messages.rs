@@ -23,7 +23,7 @@ impl Database {
         messages: &[NewMessage],
         last_uid: u32,
     ) -> Result<(Mailbox, usize, usize), AppError> {
-        let mut connection = self.lock()?;
+        let connection = self.lock()?;
         let transaction = connection.transaction()?;
         let mut unique_messages: HashMap<u32, &NewMessage> = HashMap::new();
         let mut unchanged = 0usize;
