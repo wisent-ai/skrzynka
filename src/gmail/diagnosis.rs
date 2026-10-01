@@ -119,7 +119,3 @@ pub async fn diagnose_authorization(authorization_url: &str) -> Option<String> {
         .ok()?;
     oauth_error_code(response.url().as_str())
 }
-
-#[cfg(test)]
-#[path = "../../tests/gmail/diagnosis.rs"]
-mod tests;

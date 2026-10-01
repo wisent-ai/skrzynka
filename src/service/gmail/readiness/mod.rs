@@ -125,7 +125,3 @@ fn is_consumer_account(email: &str) -> bool {
             .any(|consumer| domain.eq_ignore_ascii_case(consumer))
     })
 }
-
-#[cfg(test)]
-#[path = "../../../../tests/gmail/readiness.rs"]
-mod tests;

@@ -272,10 +272,7 @@ The source is one module per concern, each a folder of files under 300 lines:
 messages and outbound mail), `db` (schema and one file per table), `skarbiec`
 (the vault transport, items, mailbox resolution and Google tokens), `gmail`
 (the OAuth broker and its diagnosis), `onboarding`, `models`, `mail`, `auth`
-and `error`. `cargo test --locked` runs `tests/gmail/` against the diagnosis
-helpers and `tests/mailboxes/` against the real binary with an isolated
-Skarbiec and a journey-owned organization in the fleet database, which each
-case empties when it ends, including the refusals above.
+and `error`.
 
 The fleet database is Supabase Postgres; its backups follow that project. Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka deletes that mailbox and cascades through its messages, reply attempts, and outbound messages, destroying the record that the mailbox originated those messages; it does not delete the Skarbiec item or provider mailbox. Mail kept only in a former local `skrzynka.db` is not carried over: declaring the same Skarbiec item again imports the provider's INBOX anew.
 
