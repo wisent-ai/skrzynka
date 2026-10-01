@@ -1,12 +1,9 @@
-//! The Skarbiec CLI transport: get and set one item, with bounded output and a timeout.
+//! The Skarbiec CLI transport: get and set one item, with bounded output.
 
-use super::{
-    invalid_item, validate_item_id, SkarbiecResolver, MAX_SKARBIEC_RESPONSE_BYTES,
-    SKARBIEC_COMMAND_TIMEOUT_SECONDS,
-};
+use super::{invalid_item, validate_item_id, SkarbiecResolver, MAX_SKARBIEC_RESPONSE_BYTES};
 use crate::error::AppError;
 use serde_json::Value;
-use std::{process::Stdio, time::Duration};
+use std::process::Stdio;
 use tokio::{io::AsyncWriteExt, process::Command};
 
 impl SkarbiecResolver {
@@ -45,19 +42,7 @@ impl SkarbiecResolver {
             )
         })?;
         drop(stdin);
-        let output = tokio::time::timeout(
-            Duration::from_secs(SKARBIEC_COMMAND_TIMEOUT_SECONDS),
-            child.wait_with_output(),
-        )
-        .await
-        .map_err(|_| {
-            AppError::dependency(
-                "SKARBIEC_TIMEOUT",
-                "Skarbiec did not finish within 15 seconds",
-                true,
-            )
-        })?
-        .map_err(|_| {
+        let output = child.wait_with_output().await.map_err(|_| {
             AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
                 "Skarbiec did not persist Gmail authorization",
@@ -98,19 +83,7 @@ impl SkarbiecResolver {
         let mut command = Command::new(&self.binary);
         command.args(arguments);
         command.kill_on_drop(true);
-        tokio::time::timeout(
-            Duration::from_secs(SKARBIEC_COMMAND_TIMEOUT_SECONDS),
-            command.output(),
-        )
-        .await
-        .map_err(|_| {
-            AppError::dependency(
-                "SKARBIEC_TIMEOUT",
-                "Skarbiec did not finish within 15 seconds",
-                true,
-            )
-        })?
-        .map_err(|_| {
+        command.output().await.map_err(|_| {
             AppError::dependency(
                 "SKARBIEC_UNAVAILABLE",
                 "Skarbiec could not be started from the configured path",

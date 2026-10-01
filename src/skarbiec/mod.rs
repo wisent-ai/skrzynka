@@ -22,8 +22,6 @@ pub use mailboxes::MAILBOX_TAG;
 const MAX_SKARBIEC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 /// A cached token is reused only while it has more than a minute left.
 const TOKEN_EXPIRY_MARGIN_SECONDS: i64 = 60;
-/// The Skarbiec CLI answers within seconds; longer than this is a stuck vault.
-const SKARBIEC_COMMAND_TIMEOUT_SECONDS: u64 = 15;
 const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "skrzynka-google-oauth-desktop";
 const GOOGLE_SERVICE_ACCOUNT_ITEM_ID: &str = "skrzynka-google-service-account";
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
