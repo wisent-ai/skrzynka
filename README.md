@@ -174,21 +174,18 @@ database, or its loopback API.
 The OAuth alternative remains:
 
 ```sh
-cargo run -- gmail authorize --skarbiec-item kimi-lukasz-google-sso
+cargo run -- gmail authorize --skarbiec-item <google-login-item>
 ```
 
 It prints Google's authorization URL, waits on `127.0.0.1:8790`, and exits
 after the callback stores a dedicated `skrzynka-gmail-*` OAuth bundle and
 declares it a mailbox in Skarbiec.
 
-Measured on 2026-09-03 against the client currently stored in
-`skrzynka-google-oauth-desktop`: Google refuses that authorization with
-`redirect_uri_mismatch` for `http://127.0.0.1:8790/v1/gmail/oauth/callback`
-and for the bare `http://127.0.0.1:8790`, `http://127.0.0.1/` and
-`http://localhost:8790/` variants — the client has no loopback redirect
-registered at all, so no consent screen is reachable and this command cannot
-complete until the replacement Desktop client described below is created.
-Until that client is repaired, use an app-specific password for one account or domain-wide delegation for an administrator-managed Workspace domain.
+Google refuses that authorization with `redirect_uri_mismatch` when the
+client stored in `skrzynka-google-oauth-desktop` has no loopback redirect, so
+no consent screen is reachable. A **Desktop app** client, described below,
+avoids that. Without one, use an app-specific password for one account or
+domain-wide delegation for an administrator-managed Workspace domain.
 
 Send a first message from a connected mailbox, addressing it by the mailbox's
 own address rather than its id:
@@ -233,7 +230,7 @@ Each declared profile has a receiving `skarbiec_item_id` and may contain `smtp_s
 
 The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret`, and one `value` field of type `oauth_client`; that value is the unmodified JSON downloaded for a Google OAuth client whose application type is **Desktop app**. Skrzynka accepts only the `installed` client shape and Google's canonical authorization and token endpoints.
 
-That client belongs in Wisent's own Google Cloud project `wisent-480400` (project number `1080673333190`), which already holds the OAuth consent brand titled "Wisent" with support email `lukasz.bartoszcze@wisent.ai`. **Desktop app** is not a preference: Google grants installed-app clients the loopback exemption, so any `127.0.0.1` port is accepted without registering each one, and a single Desktop client therefore satisfies Skrzynka's `127.0.0.1:8790` callback and Oko's `--redirect-port` at the same time. A Web-type client has no such exemption and refuses every unregistered redirect URI with `redirect_uri_mismatch` before any consent screen appears. The client id Skrzynka and Oko have been pointed at so far, `903183433368-5nt0jdbqtli8rm39oh2s0limiljap3l9.apps.googleusercontent.com`, is not in that project: the `903183433368` prefix is the project number of `controlai-406621` ("ControlAI"), so the user grant is currently minted through a client owned by an unrelated project. Its registration cannot be repaired with tooling — the only Google Cloud OAuth-client APIs are IAP's, whose clients are locked to IAP usage and expose no redirect-URI field, and which by documentation do not operate on Console-created clients — so the replacement Desktop client must be created once in the Console under `wisent-480400` and its JSON stored as `skrzynka-google-oauth-desktop`.
+That client belongs in Wisent's own Google Cloud project, the one that holds the OAuth consent brand titled "Wisent". **Desktop app** is not a preference: Google grants installed-app clients the loopback exemption, so any `127.0.0.1` port is accepted without registering each one, and a single Desktop client therefore satisfies Skrzynka's `127.0.0.1:8790` callback and Oko's `--redirect-port` at the same time. A Web-type client has no such exemption and refuses every unregistered redirect URI with `redirect_uri_mismatch` before any consent screen appears.
 
 ## Product boundaries and contracts
 

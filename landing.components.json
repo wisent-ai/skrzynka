@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "Skrzynka",
-  "decidedBy": "Lukasz Bartoszcze (operator instruction, session 2026-08-26)",
+  "decidedBy": "operator",
   "components": [
     {
       "id": "landing.header",
