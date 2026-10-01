@@ -9,14 +9,11 @@ use lettre::{
     Message as OutgoingMessage, SmtpTransport, Transport,
 };
 use mailparse::{MailHeaderMap, ParsedMail};
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 use uuid::Uuid;
 
 mod incoming;
 pub use incoming::{fetch_messages, verify_gmail_app_password, GMAIL_IMAP_HOST};
-
-/// An SMTP submission that has not completed in half a minute is a dead connection.
-const SMTP_TIMEOUT_SECONDS: u64 = 30;
 
 pub fn send_reply(
     mailbox: &Mailbox,
@@ -160,7 +157,9 @@ fn deliver(
             .authentication(vec![Mechanism::Xoauth2]),
     };
     let transport = builder
-        .timeout(Some(Duration::from_secs(SMTP_TIMEOUT_SECONDS)))
+        // No client deadline (cli.md rule 8): the submission ends with the
+        // server's answer or the connection's own error.
+        .timeout(None)
         .build();
     transport.send(outgoing).map_err(|error| {
         // The server's own sentence is the only thing that says why it

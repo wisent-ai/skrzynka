@@ -1,6 +1,5 @@
 //! What a failed Google authorization means, in the words an operator needs.
 
-use super::AUTHORIZATION_PROBE_TIMEOUT_SECONDS;
 use crate::error::AppError;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use reqwest::{Client, Url};
@@ -111,9 +110,6 @@ pub async fn diagnose_authorization(authorization_url: &str) -> Option<String> {
     let response = Client::new()
         .get(authorization_url)
         .header("user-agent", "Mozilla/5.0")
-        .timeout(std::time::Duration::from_secs(
-            AUTHORIZATION_PROBE_TIMEOUT_SECONDS,
-        ))
         .send()
         .await
         .ok()?;
