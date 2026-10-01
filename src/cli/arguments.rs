@@ -23,26 +23,37 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub(super) enum Command {
+    /// Run the loopback HTTP API and poll every declared mailbox on its interval.
     Serve(ServeArgs),
+    /// Report the database path, version, mailbox and message counts, and
+    /// whether `skarbiec` can be found.
     Status,
+    /// Walk through first use: declare a mailbox, sync it and read its mail.
     Onboarding {
+        /// Discard the walkthrough's progress and start again.
         #[arg(long)]
         reset: bool,
     },
+    /// Print the binary's version.
     Version,
+    /// Declare, list, show, undeclare and remove mailboxes.
     Mailbox {
         #[command(subcommand)]
         command: MailboxCommand,
     },
+    /// Connect Gmail accounts and report which connection paths work.
     Gmail {
         #[command(subcommand)]
         command: GmailCommand,
     },
+    /// List, read, reply to and send messages, and read back what went out.
     Message {
         #[command(subcommand)]
         command: MessageCommand,
     },
+    /// Run one bounded import pass; run it again while the result says has_more=true.
     Sync {
+        /// Import only this mailbox.
         #[arg(long)]
         mailbox: Option<Uuid>,
     },
@@ -50,8 +61,10 @@ pub(super) enum Command {
 
 #[derive(Args)]
 pub(super) struct ServeArgs {
+    /// Loopback address the API listens on; a non-loopback address is refused.
     #[arg(long, default_value = "127.0.0.1:8788")]
     pub(super) bind: SocketAddr,
+    /// Seconds between polls of each mailbox.
     #[arg(long, default_value_t = 60)]
     pub(super) poll_seconds: u64,
 }
@@ -102,6 +115,7 @@ pub(super) enum MailboxCommand {
     },
     /// Every mailbox Skarbiec declares, after reading the vault.
     List,
+    /// One mailbox's state as Skrzynka holds it.
     Show {
         id: Uuid,
     },
@@ -121,6 +135,7 @@ pub(super) struct DeclareMailboxArgs {
 
 #[derive(Subcommand)]
 pub(super) enum MessageCommand {
+    /// Imported messages, one page at a time (--limit, --offset).
     List {
         #[arg(long)]
         mailbox: Option<Uuid>,
@@ -129,9 +144,12 @@ pub(super) enum MessageCommand {
         #[arg(long, default_value_t = 0)]
         offset: u32,
     },
+    /// One imported message.
     Show {
         id: Uuid,
     },
+    /// Reply to a message with the body in a file; the result is terminal or
+    /// ambiguous, never assumed sent.
     Reply {
         id: Uuid,
         #[arg(long)]
@@ -139,6 +157,7 @@ pub(super) enum MessageCommand {
         #[arg(long)]
         idempotency_key: Option<String>,
     },
+    /// Send a new message, claimed by its idempotency key before the provider sees it.
     Send {
         #[arg(long)]
         mailbox: String,
@@ -153,6 +172,7 @@ pub(super) enum MessageCommand {
         #[arg(long)]
         idempotency_key: Option<String>,
     },
+    /// Outbound messages and their delivery state.
     Outbound {
         #[arg(long)]
         mailbox: Option<String>,
