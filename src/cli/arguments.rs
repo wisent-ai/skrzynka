@@ -15,6 +15,7 @@ pub struct Cli {
     /// The organization a command acts for in the fleet database.
     #[arg(long, global = true, default_value = "legacy-local", value_name = "ID")]
     pub(super) organization: String,
+    /// The `skarbiec` executable that reads and tags mailbox items.
     #[arg(long, global = true, default_value = "skarbiec", value_name = "PATH")]
     pub(super) skarbiec_bin: PathBuf,
     /// Print results as `path: value` lines for people instead of JSON.
@@ -84,22 +85,28 @@ pub(super) enum GmailCommand {
     },
     /// Authorize one Google identity through the loopback OAuth callback.
     Authorize {
+        /// Skarbiec item that receives the authorized grant.
         #[arg(long)]
         skarbiec_item: String,
+        /// Loopback address the OAuth callback listens on.
         #[arg(long, default_value = "127.0.0.1:8790")]
         bind: SocketAddr,
     },
     /// Connect one Workspace mailbox through domain-wide delegation.
     Delegate {
+        /// Workspace address to connect.
         #[arg(long)]
         email: String,
+        /// Name shown for the mailbox; the address when omitted.
         #[arg(long)]
         display_name: Option<String>,
     },
     /// Connect one Gmail account using an app-specific password read from stdin.
     AppPassword {
+        /// Gmail address to connect.
         #[arg(long)]
         email: String,
+        /// Name shown for the mailbox; the address when omitted.
         #[arg(long)]
         display_name: Option<String>,
     },
@@ -114,17 +121,21 @@ pub(super) enum MailboxCommand {
     Declare(DeclareMailboxArgs),
     /// Remove the skrzynka:mailbox tag; the mailbox keeps its mail and stops polling.
     Undeclare {
+        /// Mailbox ID, as `skrzynka mailbox list` prints it.
         id: Uuid,
     },
     /// Every mailbox Skarbiec declares, after reading the vault.
     List,
     /// One mailbox's state as Skrzynka holds it.
     Show {
+        /// Mailbox ID, as `skrzynka mailbox list` prints it.
         id: Uuid,
     },
     /// Delete the local mail of a mailbox Skarbiec no longer declares.
     Remove {
+        /// Mailbox ID, as `skrzynka mailbox list` prints it.
         id: Uuid,
+        /// Required: the local mail is deleted and cannot be restored.
         #[arg(long)]
         confirm: bool,
     },
@@ -132,6 +143,7 @@ pub(super) enum MailboxCommand {
 
 #[derive(Args)]
 pub(super) struct DeclareMailboxArgs {
+    /// Skarbiec item that holds the mailbox's credentials.
     #[arg(long)]
     pub(super) skarbiec_item: String,
 }
@@ -140,47 +152,63 @@ pub(super) struct DeclareMailboxArgs {
 pub(super) enum MessageCommand {
     /// Imported messages, one page at a time (--limit, --offset).
     List {
+        /// Only this mailbox's messages.
         #[arg(long)]
         mailbox: Option<Uuid>,
+        /// Messages per page.
         #[arg(long, default_value_t = 100)]
         limit: u32,
+        /// Messages to skip before the page.
         #[arg(long, default_value_t = 0)]
         offset: u32,
     },
     /// One imported message.
     Show {
+        /// Message ID, as `skrzynka message list` prints it.
         id: Uuid,
     },
     /// Reply to a message with the body in a file; the result is terminal or
     /// ambiguous, never assumed sent.
     Reply {
+        /// Message ID being answered.
         id: Uuid,
+        /// File holding the reply body.
         #[arg(long)]
         body_file: PathBuf,
+        /// Key that makes a repeated reply the same reply; one is drawn when omitted.
         #[arg(long)]
         idempotency_key: Option<String>,
     },
     /// Send a new message, claimed by its idempotency key before the provider sees it.
     Send {
+        /// Mailbox the message is sent from.
         #[arg(long)]
         mailbox: String,
+        /// Recipient address; repeatable.
         #[arg(long = "to", required = true)]
         to: Vec<String>,
+        /// Copied address; repeatable.
         #[arg(long = "cc")]
         cc: Vec<String>,
+        /// Subject line.
         #[arg(long)]
         subject: String,
+        /// File holding the message body.
         #[arg(long)]
         body_file: PathBuf,
+        /// Key that makes a repeated send the same send; one is drawn when omitted.
         #[arg(long)]
         idempotency_key: Option<String>,
     },
     /// Outbound messages and their delivery state.
     Outbound {
+        /// Only messages sent from this mailbox.
         #[arg(long)]
         mailbox: Option<String>,
+        /// Messages per page.
         #[arg(long, default_value_t = 100)]
         limit: u32,
+        /// Messages to skip before the page.
         #[arg(long, default_value_t = 0)]
         offset: u32,
     },
