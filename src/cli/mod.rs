@@ -20,8 +20,6 @@ use mailbox::run_mailbox;
 use message::run_message;
 
 const DEFAULT_CALLBACK_BASE_URL: &str = "http://127.0.0.1:8788";
-/// While the browser authorizes Gmail, the flow is re-read four times a second.
-const AUTHORIZATION_POLL_MILLIS: u64 = 250;
 /// A one-shot CLI command never polls; the interval only has to satisfy the service's bounds.
 const CLI_POLL_INTERVAL_SECONDS: u64 = 60;
 

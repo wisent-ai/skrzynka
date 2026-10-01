@@ -169,7 +169,12 @@ impl GmailOAuthBroker {
 
     pub(super) async fn fail(&self, flow_id: Uuid, error: &AppError) {
         let mut flows = self.flows.lock().await;
-        if let Some(record) = flows.get_mut(&flow_id) {
+        if let Some(record) = flows.get_mut(&flow_id).filter(|record| {
+            matches!(
+                record.status,
+                GmailOAuthFlowStatus::Pending | GmailOAuthFlowStatus::Processing
+            )
+        }) {
             record.status = GmailOAuthFlowStatus::Failed(GmailOAuthFailure {
                 code: error.code,
                 message: error.message.clone(),

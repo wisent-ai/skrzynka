@@ -1,6 +1,6 @@
 //! The Gmail subcommands: the browser authorization and the app-password prompt.
 
-use super::{print_json, AUTHORIZATION_POLL_MILLIS};
+use super::print_json;
 use crate::{
     db::Database, error::AppError, gmail::StartGmailOAuthRequest, service::AppState,
     skarbiec::SkarbiecResolver,
@@ -41,55 +41,44 @@ pub(super) async fn authorize_gmail(
         .await?;
     print_json(&flow)?;
 
+    // An unregistered redirect URI is refused by Google inside the browser:
+    // nothing ever reaches this listener, so no callback would ever settle the
+    // flow. Ask Google before waiting, and report that cause instead.
+    if crate::gmail::diagnose_authorization(&flow.authorization_url)
+        .await
+        .as_deref()
+        == Some("redirect_uri_mismatch")
+    {
+        if let Some((client_id, redirect_uri)) =
+            crate::gmail::authorization_operands(&flow.authorization_url)
+        {
+            return Err(crate::gmail::redirect_not_registered(
+                &client_id,
+                &redirect_uri,
+            ));
+        }
+    }
+
     let callback_state = state.clone();
     let server =
         tokio::spawn(
             async move { axum::serve(listener, crate::api::router(callback_state)).await },
         );
-    loop {
-        let status = state
-            .gmail_oauth_status(organization, flow.flow_id)
-            .await?;
-        if status.status == "completed" {
-            server.abort();
-            print_json(&status)?;
-            return Ok(());
-        }
-        if status.status == "failed" {
-            server.abort();
-            let error = status.error.as_ref();
-            // A flow that expired without a callback is the shape an
-            // unregistered redirect URI takes here: Google refuses inside the
-            // browser, nothing ever reaches this listener, and the ten-minute
-            // lifetime runs out saying only that it expired. Ask Google why
-            // before reporting that, so the operator gets the cause instead of
-            // the symptom.
-            if error.map(|error| error.code) == Some("GMAIL_OAUTH_FLOW_EXPIRED") {
-                if crate::gmail::diagnose_authorization(&flow.authorization_url)
-                    .await
-                    .as_deref()
-                    == Some("redirect_uri_mismatch")
-                {
-                    if let Some((client_id, redirect_uri)) =
-                        crate::gmail::authorization_operands(&flow.authorization_url)
-                    {
-                        return Err(crate::gmail::redirect_not_registered(
-                            &client_id,
-                            &redirect_uri,
-                        ));
-                    }
-                }
-            }
-            return Err(AppError::dependency(
-                "GMAIL_OAUTH_FAILED",
-                error
-                    .map(|error| format!("{}: {}", error.code, error.message))
-                    .unwrap_or_else(|| "Gmail authorization failed".to_string()),
-                error.map(|error| error.retryable).unwrap_or(false),
-            ));
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(AUTHORIZATION_POLL_MILLIS)).await;
+    let status = state.gmail_oauth_settled(organization, flow.flow_id).await;
+    server.abort();
+    let status = status?;
+    if status.status == "completed" {
+        print_json(&status)?;
+        return Ok(());
     }
+    let error = status.error.as_ref();
+    Err(AppError::dependency(
+        "GMAIL_OAUTH_FAILED",
+        error
+            .map(|error| format!("{}: {}", error.code, error.message))
+            .unwrap_or_else(|| "Gmail authorization failed".to_string()),
+        error.map(|error| error.retryable).unwrap_or(false),
+    ))
 }
 
 pub(super) fn read_gmail_app_password() -> Result<String, AppError> {

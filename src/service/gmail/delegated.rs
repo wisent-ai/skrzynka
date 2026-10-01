@@ -68,6 +68,16 @@ impl AppState {
         self.gmail_status_response(snapshot).await
     }
 
+    /// The flow's status once its callback has completed or failed it.
+    pub async fn gmail_oauth_settled(
+        &self,
+        organization_id: &str,
+        flow_id: Uuid,
+    ) -> Result<GmailOAuthStatusResponse, AppError> {
+        let snapshot = self.gmail_oauth.settled(flow_id, organization_id).await?;
+        self.gmail_status_response(snapshot).await
+    }
+
     pub(super) async fn gmail_status_response(
         &self,
         snapshot: GmailOAuthFlowSnapshot,

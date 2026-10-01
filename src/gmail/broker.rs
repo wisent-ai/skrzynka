@@ -15,7 +15,7 @@ use chrono::{Duration, Utc};
 use reqwest::{Client, Url};
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 impl GmailOAuthBroker {
@@ -41,6 +41,7 @@ impl GmailOAuthBroker {
             resolver,
             client: Client::new(),
             flows: Arc::new(Mutex::new(HashMap::new())),
+            settled: Arc::new(Notify::new()),
             callback_url,
         })
     }
@@ -141,6 +142,19 @@ impl GmailOAuthBroker {
                     )
                 })
             })?;
+        let result = self.settle_callback(flow_id, callback).await;
+        self.settled.notify_waiters();
+        result
+    }
+
+    /// Everything a callback that names a flow does to it. Every refusal here
+    /// also marks the flow failed, so a waiter learns the cause instead of
+    /// waiting on a flow nothing will ever settle.
+    async fn settle_callback(
+        &self,
+        flow_id: Uuid,
+        callback: GmailOAuthCallback,
+    ) -> Result<GmailAuthorization, AppError> {
         if callback.error.is_some() {
             let message = callback
                 .error_description
@@ -153,18 +167,20 @@ impl GmailOAuthBroker {
             self.fail(flow_id, &error).await;
             return Err(error);
         }
-        let code = callback
+        let Some(code) = callback
             .code
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty() && value.len() <= MAX_AUTHORIZATION_CODE_LENGTH)
-            .ok_or_else(|| {
-                AppError::invalid(
-                    "GMAIL_OAUTH_CODE_INVALID",
-                    "Google returned no valid authorization code",
-                )
-            })?
-            .to_string();
+            .map(str::to_string)
+        else {
+            let error = AppError::invalid(
+                "GMAIL_OAUTH_CODE_INVALID",
+                "Google returned no valid authorization code",
+            );
+            self.fail(flow_id, &error).await;
+            return Err(error);
+        };
         let pending = self.begin_completion(flow_id).await?;
         let result = self.exchange_code(&pending, &code).await;
         match result {
@@ -180,6 +196,29 @@ impl GmailOAuthBroker {
                 self.fail(flow_id, &error).await;
                 Err(error)
             }
+        }
+    }
+
+    /// The flow's status once a callback has completed or failed it. The
+    /// waiter registers for the wake-up before reading the status, so a
+    /// callback that settles the flow between the two is never missed.
+    pub async fn settled(
+        &self,
+        flow_id: Uuid,
+        organization_id: &str,
+    ) -> Result<GmailOAuthFlowSnapshot, AppError> {
+        loop {
+            let woken = self.settled.notified();
+            tokio::pin!(woken);
+            woken.as_mut().enable();
+            let snapshot = self.status(flow_id, organization_id).await?;
+            if matches!(
+                snapshot.status,
+                GmailOAuthFlowStatus::Completed(_) | GmailOAuthFlowStatus::Failed(_)
+            ) {
+                return Ok(snapshot);
+            }
+            woken.await;
         }
     }
 

@@ -6,7 +6,7 @@ use chrono::Utc;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 mod broker;
@@ -96,6 +96,9 @@ pub struct GmailOAuthBroker {
     resolver: SkarbiecResolver,
     client: Client,
     flows: Arc<Mutex<HashMap<Uuid, FlowRecord>>>,
+    /// Woken whenever a callback settles a flow, so a waiter reads the new
+    /// status the moment it exists instead of polling for it.
+    settled: Arc<Notify>,
     callback_url: Url,
 }
 

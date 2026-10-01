@@ -177,15 +177,22 @@ The OAuth alternative remains:
 cargo run -- gmail authorize --skarbiec-item <google-login-item>
 ```
 
-It prints Google's authorization URL, waits on `127.0.0.1:8790`, and exits
-after the callback stores a dedicated `skrzynka-gmail-*` OAuth bundle and
-declares it a mailbox in Skarbiec.
+It prints Google's authorization URL, then asks Google whether that client
+accepts the loopback redirect. A `redirect_uri_mismatch` answer ends the
+command at once with `GMAIL_OAUTH_REDIRECT_NOT_REGISTERED`, naming the client
+id and redirect URI, because Google would refuse inside the browser
+and no callback would ever arrive. Otherwise it waits on `127.0.0.1:8790` with
+no deadline until Google's callback settles the flow: it exits 0 after the
+callback stores a dedicated `skrzynka-gmail-*` OAuth bundle and declares it a
+mailbox in Skarbiec, or exits non-zero with `GMAIL_OAUTH_FAILED` carrying the
+refusal the callback reported (declined consent, an invalid code, a failed
+token exchange). Interrupt it to abandon an authorization nobody completes.
 
-Google refuses that authorization with `redirect_uri_mismatch` when the
-client stored in `skrzynka-google-oauth-desktop` has no loopback redirect, so
-no consent screen is reachable. A **Desktop app** client, described below,
-avoids that. Without one, use an app-specific password for one account or
-domain-wide delegation for an administrator-managed Workspace domain.
+The redirect is refused when the client stored in
+`skrzynka-google-oauth-desktop` has no loopback redirect, so no consent screen
+is reachable. A **Desktop app** client, described below, avoids that. Without
+one, use an app-specific password for one account or domain-wide delegation
+for an administrator-managed Workspace domain.
 
 Send a first message from a connected mailbox, addressing it by the mailbox's
 own address rather than its id:
