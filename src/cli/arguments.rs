@@ -17,6 +17,9 @@ pub struct Cli {
     pub(super) organization: String,
     #[arg(long, global = true, default_value = "skarbiec", value_name = "PATH")]
     pub(super) skarbiec_bin: PathBuf,
+    /// Print results as `path: value` lines for people instead of JSON.
+    #[arg(long, global = true)]
+    pub(super) text: bool,
     #[command(subcommand)]
     pub(super) command: Command,
 }

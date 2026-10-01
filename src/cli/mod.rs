@@ -5,7 +5,8 @@ use crate::{
     db::Database, error::AppError, onboarding, service::AppState, skarbiec::SkarbiecResolver,
 };
 use axum::http::StatusCode;
-use serde_json::json;
+use serde_json::{Value, json};
+use std::sync::OnceLock;
 
 mod arguments;
 mod gmail;
@@ -24,7 +25,11 @@ const AUTHORIZATION_POLL_MILLIS: u64 = 250;
 /// A one-shot CLI command never polls; the interval only has to satisfy the service's bounds.
 const CLI_POLL_INTERVAL_SECONDS: u64 = 60;
 
+/// Whether this invocation asked for `--text`; set once before any command runs.
+static TEXT: OnceLock<bool> = OnceLock::new();
+
 pub async fn run(cli: Cli) -> Result<(), AppError> {
+    TEXT.get_or_init(|| cli.text);
     if matches!(cli.command, Command::Version) {
         print_json(&json!({
             "product": "skrzynka",
@@ -135,9 +140,48 @@ async fn serve(
         .map_err(|_| AppError::internal("loopback API stopped unexpectedly"))
 }
 
+/// Prints one result: pretty JSON for machines, or with `--text` one
+/// `path: value` line per field for people, from the same value (cli.md rule 13).
 pub(super) fn print_json(value: &impl serde::Serialize) -> Result<(), AppError> {
-    let output = serde_json::to_string_pretty(value)
+    let value = serde_json::to_value(value)
+        .map_err(|_| AppError::internal("result could not be encoded as JSON"))?;
+    if TEXT.get().copied().unwrap_or(false) {
+        let mut lines = String::new();
+        flatten("", &value, &mut lines);
+        print!("{lines}");
+        return Ok(());
+    }
+    let output = serde_json::to_string_pretty(&value)
         .map_err(|_| AppError::internal("result could not be encoded as JSON"))?;
     println!("{output}");
     Ok(())
+}
+
+fn flatten(path: &str, value: &Value, lines: &mut String) {
+    match value {
+        Value::Object(map) if !map.is_empty() => {
+            for (key, item) in map {
+                let child = if path.is_empty() { key.clone() } else { format!("{path}.{key}") };
+                flatten(&child, item, lines);
+            }
+        }
+        Value::Array(items) if !items.is_empty() => {
+            for (index, item) in items.iter().enumerate() {
+                flatten(&format!("{path}[{index}]"), item, lines);
+            }
+        }
+        _ => {
+            let shown = match value {
+                Value::String(text) => text.clone(),
+                Value::Null | Value::Object(_) | Value::Array(_) => "-".to_owned(),
+                other => other.to_string(),
+            };
+            if !path.is_empty() {
+                lines.push_str(path);
+                lines.push_str(": ");
+            }
+            lines.push_str(&shown);
+            lines.push('\n');
+        }
+    }
 }

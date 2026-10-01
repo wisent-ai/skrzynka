@@ -263,6 +263,8 @@ Stado and that bearer are found under `SKRZYNKA_FLEET_HOME`, else `HOME`; with n
 
 The CLI acts for one organization, `--organization <ID>` (default `legacy-local`). A command that names its organization reconciles only that organization's mailboxes against the Skarbiec declarations it reads; only the background poll of `skrzynka serve` reconciles every organization, against the vault of the host it runs on.
 
+Every command prints its result as JSON; the global `--text` flag prints the same result as one `path: value` line per field for people.
+
 The source is one module per concern, each a folder of files under 300 lines:
 `cli` (arguments and subcommands), `api` (router and handlers), `service`
 (the `AppState` methods, grouped by Gmail connection, mailboxes, polling,
