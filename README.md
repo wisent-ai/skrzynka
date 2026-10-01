@@ -263,7 +263,7 @@ Every command connects in four steps, and a failure answers `DATABASE_UNREACHABL
 
 1. `stado database resolve skrzynka --consumer skrzynka --json` names the Skarbiec item holding the address (`skrzynka-database`).
 2. `stado service directory connect skarbiec --consumer skrzynka --json` gives the Skarbiec route.
-3. `stado secrets get skrzynka-database --field pooler_url` and `--field ca_certificate`, as consumer `skrzynka-database-client` with the bearer in `~/.stado/skrzynka-database-client-skarbiec-token`, give the pooler URL and the provider's root certificate.
+3. `stado credentials get skrzynka-database --field pooler_url` and `--field ca_certificate`, as consumer `skrzynka-database-client` with the bearer in `~/.stado/skrzynka-database-client-skarbiec-token`, give the pooler URL and the provider's root certificate.
 4. Skrzynka connects over TLS verified against that certificate and creates any missing table.
 
 Stado and that bearer are found under `SKRZYNKA_FLEET_HOME`, else `HOME`; with neither set a command is refused with `neither SKRZYNKA_FLEET_HOME nor HOME is set`, and `skrzynka onboarding` without `XDG_STATE_HOME` or `HOME` is refused with `neither XDG_STATE_HOME nor HOME is set`; nothing is guessed.
