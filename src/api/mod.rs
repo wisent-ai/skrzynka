@@ -21,8 +21,9 @@ mod mailboxes;
 mod messages;
 
 use gmail::{
-    connect_gmail_app_password, connect_gmail_delegated, gmail_connection_readiness_handler,
-    gmail_oauth_callback, gmail_oauth_status, start_gmail_oauth,
+    connect_gmail_app_password, connect_gmail_delegated, disconnect_gmail,
+    gmail_connection_readiness_handler, gmail_oauth_callback, gmail_oauth_status,
+    start_gmail_oauth,
 };
 use mailboxes::{
     declare_mailbox, delete_mailbox, get_mailbox, list_mailboxes, sync_all, sync_mailbox,
@@ -46,6 +47,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/v1/gmail/delegate", post(connect_gmail_delegated))
         .route("/v1/gmail/app-password", post(connect_gmail_app_password))
+        .route("/v1/gmail/disconnect", post(disconnect_gmail))
         .route("/v1/mailboxes", get(list_mailboxes))
         .route("/v1/mailboxes/declare", post(declare_mailbox))
         .route(

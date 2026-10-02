@@ -129,6 +129,14 @@ pub(super) enum AccountCommand {
         #[arg(long)]
         display_name: Option<String>,
     },
+    /// Take back what a connection path wrote: revoke an OAuth grant at the
+    /// provider and move the account's credential item to Skarbiec's trash.
+    /// Refused while the account is a declared mailbox (`mailbox undeclare`).
+    Disconnect {
+        /// Account to disconnect.
+        #[arg(long)]
+        email: String,
+    },
 }
 
 /// Skarbiec owns the mailbox list: an item tagged `skrzynka:mailbox` is a

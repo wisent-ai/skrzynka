@@ -1,4 +1,4 @@
-//! Gmail routes: OAuth start, callback and status; delegated and app-password connection.
+//! Gmail routes: OAuth start, callback and status; delegated and app-password connection; disconnection.
 
 use super::parse_uuid;
 use crate::{
@@ -64,6 +64,22 @@ pub(super) async fn connect_gmail_delegated(
             .connect_gmail_delegated(&auth.organization_id, &request.email, request.display_name)
             .await?
     )))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct DisconnectGmailRequest {
+    email: String,
+}
+
+/// The API side of `skrzynka account disconnect`.
+pub(super) async fn disconnect_gmail(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Json(request): Json<DisconnectGmailRequest>,
+) -> Result<Json<Value>, AppError> {
+    auth.require_role(OrganizationRole::Admin)?;
+    Ok(Json(state.disconnect_gmail(&request.email).await?))
 }
 
 #[derive(Deserialize)]

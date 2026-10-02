@@ -113,6 +113,24 @@ tags. `skrzynka mailbox remove <id> --confirm` deletes the local mail of an
 undeclared mailbox only; a declared one is refused with
 `MAILBOX_STILL_DECLARED`.
 
+`skrzynka account disconnect --provider gmail --email <address>` (or the
+authenticated `POST /v1/gmail/disconnect` with `{"email": ...}`) is the inverse
+of every Gmail connection path. It revokes an OAuth refresh token at Google
+first, then moves the credential item the path wrote to Skarbiec's recoverable
+trash, and reports each removed `item`, its `auth_method` and `google_grant`
+(`revoked`, `already_invalid` when Google had already revoked or expired it,
+or `none` for an app password or delegation, which Google revokes in the
+account or the admin console). It is refused with `GMAIL_MAILBOX_DECLARED`
+while the address is a declared mailbox (undeclare it first), with
+`GMAIL_ACCOUNT_NOT_CONNECTED` when Skarbiec holds no credential for it, and
+with `GMAIL_REVOKE_UNAVAILABLE` or `GMAIL_REVOKE_FAILED` when Google does not
+confirm the revocation; the credential is then kept.
+
+Every command prints its result as JSON, or as `path: value` lines with
+`--text`, and a refusal as one JSON `error` object on stderr. It exits 69 when
+the error is `retryable` (the same command can succeed later unchanged), 2 for
+a wrong invocation or a missing `--organization`, and 1 for any other refusal.
+
 The equivalent reusable surfaces are **Declare** in Skrzynka Desktop and the
 authenticated `POST /v1/mailboxes/declare` and
 `POST /v1/mailboxes/:id/undeclare`. The secret is never accepted in argv or

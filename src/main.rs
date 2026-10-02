@@ -34,6 +34,13 @@ async fn main() {
             }))
             .unwrap_or_else(|_| "{\"error\":{\"code\":\"INTERNAL_ERROR\"}}".to_string())
         );
-        std::process::exit(1);
+        // cli.md rule 10: 69 (EX_UNAVAILABLE) when the same command may succeed
+        // later unchanged, 2 for an invocation that names no organization.
+        let status = match (error.retryable, error.code) {
+            (true, _) => 69,
+            (false, "ORGANIZATION_REQUIRED") => 2,
+            _ => 1,
+        };
+        std::process::exit(status);
     }
 }

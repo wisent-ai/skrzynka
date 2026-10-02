@@ -139,8 +139,15 @@ pub fn run(path: &Path, arguments: &[&str], stdin: Option<&[u8]>) -> Result<Outp
             write(path, &items)?;
             answer(0, Vec::new(), String::new())
         }
+        ["delete", id] => match items.remove(*id) {
+            Some(_) => {
+                write(path, &items)?;
+                answer(0, Vec::new(), String::new())
+            }
+            None => refused(format!("item not found: {id}")),
+        },
         other => refused(format!(
-            "{CREDENTIALS_FILE_ENV} answers get, list, set-json, retag and version; not {other:?}"
+            "{CREDENTIALS_FILE_ENV} answers get, list, set-json, retag, delete and version; not {other:?}"
         )),
     })
 }

@@ -71,7 +71,7 @@ impl SkarbiecResolver {
         Ok(())
     }
 
-    pub(super) async fn get_item(&self, item_id: &str) -> Result<Value, AppError> {
+    pub(crate) async fn get_item(&self, item_id: &str) -> Result<Value, AppError> {
         let output = self.output(&["get", item_id]).await?;
         if !output.status.success() {
             return Err(invalid_item(
@@ -86,6 +86,24 @@ impl SkarbiecResolver {
                 false,
             )
         })
+    }
+
+    /// Move one item to Skarbiec's recoverable trash (`skarbiec delete`).
+    pub(crate) async fn delete_item(&self, item_id: &str) -> Result<(), AppError> {
+        validate_item_id(item_id)?;
+        let output = self.output(&["delete", item_id]).await?;
+        if !output.status.success() {
+            return Err(AppError::dependency(
+                "SKARBIEC_WRITE_FAILED",
+                format!(
+                    "Skarbiec refused to delete item '{item_id}': {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+                false,
+            ));
+        }
+        self.token_cache.lock().await.remove(item_id);
+        Ok(())
     }
 
     pub(super) async fn output(

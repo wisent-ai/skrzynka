@@ -144,11 +144,7 @@ impl SkarbiecResolver {
         validate_item_id(source_item_id)?;
         Address::from_str(email)
             .map_err(|_| invalid_item("authorized Google identity is not an email address"))?;
-        let digest = format!(
-            "{:x}",
-            Sha256::digest(email.to_ascii_lowercase().as_bytes())
-        );
-        let item_id = format!("skrzynka-gmail-{}", &digest[..20]);
+        let item_id = Self::gmail_item_id(email);
         let payload = json!({
             "schema": "skarbiec.item.v2",
             "kind": "bundle",
@@ -186,11 +182,7 @@ impl SkarbiecResolver {
     ) -> Result<String, AppError> {
         Address::from_str(email)
             .map_err(|_| invalid_item("delegated Google identity is not an email address"))?;
-        let digest = format!(
-            "{:x}",
-            Sha256::digest(email.to_ascii_lowercase().as_bytes())
-        );
-        let item_id = format!("skrzynka-gmail-{}", &digest[..20]);
+        let item_id = Self::gmail_item_id(email);
         let payload = json!({
             "schema": "skarbiec.item.v2",
             "kind": "bundle",
@@ -226,6 +218,15 @@ impl SkarbiecResolver {
             Sha256::digest(email.to_ascii_lowercase().as_bytes())
         );
         Ok(format!("skrzynka-gmail-app-password-{}", &digest[..20]))
+    }
+
+    /// The item an OAuth or delegated Gmail connection writes for `email`.
+    pub fn gmail_item_id(email: &str) -> String {
+        let digest = format!(
+            "{:x}",
+            Sha256::digest(email.to_ascii_lowercase().as_bytes())
+        );
+        format!("skrzynka-gmail-{}", &digest[..20])
     }
 
     /// Persist a single-account Gmail credential after the caller has proved

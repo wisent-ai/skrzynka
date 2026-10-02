@@ -107,6 +107,9 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
+            (MailProvider::Gmail, AccountCommand::Disconnect { email }) => {
+                print_json(&state(None)?.disconnect_gmail(&email).await?)
+            }
         },
         Command::Message { command } => run_message(state(None)?, organization, command).await,
         Command::Sync { mailbox } => {
