@@ -282,6 +282,10 @@ and `error`.
 
 The fleet database is Supabase Postgres; its backups follow that project. Skarbiec remains authoritative for credentials and the mail provider remains authoritative for provider-side mail. Removing a mailbox from Skrzynka deletes that mailbox and cascades through its messages, reply attempts, and outbound messages, destroying the record that the mailbox originated those messages; it does not delete the Skarbiec item or provider mailbox. Mail kept only in a former local `skrzynka.db` is not carried over: declaring the same Skarbiec item again imports the provider's INBOX anew.
 
+## Real mailbox qualification
+
+`SKRZYNKA_SOURCE_REVISION=<exact-source-sha> cargo test --test mailboxes -- --nocapture` runs the actual CLI, Skarbiec, IMAP provider and fleet database. It needs a dedicated encrypted fixture vault under `target/` and an independently known message already present in a dedicated provider inbox. The test imports that message into a fresh organization, compares its full persisted body, checks repeated sync and organization isolation, exercises removal refusals, and cleans up its own rows and fixture tags. Missing dependencies fail the run; there are no provider substitutes or skipped passes. See the [canonical qualification page](https://skrzynka.wisent.com/docs/testing-mailbox-lifecycle) for all fixture inputs, isolation requirements and retained reports.
+
 ## Status and support
 
 - **Maturity:** development contract, version `0.2.0`; no stable release channel exists yet.

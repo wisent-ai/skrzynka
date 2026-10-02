@@ -6,8 +6,7 @@ rust-version = "1.82"
 description = "Multi-mailbox email operations on the Wisent fleet database with credentials resolved from Skarbiec"
 license = "Apache-2.0"
 repository = "https://github.com/wisent-ai/skrzynka"
-# No test target is built until the operator approves one with
-# `tama tests approve`.
+# Real product integration targets are declared explicitly from tests/<area>/.
 autotests = false
 
 [dependencies]
@@ -31,3 +30,7 @@ tokio = { version = "1.40", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1.10", features = ["serde", "v4"] }
+
+[[test]]
+name = "mailboxes"
+path = "tests/mailboxes/main.rs"
