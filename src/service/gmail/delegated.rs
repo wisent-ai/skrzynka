@@ -48,14 +48,14 @@ impl AppState {
         organization_id: &str,
         request: StartGmailOAuthRequest,
     ) -> Result<StartGmailOAuthResponse, AppError> {
-        self.gmail_oauth.start(organization_id, request).await
+        self.gmail_oauth()?.start(organization_id, request).await
     }
 
     pub async fn complete_gmail_oauth_callback(
         &self,
         callback: GmailOAuthCallback,
     ) -> Result<Mailbox, AppError> {
-        let authorization = self.gmail_oauth.complete_callback(callback).await?;
+        let authorization = self.gmail_oauth()?.complete_callback(callback).await?;
         self.ensure_gmail_mailbox(&authorization).await
     }
 
@@ -64,7 +64,7 @@ impl AppState {
         organization_id: &str,
         flow_id: Uuid,
     ) -> Result<GmailOAuthStatusResponse, AppError> {
-        let snapshot = self.gmail_oauth.status(flow_id, organization_id).await?;
+        let snapshot = self.gmail_oauth()?.status(flow_id, organization_id).await?;
         self.gmail_status_response(snapshot).await
     }
 
@@ -74,7 +74,7 @@ impl AppState {
         organization_id: &str,
         flow_id: Uuid,
     ) -> Result<GmailOAuthStatusResponse, AppError> {
-        let snapshot = self.gmail_oauth.settled(flow_id, organization_id).await?;
+        let snapshot = self.gmail_oauth()?.settled(flow_id, organization_id).await?;
         self.gmail_status_response(snapshot).await
     }
 

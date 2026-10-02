@@ -17,7 +17,11 @@ const REDIRECT_MISMATCH: &str = "redirect_uri_mismatch";
 
 impl AppState {
     pub(super) async fn oauth_path(&self) -> GmailConnectionPath {
-        let probe = match self.gmail_oauth.redirect_registration().await {
+        let registration = match self.gmail_oauth() {
+            Ok(broker) => broker.redirect_registration().await,
+            Err(error) => Err(error),
+        };
+        let probe = match registration {
             Ok(probe) => probe,
             Err(error) => {
                 return GmailConnectionPath {

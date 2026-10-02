@@ -31,7 +31,10 @@ pub struct AppState {
     pub auth_verifier: AuthVerifier,
     pub database: Database,
     resolver: SkarbiecResolver,
-    gmail_oauth: GmailOAuthBroker,
+    /// Present only in a process that listens for Google's callback: the
+    /// service and `account authorize`, or `account connection`, which
+    /// names the callback address it reports on.
+    gmail_oauth: Option<GmailOAuthBroker>,
     pub poll_interval_seconds: u64,
     operation_lock: Arc<Mutex<()>>,
 }
@@ -85,7 +88,7 @@ impl AppState {
         database: Database,
         resolver: SkarbiecResolver,
         poll_interval_seconds: u64,
-        callback_base_url: &str,
+        callback_base_url: Option<&str>,
     ) -> Result<Self, AppError> {
         if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS).contains(&poll_interval_seconds)
         {
@@ -94,7 +97,9 @@ impl AppState {
                 "poll interval must be between 15 and 86400 seconds",
             ));
         }
-        let gmail_oauth = GmailOAuthBroker::new(resolver.clone(), callback_base_url)?;
+        let gmail_oauth = callback_base_url
+            .map(|url| GmailOAuthBroker::new(resolver.clone(), url))
+            .transpose()?;
         let auth_verifier = AuthVerifier::from_environment()?;
         Ok(Self {
             auth_verifier,
@@ -128,7 +133,20 @@ impl AppState {
     }
 
     pub async fn list_gmail_profiles(&self) -> Result<Vec<GmailProfile>, AppError> {
-        self.gmail_oauth.profiles().await
+        self.resolver.list_google_profiles().await
+    }
+
+    /// The OAuth broker, or a refusal naming the missing callback address
+    /// when this process was started without one.
+    pub(crate) fn gmail_oauth(&self) -> Result<&GmailOAuthBroker, AppError> {
+        self.gmail_oauth.as_ref().ok_or_else(|| {
+            AppError::invalid(
+                "GMAIL_OAUTH_CALLBACK_NOT_BOUND",
+                "Gmail OAuth needs the loopback callback address it will listen on; this \
+                 command was started without one. Run `skrzynka account authorize \
+                 --provider gmail --bind <SOCKET>` or `skrzynka serve --bind <SOCKET>`",
+            )
+        })
     }
 
     pub fn start_polling(self) {

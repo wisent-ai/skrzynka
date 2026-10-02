@@ -70,7 +70,8 @@ pub(super) enum Command {
 #[derive(Args)]
 pub(super) struct ServeArgs {
     /// Loopback address the API listens on; a non-loopback address is refused.
-    #[arg(long, default_value = "127.0.0.1:8788")]
+    /// No address is assumed: the service declaration that runs `serve` names it.
+    #[arg(long)]
     pub(super) bind: SocketAddr,
     /// Seconds between polls of each mailbox. No interval is assumed: the
     /// service declaration that runs `serve` names it.
@@ -94,14 +95,19 @@ pub(super) enum AccountCommand {
         /// state of each path is reported.
         #[arg(long)]
         email: Option<String>,
+        /// Loopback address `account authorize` would listen on; its
+        /// callback URI is the one handed to Google for the OAuth verdict.
+        #[arg(long)]
+        bind: SocketAddr,
     },
     /// Authorize one Google identity through the loopback OAuth callback.
     Authorize {
         /// Skarbiec item that receives the authorized grant.
         #[arg(long)]
         skarbiec_item: String,
-        /// Loopback address the OAuth callback listens on.
-        #[arg(long, default_value = "127.0.0.1:8790")]
+        /// Loopback address the OAuth callback listens on. No address is
+        /// assumed: it has to be one the OAuth client accepts.
+        #[arg(long)]
         bind: SocketAddr,
     },
     /// Connect one Workspace mailbox through domain-wide delegation.

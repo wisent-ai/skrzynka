@@ -2,7 +2,7 @@
 
 use super::{
     FlowRecord, GmailAuthorization, GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFailure,
-    GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, GmailProfile, GmailRedirectProbe, PendingFlow,
+    GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, GmailRedirectProbe, PendingFlow,
     StartGmailOAuthRequest, StartGmailOAuthResponse, FLOW_LIFETIME_MINUTES, GMAIL_SCOPES,
     MAX_AUTHORIZATION_CODE_LENGTH,
 };
@@ -44,10 +44,6 @@ impl GmailOAuthBroker {
             settled: Arc::new(Notify::new()),
             callback_url,
         })
-    }
-
-    pub async fn profiles(&self) -> Result<Vec<GmailProfile>, AppError> {
-        self.resolver.list_google_profiles().await
     }
 
     /// What Google answers today about the fixed OAuth client and this

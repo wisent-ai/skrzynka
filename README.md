@@ -129,11 +129,13 @@ See the [executable examples](https://skrzynka.wisent.com/docs/examples) and the
 Before reaching for any of the three Gmail paths, ask which one this account
 can actually use. Every verdict is measured when you ask: the stored password
 is put through a real `imap.gmail.com:993` login, the stored OAuth client and
-this process's loopback redirect are handed to Google once and its answer read
-back, and a Workspace address gets a real delegated token mint.
+the loopback redirect named by `--bind` are handed to Google once and its
+answer read back, and a Workspace address gets a real delegated token mint.
+`--bind` is the address `account authorize` would listen on; no address is
+assumed.
 
 ```sh
-target/debug/skrzynka account connection --provider gmail --email user@gmail.com
+target/debug/skrzynka account connection --provider gmail --bind 127.0.0.1:8790 --email user@gmail.com
 ```
 
 It reports `app_password`, `oauth` and `delegation`, each `usable`, `refused`
@@ -174,14 +176,14 @@ database, or its loopback API.
 The OAuth alternative remains:
 
 ```sh
-cargo run -- gmail authorize --skarbiec-item <google-login-item>
+target/debug/skrzynka account authorize --provider gmail --bind 127.0.0.1:8790 --skarbiec-item <google-login-item>
 ```
 
 It prints Google's authorization URL, then asks Google whether that client
 accepts the loopback redirect. A `redirect_uri_mismatch` answer ends the
 command at once with `GMAIL_OAUTH_REDIRECT_NOT_REGISTERED`, naming the client
 id and redirect URI, because Google would refuse inside the browser
-and no callback would ever arrive. Otherwise it waits on `127.0.0.1:8790` with
+and no callback would ever arrive. Otherwise it waits on the `--bind` address with
 no deadline until Google's callback settles the flow: it exits 0 after the
 callback stores a dedicated `skrzynka-gmail-*` OAuth bundle and declares it a
 mailbox in Skarbiec, or exits non-zero with `GMAIL_OAUTH_FAILED` carrying the

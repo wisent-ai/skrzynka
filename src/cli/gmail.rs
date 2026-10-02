@@ -1,11 +1,10 @@
 //! The Gmail subcommands: the browser authorization and the app-password prompt.
 
-use super::print_json;
+use super::{loopback_callback, print_json, CLI_POLL_INTERVAL_SECONDS};
 use crate::{
     db::Database, error::AppError, gmail::StartGmailOAuthRequest, service::AppState,
     skarbiec::SkarbiecResolver,
 };
-use axum::http::StatusCode;
 use std::{
     io::{self, Read},
     net::SocketAddr,
@@ -18,16 +17,13 @@ pub(super) async fn authorize_gmail(
     skarbiec_item: String,
     bind: SocketAddr,
 ) -> Result<(), AppError> {
-    if !bind.ip().is_loopback() {
-        return Err(AppError::new(
-            StatusCode::BAD_REQUEST,
-            "NON_LOOPBACK_BIND_REFUSED",
-            "Skrzynka serves OAuth callbacks only on loopback addresses",
-            false,
-        ));
-    }
-    let callback_base_url = format!("http://{bind}");
-    let state = AppState::new(database, resolver, 60, &callback_base_url)?;
+    let callback_base_url = loopback_callback(bind)?;
+    let state = AppState::new(
+        database,
+        resolver,
+        CLI_POLL_INTERVAL_SECONDS,
+        Some(&callback_base_url),
+    )?;
     let listener = tokio::net::TcpListener::bind(bind)
         .await
         .map_err(|_| AppError::internal("loopback OAuth callback address could not be bound"))?;
