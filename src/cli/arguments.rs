@@ -45,10 +45,14 @@ pub(super) enum Command {
         #[command(subcommand)]
         command: MailboxCommand,
     },
-    /// Connect Gmail accounts and report which connection paths work.
-    Gmail {
+    /// Connect mail accounts through a provider's connection paths and report
+    /// which of them work; `--provider` names the provider.
+    Account {
+        /// Mail provider the account is held by. No provider is assumed.
+        #[arg(long, value_enum, global = true)]
+        provider: MailProvider,
         #[command(subcommand)]
-        command: GmailCommand,
+        command: AccountCommand,
     },
     /// List, read, reply to and send messages, and read back what went out.
     Message {
@@ -74,10 +78,17 @@ pub(super) struct ServeArgs {
     pub(super) poll_seconds: u64,
 }
 
+/// The mail providers `skrzynka account` implements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub(super) enum MailProvider {
+    /// Google Gmail and Workspace: app-specific password, OAuth, delegation.
+    Gmail,
+}
+
 #[derive(Subcommand)]
-pub(super) enum GmailCommand {
-    /// Report which Gmail connection paths this account can actually use,
-    /// each verdict measured against Google.
+pub(super) enum AccountCommand {
+    /// Report which connection paths this account can actually use, each
+    /// verdict measured against the provider.
     Connection {
         /// The account to measure. Without it only the account-independent
         /// state of each path is reported.

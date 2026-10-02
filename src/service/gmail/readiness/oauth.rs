@@ -75,7 +75,7 @@ impl AppState {
                      authorization proves it.",
                     probe.client_id, probe.redirect_uri
                 ),
-                action: "skrzynka gmail authorize --skarbiec-item <item-id>".to_string(),
+                action: "skrzynka account authorize --provider gmail --skarbiec-item <item-id>".to_string(),
                 observed,
             },
         }

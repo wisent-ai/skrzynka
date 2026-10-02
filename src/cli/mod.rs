@@ -14,7 +14,7 @@ mod mailbox;
 mod message;
 
 pub use arguments::Cli;
-use arguments::{Command, GmailCommand, ServeArgs};
+use arguments::{AccountCommand, Command, MailProvider, ServeArgs};
 use gmail::{authorize_gmail, read_gmail_app_password};
 use mailbox::run_mailbox;
 use message::run_message;
@@ -58,20 +58,20 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
             print_json(&status)
         }
         Command::Mailbox { command } => run_mailbox(state()?, organization, command).await,
-        Command::Gmail { command } => match command {
-            GmailCommand::Authorize {
+        Command::Account { provider, command } => match (provider, command) {
+            (MailProvider::Gmail, AccountCommand::Authorize {
                 skarbiec_item,
                 bind,
-            } => authorize_gmail(database, resolver, organization, skarbiec_item, bind).await,
-            GmailCommand::Connection { email } => print_json(
+            }) => authorize_gmail(database, resolver, organization, skarbiec_item, bind).await,
+            (MailProvider::Gmail, AccountCommand::Connection { email }) => print_json(
                 &state()?
                     .gmail_connection_readiness(organization, email.as_deref())
                     .await?,
             ),
-            GmailCommand::Delegate {
+            (MailProvider::Gmail, AccountCommand::Delegate {
                 email,
                 display_name,
-            } => {
+            }) => {
                 let state = state()?;
                 print_json(
                     &state
@@ -79,10 +79,10 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            GmailCommand::AppPassword {
+            (MailProvider::Gmail, AccountCommand::AppPassword {
                 email,
                 display_name,
-            } => {
+            }) => {
                 let password = read_gmail_app_password()?;
                 let state = state()?;
                 print_json(

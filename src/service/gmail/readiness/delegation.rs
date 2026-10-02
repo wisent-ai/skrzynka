@@ -81,7 +81,7 @@ impl AppState {
                      through service account {}.",
                     service_account.client_email
                 ),
-                action: format!("skrzynka gmail delegate --email {account}"),
+                action: format!("skrzynka account delegate --provider gmail --email {account}"),
                 observed,
             },
             Err(error) => GmailConnectionPath {

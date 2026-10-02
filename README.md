@@ -22,10 +22,10 @@ The observable result is one local inbox with mailbox identity preserved on ever
 
 ## What works now
 
-- Connect one personal Gmail account or one Workspace user with an app-specific password and no administrator or OAuth client: `skrzynka gmail app-password --email user@gmail.com` reads the secret only from stdin, proves it with Gmail IMAP before saving anything, writes a dedicated bundle to Skarbiec, and declares it a mailbox there. `POST /v1/gmail/app-password` provides API parity by accepting an existing `skarbiec_item_id`, never the secret.
+- Connect one personal Gmail account or one Workspace user with an app-specific password and no administrator or OAuth client: `skrzynka account app-password --provider gmail --email user@gmail.com` reads the secret only from stdin, proves it with Gmail IMAP before saving anything, writes a dedicated bundle to Skarbiec, and declares it a mailbox there. `POST /v1/gmail/app-password` provides API parity by accepting an existing `skarbiec_item_id`, never the secret.
 - Connect Google identities discovered in Skarbiec through Gmail OAuth; Skrzynka configures Gmail, stores the durable authorization back in Skarbiec, and performs IMAP/SMTP authentication with XOAUTH2.
-- Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka gmail delegate --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. Skrzynka never performs that grant: it exists only in the admin console, so a missing grant is reported as `GOOGLE_DELEGATION_NOT_GRANTED` naming the three values an administrator needs.
-- Ask which of those three paths an account can actually use, and get an answer measured against Google rather than read off the vault: `skrzynka gmail connection --email user@gmail.com` (or `GET /v1/gmail/connection?email=`) performs a real IMAP login with the stored password, hands Google the authorization URL a real flow would hand it and reads the code Google returns, and mints a real delegated token for a Workspace address. Each path is `usable`, `refused` or `unproven`, with the refusal code, the provider's own words, the non-secret facts observed, and the exact next step. A consumer `@gmail.com` address is refused for delegation as `GOOGLE_DELEGATION_NOT_APPLICABLE` without calling Google, because no administrator can grant it.
+- Connect Google Workspace mailboxes through domain-wide delegation with no consent screen: `skrzynka account delegate --provider gmail --email user@domain` (or `POST /v1/gmail/delegate`) mints XOAUTH2 tokens from the service-account key in the Skarbiec item `skrzynka-google-service-account`, after a one-time client-ID grant in the Workspace admin console. Skrzynka never performs that grant: it exists only in the admin console, so a missing grant is reported as `GOOGLE_DELEGATION_NOT_GRANTED` naming the three values an administrator needs.
+- Ask which of those three paths an account can actually use, and get an answer measured against Google rather than read off the vault: `skrzynka account connection --provider gmail --email user@gmail.com` (or `GET /v1/gmail/connection?email=`) performs a real IMAP login with the stored password, hands Google the authorization URL a real flow would hand it and reads the code Google returns, and mints a real delegated token for a Workspace address. Each path is `usable`, `refused` or `unproven`, with the refusal code, the provider's own words, the non-secret facts observed, and the exact next step. A consumer `@gmail.com` address is refused for delegation as `GOOGLE_DELEGATION_NOT_APPLICABLE` without calling Google, because no administrator can grant it. `skrzynka account` takes `--provider`, whose one value is `gmail`; a call without it exits 2.
 - Skarbiec owns the mailbox list. A Skarbiec `login` or `bundle` item is a
   mailbox exactly when it carries the tag `skrzynka:mailbox`; Skrzynka keeps
   only the mail it imported and where synchronization stands. Tag an item in
@@ -133,7 +133,7 @@ this process's loopback redirect are handed to Google once and its answer read
 back, and a Workspace address gets a real delegated token mint.
 
 ```sh
-target/debug/skrzynka gmail connection --email user@gmail.com
+target/debug/skrzynka account connection --provider gmail --email user@gmail.com
 ```
 
 It reports `app_password`, `oauth` and `delegation`, each `usable`, `refused`
@@ -151,7 +151,7 @@ pass it to Skrzynka only through stdin:
 ```bash
 read -rsp "Gmail app-specific password: " GMAIL_APP_PASSWORD; printf '\n'
 printf '%s\n' "$GMAIL_APP_PASSWORD" |
-  target/debug/skrzynka gmail app-password --email user@gmail.com
+  target/debug/skrzynka account app-password --provider gmail --email user@gmail.com
 unset GMAIL_APP_PASSWORD
 target/debug/skrzynka sync
 target/debug/skrzynka message list
