@@ -60,7 +60,7 @@ pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError 
 /// `skrzynka gmail app-password`. Every refusal that needs an app password
 /// names this one command rather than asking somebody to make one by hand.
 pub fn app_password_action(account: &str) -> String {
-    format!("weles app-password --login-item <Skarbiec Google login of {account}>")
+    format!("weles app-password --login-role <Skarbiec role the Google login of {account} plays>")
 }
 
 /// The refusal when Google IMAP rejects a password credential.
