@@ -230,8 +230,9 @@ impl Run {
     }
 
     pub fn finish(&mut self, outcome: &Result<()>, cleanup: &Result<()>) -> Result<()> {
+        let home_cleanup = fs::remove_dir_all(&self.home);
         self.report["finished_at"] = json!(chrono::Utc::now().to_rfc3339());
-        self.report["result"] = json!(if outcome.is_ok() && cleanup.is_ok() {
+        self.report["result"] = json!(if outcome.is_ok() && cleanup.is_ok() && home_cleanup.is_ok() {
             "passed"
         } else {
             "failed"
@@ -239,10 +240,12 @@ impl Run {
         self.report["error"] = json!(outcome.as_ref().err().map(|error| format!("{error:#}")));
         self.report["cleanup_error"] =
             json!(cleanup.as_ref().err().map(|error| format!("{error:#}")));
+        self.report["home_cleanup_error"] =
+            json!(home_cleanup.as_ref().err().map(ToString::to_string));
         let path = self.directory.join("report.json");
         fs::write(&path, serde_json::to_vec_pretty(&self.report)?)?;
         eprintln!("mailbox qualification report: {}", path.display());
-        fs::remove_dir_all(&self.home)?;
+        home_cleanup?;
         Ok(())
     }
 }
