@@ -29,7 +29,7 @@ impl AppState {
             ));
         }
         let item_id = SkarbiecResolver::gmail_app_password_item_id(&email)?;
-        verify_gmail_app_password(&email, password, &item_id).await?;
+        verify_gmail_app_password(organization_id, &email, password, &item_id).await?;
         let item_id = self
             .resolver
             .save_gmail_app_password(&email, password, display_name.as_deref())
@@ -70,7 +70,7 @@ impl AppState {
                 ));
             }
         };
-        verify_gmail_app_password(&email, &password, skarbiec_item_id).await?;
+        verify_gmail_app_password(organization_id, &email, &password, skarbiec_item_id).await?;
         let item_id = self
             .resolver
             .save_gmail_app_password(&email, &password, display_name.as_deref())
@@ -109,6 +109,7 @@ fn validated_gmail_email(email: &str) -> Result<String, AppError> {
 }
 
 async fn verify_gmail_app_password(
+    organization_id: &str,
     email: &str,
     password: &str,
     skarbiec_item_id: &str,
@@ -118,5 +119,5 @@ async fn verify_gmail_app_password(
     tokio::task::spawn_blocking(move || mail::verify_gmail_app_password(&owned_email, &password))
         .await
         .map_err(|_| AppError::internal("Gmail credential verification stopped unexpectedly"))?
-        .map_err(|refusal| refusal.into_error(email, skarbiec_item_id))
+        .map_err(|refusal| refusal.into_error(organization_id, email, skarbiec_item_id))
 }

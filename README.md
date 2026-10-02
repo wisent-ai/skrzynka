@@ -282,7 +282,7 @@ tags items there, Gmail connections write their bundles there, and every
 credential is read from it. A file other users can read, or one that is not a
 JSON object, is refused as `SKARBIEC_UNAVAILABLE` with the path and the reason.
 
-The CLI acts for one organization, `--organization <ID>` (default `legacy-local`). A command that names its organization reconciles only that organization's mailboxes against the Skarbiec declarations it reads; only the background poll of `skrzynka serve` reconciles every organization, against the vault of the host it runs on.
+The CLI acts for one organization, named by `--organization <ID>`; every command except `serve`, `version` and `onboarding` needs it, and a command without it is refused with `ORGANIZATION_REQUIRED` rather than assuming one. A command that names its organization reconciles only that organization's mailboxes against the Skarbiec declarations it reads; only the background poll of `skrzynka serve` reconciles every organization, against the vault of the host it runs on. Rows written before organizations existed carry the stored namespace `legacy-local`.
 
 Every command prints its result as JSON; the global `--text` flag prints the same result as one `path: value` line per field for people.
 

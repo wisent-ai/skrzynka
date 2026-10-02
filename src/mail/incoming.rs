@@ -54,10 +54,10 @@ pub struct PasswordLoginRefusal {
 impl PasswordLoginRefusal {
     /// The refusal a caller raises or persists: what happened, what to do, and
     /// the provider's words at the end.
-    pub fn into_error(self, email: &str, skarbiec_item_id: &str) -> AppError {
+    pub fn into_error(self, organization: &str, email: &str, skarbiec_item_id: &str) -> AppError {
         let mut failure = match self.code {
             "GMAIL_IMAP_PASSWORD_REJECTED" => {
-                gmail::google_imap_password_rejected(email, skarbiec_item_id)
+                gmail::google_imap_password_rejected(organization, email, skarbiec_item_id)
             }
             code => dependency_error(
                 code,
@@ -132,7 +132,7 @@ pub fn fetch_messages(
         ResolvedCredentials::Password { username, password } => {
             client.login(username, password).map_err(|(error, _)| {
                 password_login_refusal(error, &mailbox.imap_host, password)
-                    .into_error(&mailbox.email, &mailbox.skarbiec_item_id)
+                    .into_error(&mailbox.organization_id, &mailbox.email, &mailbox.skarbiec_item_id)
             })?
         }
         ResolvedCredentials::OAuth2 {

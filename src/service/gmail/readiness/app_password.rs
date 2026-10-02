@@ -17,11 +17,12 @@ use std::collections::BTreeMap;
 impl AppState {
     pub(super) async fn app_password_path(
         &self,
+        organization_id: &str,
         account: Option<&str>,
         mailbox: Option<&Mailbox>,
     ) -> GmailConnectionPath {
         let (Some(account), Some(mailbox)) = (account, mailbox) else {
-            return nothing_to_authenticate(account);
+            return nothing_to_authenticate(organization_id, account);
         };
         let mut observed = BTreeMap::from([
             ("skarbiec_item_id", mailbox.skarbiec_item_id.clone()),
@@ -37,7 +38,7 @@ impl AppState {
                      Gmail connection paths do not decide whether it can receive.",
                     mailbox.imap_host
                 ),
-                action: connect_action(Some(account)),
+                action: connect_action(organization_id, Some(account)),
                 observed,
             };
         }
@@ -53,7 +54,7 @@ impl AppState {
                     verdict: REFUSED,
                     code: Some(error.code.to_string()),
                     detail: error.message,
-                    action: connect_action(Some(account)),
+                    action: connect_action(organization_id, Some(account)),
                     observed,
                 }
             }
@@ -68,7 +69,7 @@ impl AppState {
                     "Mailbox {account} authenticates with a Google token rather than a password, \
                      so it holds no app-specific password to authenticate."
                 ),
-                action: connect_action(Some(account)),
+                action: connect_action(organization_id, Some(account)),
                 observed,
             };
         };
@@ -89,7 +90,7 @@ impl AppState {
                     "{GMAIL_IMAP_HOST} accepted the password credential in Skarbiec item \
                      '{item}' for {account}."
                 ),
-                action: format!("skrzynka sync --mailbox {}", mailbox.id),
+                action: format!("skrzynka --organization {organization_id} sync --mailbox {}", mailbox.id),
                 observed,
             },
             // The provider's own words, without the guidance the refusal
@@ -104,7 +105,7 @@ impl AppState {
                      '{item}'. {}",
                     refusal.evidence
                 ),
-                action: connect_action(Some(account)),
+                action: connect_action(organization_id, Some(account)),
                 observed,
             },
             Err(_) => GmailConnectionPath {
@@ -114,7 +115,7 @@ impl AppState {
                 detail:
                     "Gmail credential verification stopped unexpectedly before Google answered."
                         .to_string(),
-                action: connect_action(Some(account)),
+                action: connect_action(organization_id, Some(account)),
                 observed,
             },
         }
@@ -124,7 +125,7 @@ impl AppState {
 /// No mailbox names this account, so there is no credential to authenticate.
 /// The path is still the recommended one, because an app-specific password
 /// needs neither a Workspace administrator nor an OAuth client.
-fn nothing_to_authenticate(account: Option<&str>) -> GmailConnectionPath {
+fn nothing_to_authenticate(organization_id: &str, account: Option<&str>) -> GmailConnectionPath {
     GmailConnectionPath {
         path: APP_PASSWORD,
         verdict: UNPROVEN,
@@ -139,7 +140,7 @@ fn nothing_to_authenticate(account: Option<&str>) -> GmailConnectionPath {
                      one with --email to have its password authenticated against Gmail."
                 .to_string(),
         },
-        action: connect_action(account),
+        action: connect_action(organization_id, account),
         observed: BTreeMap::new(),
     }
 }
@@ -147,6 +148,6 @@ fn nothing_to_authenticate(account: Option<&str>) -> GmailConnectionPath {
 /// The exact command that connects this account: Weles creates the app
 /// password and hands it to Skrzynka on stdin, so no secret is typed or placed
 /// in argv.
-fn connect_action(account: Option<&str>) -> String {
-    crate::gmail::app_password_action(account.unwrap_or("<address>"))
+fn connect_action(organization_id: &str, account: Option<&str>) -> String {
+    crate::gmail::app_password_action(organization_id, account.unwrap_or("<address>"))
 }

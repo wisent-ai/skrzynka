@@ -59,10 +59,10 @@ impl AppState {
             None => None,
         };
         let paths = vec![
-            self.app_password_path(account.as_deref(), mailbox.as_ref())
+            self.app_password_path(organization_id, account.as_deref(), mailbox.as_ref())
                 .await,
             self.oauth_path().await,
-            self.delegation_path(account.as_deref()).await,
+            self.delegation_path(organization_id, account.as_deref()).await,
         ];
         Ok(GmailConnectionReadiness {
             account,

@@ -39,9 +39,18 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         onboarding::run(*reset)?;
         return Ok(());
     }
-    let organization = cli.organization.as_str();
     let database = Database::open()?;
     let resolver = SkarbiecResolver::new(cli.skarbiec_bin);
+    let command = match cli.command {
+        Command::Serve(args) => return serve(database, resolver, args).await,
+        other => other,
+    };
+    let organization = cli.organization.as_deref().ok_or_else(|| {
+        AppError::invalid(
+            "ORGANIZATION_REQUIRED",
+            "--organization <ID> is required: the CLI acts for one organization and assumes none; `serve` alone polls every organization",
+        )
+    })?;
     let state = |callback: Option<&str>| {
         AppState::new(
             database.clone(),
@@ -50,8 +59,8 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
             callback,
         )
     };
-    match cli.command {
-        Command::Serve(args) => serve(database, resolver, args).await,
+    match command {
+        Command::Serve(_) => unreachable!(),
         Command::Status => {
             let status = state(None)?.status(organization).await?;
             print_json(&status)

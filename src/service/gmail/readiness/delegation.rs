@@ -12,7 +12,7 @@ use crate::skarbiec::{GMAIL_DELEGATION_SCOPE, GOOGLE_ADMIN_DELEGATION_URL};
 use std::collections::BTreeMap;
 
 impl AppState {
-    pub(super) async fn delegation_path(&self, account: Option<&str>) -> GmailConnectionPath {
+    pub(super) async fn delegation_path(&self, organization_id: &str, account: Option<&str>) -> GmailConnectionPath {
         let service_account = match self.resolver.google_service_account().await {
             Ok(service_account) => service_account,
             Err(error) => {
@@ -63,7 +63,7 @@ impl AppState {
                      only inside a Workspace domain. No administrator can grant it for this \
                      address."
                 ),
-                action: crate::gmail::app_password_action(account),
+                action: crate::gmail::app_password_action(organization_id, account),
                 observed,
             };
         }
