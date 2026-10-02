@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 const REDIRECT_MISMATCH: &str = "redirect_uri_mismatch";
 
 impl AppState {
-    pub(super) async fn oauth_path(&self) -> GmailConnectionPath {
+    pub(super) async fn oauth_path(&self, organization_id: &str) -> GmailConnectionPath {
         let registration = match self.gmail_oauth() {
             Ok(broker) => broker.redirect_registration().await,
             Err(error) => Err(error),
@@ -79,7 +79,12 @@ impl AppState {
                      authorization proves it.",
                     probe.client_id, probe.redirect_uri
                 ),
-                action: "skrzynka account authorize --provider gmail --skarbiec-item <item-id>".to_string(),
+                action: format!(
+                    "skrzynka --organization {organization_id} account authorize --provider gmail \
+                     --skarbiec-item <item-id> --bind <loopback-address:port>; use the loopback \
+                     address and port from {}",
+                    probe.redirect_uri
+                ),
                 observed,
             },
         }

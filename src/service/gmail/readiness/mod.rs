@@ -1,11 +1,7 @@
 //! Which Gmail connection paths this installation can actually use, measured.
 //!
-//! Gmail offers three connection paths and Skrzynka implements all three, so
-//! before this report an operator learned which one was available by running
-//! them one at a time and reading three different refusals. Worse, the refusal
-//! a rejected IMAP password produced recommended the OAuth path unconditionally
-//! — a path whose fixed client has been refusing `redirect_uri_mismatch` since
-//! it was first measured.
+//! Every supported path is measured independently; a refused password does not
+//! establish that OAuth or delegation will work for the same account.
 //!
 //! Every verdict here comes from confronting a declaration with the world: a
 //! real IMAP login for the stored password, Google's own answer about the
@@ -61,7 +57,7 @@ impl AppState {
         let paths = vec![
             self.app_password_path(organization_id, account.as_deref(), mailbox.as_ref())
                 .await,
-            self.oauth_path().await,
+            self.oauth_path(organization_id).await,
             self.delegation_path(organization_id, account.as_deref()).await,
         ];
         Ok(GmailConnectionReadiness {

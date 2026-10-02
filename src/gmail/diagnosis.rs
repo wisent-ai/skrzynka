@@ -81,7 +81,7 @@ pub fn google_imap_password_rejected(
     AppError::dependency(
         "GMAIL_IMAP_PASSWORD_REJECTED",
         format!(
-            "Google refused IMAP authentication for mailbox {mailbox_email} using the password credential associated with Skarbiec item '{skarbiec_item_id}'. Create an app-specific password and store it here with `{}`. Run `skrzynka --organization {organization} account connection --provider gmail --email {mailbox_email}` for which connection paths this account can actually use.",
+            "Google refused IMAP authentication for mailbox {mailbox_email} using the password credential associated with Skarbiec item '{skarbiec_item_id}'. Create an app-specific password and store it here with `{}`. Run `skrzynka --organization {organization} account connection --provider gmail --email {mailbox_email} --bind <loopback-address:port>` with the callback address intended for OAuth to measure which connection paths this account can actually use.",
             app_password_action(organization, mailbox_email)
         ),
         false,
