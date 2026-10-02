@@ -49,6 +49,7 @@ impl AppState {
                 received,
                 skipped: fetched.skipped,
                 last_uid: fetched.last_uid,
+                has_more: fetched.has_more,
                 completed_at: mailbox
                     .last_sync_at
                     .unwrap_or_else(|| Utc::now().to_rfc3339()),

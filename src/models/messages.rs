@@ -133,6 +133,7 @@ pub struct SyncSummary {
     pub received: usize,
     pub skipped: usize,
     pub last_uid: u32,
+    pub has_more: bool,
     pub completed_at: String,
 }
 
