@@ -16,6 +16,18 @@ impl SkarbiecResolver {
         validate_item_id(item_id)?;
         let bytes = serde_json::to_vec(payload)
             .map_err(|_| AppError::internal("Gmail credential payload could not be encoded"))?;
+        if let Some(path) = &self.local {
+            let output =
+                super::local::run(path, &["set-json", item_id, "--type", kind], Some(&bytes))?;
+            if !output.status.success() {
+                return Err(AppError::dependency(
+                    "SKARBIEC_WRITE_FAILED",
+                    String::from_utf8_lossy(&output.stderr).trim().to_string(),
+                    false,
+                ));
+            }
+            return Ok(());
+        }
         let mut command = Command::new(&self.binary);
         command
             .args(["set-json", item_id, "--type", kind])
@@ -80,6 +92,9 @@ impl SkarbiecResolver {
         &self,
         arguments: &[&str],
     ) -> Result<std::process::Output, AppError> {
+        if let Some(path) = &self.local {
+            return super::local::run(path, arguments, None);
+        }
         let mut command = Command::new(&self.binary);
         command.args(arguments);
         command.kill_on_drop(true);

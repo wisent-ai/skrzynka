@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 mod cli;
 mod google;
 mod items;
+mod local;
 mod mailboxes;
 
 pub use mailboxes::MAILBOX_TAG;
@@ -69,6 +70,9 @@ pub(crate) struct GoogleServiceAccount {
 #[derive(Clone)]
 pub struct SkarbiecResolver {
     binary: PathBuf,
+    /// `SKRZYNKA_CREDENTIALS_FILE`, which answers in Skarbiec's place on a
+    /// machine without it; `None` asks the Skarbiec CLI at `binary`.
+    local: Option<PathBuf>,
     client: Client,
     token_cache: Arc<Mutex<HashMap<String, CachedAccessToken>>>,
 }
@@ -77,6 +81,7 @@ impl SkarbiecResolver {
     pub fn new(binary: impl Into<PathBuf>) -> Self {
         Self {
             binary: binary.into(),
+            local: local::configured(),
             client: Client::new(),
             token_cache: Arc::new(Mutex::new(HashMap::new())),
         }

@@ -270,6 +270,18 @@ Every command connects in four steps, and a failure answers `DATABASE_UNREACHABL
 
 Stado and that bearer are found under `SKRZYNKA_FLEET_HOME`, else `HOME`; with neither set a command is refused with `neither SKRZYNKA_FLEET_HOME nor HOME is set`, and `skrzynka onboarding` without `XDG_STATE_HOME` or `HOME` is refused with `neither XDG_STATE_HOME nor HOME is set`; nothing is guessed.
 
+### Without Stado or Skarbiec
+
+Skrzynka runs on a machine that has neither. `SKRZYNKA_DATABASE_URL` (a
+`postgres://` or `mysql://` URL) and `SKRZYNKA_DATABASE_CA_FILE` (the PEM bundle
+the server is verified against) name the database; the four steps above are
+then skipped. `SKRZYNKA_CREDENTIALS_FILE` names an owner-only (`chmod 600`)
+JSON file that answers in Skarbiec's place: item id mapped to the same item
+Skarbiec stores (`kind`, `fields`, `context`) plus its `tags`. `mailbox declare`
+tags items there, Gmail connections write their bundles there, and every
+credential is read from it. A file other users can read, or one that is not a
+JSON object, is refused as `SKARBIEC_UNAVAILABLE` with the path and the reason.
+
 The CLI acts for one organization, `--organization <ID>` (default `legacy-local`). A command that names its organization reconciles only that organization's mailboxes against the Skarbiec declarations it reads; only the background poll of `skrzynka serve` reconciles every organization, against the vault of the host it runs on.
 
 Every command prints its result as JSON; the global `--text` flag prints the same result as one `path: value` line per field for people.
