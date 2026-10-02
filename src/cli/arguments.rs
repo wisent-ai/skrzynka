@@ -68,8 +68,9 @@ pub(super) struct ServeArgs {
     /// Loopback address the API listens on; a non-loopback address is refused.
     #[arg(long, default_value = "127.0.0.1:8788")]
     pub(super) bind: SocketAddr,
-    /// Seconds between polls of each mailbox.
-    #[arg(long, default_value_t = 60)]
+    /// Seconds between polls of each mailbox. No interval is assumed: the
+    /// service declaration that runs `serve` names it.
+    #[arg(long)]
     pub(super) poll_seconds: u64,
 }
 
