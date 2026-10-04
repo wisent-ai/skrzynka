@@ -3,11 +3,11 @@
 # Status: Skrzynka development channel 0.2.x.
 # Risk: local mutation plus credentialed, read-only IMAP access.
 # Environment: a running loopback Skrzynka service, curl, jq, WISENT_ACCESS_TOKEN, and WISENT_ORGANIZATION_ID.
-# Usage: WISENT_ACCESS_TOKEN=... WISENT_ORGANIZATION_ID=... sh use-loopback-api.sh <skarbiec-item-id> [http://127.0.0.1:8788]
+# Usage: WISENT_ACCESS_TOKEN=... WISENT_ORGANIZATION_ID=... sh use-loopback-api.sh <skarbiec-item-id> <loopback-api-url>
 # Creates: one local mailbox and normalized message rows; no provider mutation.
 set -eu
 
-[ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo "usage: $0 <skarbiec-item-id> [api-url]" >&2; exit 64; }
+[ "$#" -eq 2 ] || { echo "usage: $0 <skarbiec-item-id> <loopback-api-url>" >&2; exit 64; }
 command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is required" >&2; exit 1; }
 : "${WISENT_ACCESS_TOKEN:?WISENT_ACCESS_TOKEN is required}"
@@ -18,7 +18,7 @@ trap 'rm -f "$AUTH_HEADERS"' EXIT HUP INT TERM
 printf 'Authorization: Bearer %s\nX-Wisent-Organization-ID: %s\n' \
   "$WISENT_ACCESS_TOKEN" "$WISENT_ORGANIZATION_ID" >"$AUTH_HEADERS"
 ITEM_ID=$1
-API_URL=${2:-http://127.0.0.1:8788}
+API_URL=$2
 case "$API_URL" in
   http://127.0.0.1:*|http://localhost:*) ;;
   *) echo "ERROR: API URL must be loopback HTTP" >&2; exit 1 ;;
