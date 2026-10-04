@@ -14,15 +14,18 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 impl AppState {
+    /// Outbound messages, newest first: every one from `offset`, or a page
+    /// of `limit` when the caller names one.
     pub fn list_outbound(
         &self,
         organization_id: &str,
         mailbox_id: Option<Uuid>,
-        limit: u32,
+        limit: Option<u32>,
         offset: u32,
     ) -> Result<Vec<OutboundMessage>, AppError> {
+        super::messages::page_size(limit)?;
         self.database
-            .list_outbound(organization_id, mailbox_id, limit.clamp(1, 500), offset)
+            .list_outbound(organization_id, mailbox_id, limit, offset)
     }
 
     pub fn get_outbound(

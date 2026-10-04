@@ -183,7 +183,7 @@ impl Database {
         &self,
         organization_id: &str,
         mailbox_id: Option<Uuid>,
-        limit: u32,
+        limit: Option<u32>,
         offset: u32,
     ) -> Result<Vec<Message>, AppError> {
         let connection = self.lock()?;
@@ -212,14 +212,14 @@ impl Database {
                 params![
                     mailbox_id.to_string(),
                     organization_id,
-                    i64::from(limit),
+                    page_limit(limit),
                     i64::from(offset)
                 ],
                 message_from_row,
             )?
         } else {
             statement.query_map(
-                params![organization_id, i64::from(limit), i64::from(offset)],
+                params![organization_id, page_limit(limit), i64::from(offset)],
                 message_from_row,
             )?
         };
@@ -242,6 +242,12 @@ impl Database {
             .optional()?
             .ok_or_else(|| AppError::not_found("message"))
     }
+}
+
+/// The bound a listing passes to `LIMIT`: the caller's page size, or NULL,
+/// which Postgres reads as `LIMIT ALL`.
+pub(super) fn page_limit(limit: Option<u32>) -> Option<i64> {
+    limit.map(i64::from)
 }
 
 fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {

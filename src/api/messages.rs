@@ -30,7 +30,7 @@ pub(super) async fn list_messages(
     Ok(Json(json!(state.list_messages(
         &auth.organization_id,
         mailbox_id,
-        query.limit.unwrap_or(100),
+        query.limit,
         query.offset.unwrap_or(0),
     )?)))
 }
@@ -85,7 +85,7 @@ pub(super) async fn list_outbound(
     Ok(Json(json!(state.list_outbound(
         &auth.organization_id,
         mailbox_id,
-        query.limit.unwrap_or(100),
+        query.limit,
         query.offset.unwrap_or(0),
     )?)))
 }
@@ -99,7 +99,7 @@ pub(super) async fn list_mailbox_outbound(
     Ok(Json(json!(state.list_outbound(
         &auth.organization_id,
         Some(parse_uuid(&id)?),
-        query.limit.unwrap_or(100),
+        query.limit,
         query.offset.unwrap_or(0),
     )?)))
 }

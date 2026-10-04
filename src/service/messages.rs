@@ -12,15 +12,19 @@ use crate::{
 use uuid::Uuid;
 
 impl AppState {
+    /// Stored messages, newest first: every one from `offset`, or a page of
+    /// `limit` when the caller names one. Zero is refused, never read as a
+    /// different page size.
     pub fn list_messages(
         &self,
         organization_id: &str,
         mailbox_id: Option<Uuid>,
-        limit: u32,
+        limit: Option<u32>,
         offset: u32,
     ) -> Result<Vec<Message>, AppError> {
+        page_size(limit)?;
         self.database
-            .list_messages(organization_id, mailbox_id, limit.clamp(1, 500), offset)
+            .list_messages(organization_id, mailbox_id, limit, offset)
     }
 
     pub fn get_message(&self, organization_id: &str, id: Uuid) -> Result<Message, AppError> {
@@ -137,6 +141,17 @@ fn validate_reply_request(request: &CreateReplyRequest) -> Result<(), AppError> 
         return Err(AppError::invalid(
             "REPLY_BODY_TOO_LARGE",
             "reply body exceeds the 256 KiB limit",
+        ));
+    }
+    Ok(())
+}
+
+/// A page size of zero names no page; every listing refuses it the same way.
+pub(super) fn page_size(limit: Option<u32>) -> Result<(), AppError> {
+    if limit == Some(0) {
+        return Err(AppError::invalid(
+            "LIMIT_INVALID",
+            "limit must be at least one; omit it to list every message",
         ));
     }
     Ok(())

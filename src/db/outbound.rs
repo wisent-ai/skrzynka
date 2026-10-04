@@ -129,7 +129,7 @@ impl Database {
         &self,
         organization_id: &str,
         mailbox_id: Option<Uuid>,
-        limit: u32,
+        limit: Option<u32>,
         offset: u32,
     ) -> Result<Vec<OutboundMessage>, AppError> {
         let connection = self.lock()?;
@@ -166,14 +166,14 @@ impl Database {
                 params![
                     mailbox_id.to_string(),
                     organization_id,
-                    i64::from(limit),
+                    super::messages::page_limit(limit),
                     i64::from(offset)
                 ],
                 outbound_from_row,
             )?
         } else {
             statement.query_map(
-                params![organization_id, i64::from(limit), i64::from(offset)],
+                params![organization_id, super::messages::page_limit(limit), i64::from(offset)],
                 outbound_from_row,
             )?
         };

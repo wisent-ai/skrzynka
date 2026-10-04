@@ -177,14 +177,14 @@ pub(super) struct DeclareMailboxArgs {
 
 #[derive(Subcommand)]
 pub(super) enum MessageCommand {
-    /// Imported messages, one page at a time (--limit, --offset).
+    /// Imported messages, newest first: every one, or a page with --limit.
     List {
         /// Only this mailbox's messages.
         #[arg(long)]
         mailbox: Option<Uuid>,
-        /// Messages per page.
-        #[arg(long, default_value_t = 100)]
-        limit: u32,
+        /// Messages per page; without it, every message from --offset on.
+        #[arg(long)]
+        limit: Option<u32>,
         /// Messages to skip before the page.
         #[arg(long, default_value_t = 0)]
         offset: u32,
@@ -232,9 +232,9 @@ pub(super) enum MessageCommand {
         /// Only messages sent from this mailbox.
         #[arg(long)]
         mailbox: Option<String>,
-        /// Messages per page.
-        #[arg(long, default_value_t = 100)]
-        limit: u32,
+        /// Messages per page; without it, every message from --offset on.
+        #[arg(long)]
+        limit: Option<u32>,
         /// Messages to skip before the page.
         #[arg(long, default_value_t = 0)]
         offset: u32,
