@@ -10,8 +10,6 @@ use reqwest::{Client, Url};
 use serde::Deserialize;
 use uuid::Uuid;
 
-const DEFAULT_SUPABASE_URL: &str = "https://alvaewvbyxpgwdpugnxy.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsdmFld3ZieXhwZ3dkcHVnbnh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzOTc5NDcsImV4cCI6MjA5Njk3Mzk0N30.xkkJ36ZTwtqyVZLFju0vc9S25grTuKbj9ILKlsXdUPA";
 const ORGANIZATION_HEADER: &str = "x-wisent-organization-id";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,10 +75,20 @@ struct AuthorizationResponse {
 
 impl AuthVerifier {
     pub fn from_environment() -> Result<Self, AppError> {
-        let base_url =
-            std::env::var("SUPABASE_URL").unwrap_or_else(|_| DEFAULT_SUPABASE_URL.to_string());
-        let anon_key = std::env::var("SUPABASE_ANON_KEY")
-            .unwrap_or_else(|_| DEFAULT_SUPABASE_ANON_KEY.to_string());
+        // The identity authority is configuration: Stado's service catalog sets
+        // SUPABASE_URL and SUPABASE_ANON_KEY for the unit. Nothing is compiled in.
+        let configured = |name: &str| {
+            std::env::var(name)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    AppError::internal(format!(
+                        "{name} is not set; the central identity authority has no address"
+                    ))
+                })
+        };
+        let base_url = configured("SUPABASE_URL")?;
+        let anon_key = configured("SUPABASE_ANON_KEY")?;
         let base_url = Url::parse(base_url.trim())
             .map_err(|_| AppError::internal("central identity URL is invalid"))?;
         if base_url.scheme() != "https" || anon_key.trim().is_empty() {
