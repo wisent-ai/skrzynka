@@ -23,8 +23,12 @@ pub use mailboxes::MAILBOX_TAG;
 const MAX_SKARBIEC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 /// A cached token is reused only while it has more than a minute left.
 const TOKEN_EXPIRY_MARGIN_SECONDS: i64 = 60;
-const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "skrzynka-google-oauth-desktop";
-const GOOGLE_SERVICE_ACCOUNT_ITEM_ID: &str = "skrzynka-google-service-account";
+/// The Google desktop OAuth client, asked of Skarbiec by the role its item
+/// plays (`skarbiec get role:<role>` reads the one live item tagged
+/// `stado:role:<role>`), so no item id is written here.
+const GOOGLE_OAUTH_CLIENT_ITEM_ID: &str = "role:skrzynka-google-oauth-desktop";
+/// The delegated-mail service account, asked of Skarbiec by its role.
+const GOOGLE_SERVICE_ACCOUNT_ITEM_ID: &str = "role:skrzynka-google-service-account";
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
 pub const GMAIL_DELEGATION_SCOPE: &str = "https://mail.google.com/";
 pub const GOOGLE_ADMIN_DELEGATION_URL: &str =
@@ -138,6 +142,29 @@ pub(super) fn looks_like_google_profile(item_id: &str, email: &str, payload: &Va
 pub(super) fn profile_preference(item_id: &str) -> u8 {
     let id = item_id.to_ascii_lowercase();
     u8::from(id.contains("gmail")) * 2 + u8::from(id.contains("google"))
+}
+
+/// Whether a mailbox item's stored reference names `coordinate`: the role
+/// coordinate itself, or the id of the item that plays that role now, which
+/// is what a mailbox authorized before references named roles recorded.
+pub(super) fn reference_names(
+    reference: Option<&str>,
+    coordinate: &str,
+    items: &[crate::models::SkarbiecItemMetadata],
+) -> bool {
+    let Some(reference) = reference else {
+        return false;
+    };
+    if reference == coordinate {
+        return true;
+    }
+    let Some(role) = coordinate.strip_prefix("role:") else {
+        return false;
+    };
+    let tag = format!("stado:role:{role}");
+    items
+        .iter()
+        .any(|item| item.id == reference && item.tags.iter().any(|carried| carried == &tag))
 }
 
 pub(super) fn validate_item_id(item_id: &str) -> Result<(), AppError> {

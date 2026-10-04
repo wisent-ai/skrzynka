@@ -88,11 +88,14 @@ impl SkarbiecResolver {
                 return Err(invalid_item("unsupported OAuth mail provider"));
             }
             let refresh_token = required_text(fields.get("refresh_token"), "refresh_token")?;
-            if optional_text(fields.get("oauth_client_item_id")).as_deref()
-                != Some(GOOGLE_OAUTH_CLIENT_ITEM_ID)
-            {
+            let items = self.list_items().await?;
+            if !super::reference_names(
+                optional_text(fields.get("oauth_client_item_id")).as_deref(),
+                GOOGLE_OAUTH_CLIENT_ITEM_ID,
+                &items,
+            ) {
                 return Err(invalid_item(
-                    "Gmail authorization does not reference Skrzynka's desktop OAuth client",
+                    "Gmail authorization does not reference the item playing Skrzynka's desktop OAuth client role",
                 ));
             }
             let access_token = self
@@ -107,11 +110,14 @@ impl SkarbiecResolver {
             if optional_text(fields.get("oauth_provider")).as_deref() != Some("google") {
                 return Err(invalid_item("unsupported OAuth mail provider"));
             }
-            if optional_text(fields.get("service_account_item_id")).as_deref()
-                != Some(GOOGLE_SERVICE_ACCOUNT_ITEM_ID)
-            {
+            let items = self.list_items().await?;
+            if !super::reference_names(
+                optional_text(fields.get("service_account_item_id")).as_deref(),
+                GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
+                &items,
+            ) {
                 return Err(invalid_item(
-                    "Gmail delegation does not reference Skrzynka's service account item",
+                    "Gmail delegation does not reference the item playing Skrzynka's service account role",
                 ));
             }
             let access_token = self.delegated_access_token(item_id, &username).await?;
