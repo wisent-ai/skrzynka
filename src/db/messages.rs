@@ -94,9 +94,9 @@ impl Database {
                 "INSERT INTO mailboxes (
                     id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
                     display_name, email, imap_host, imap_port,
-                    smtp_host, smtp_port, smtp_security, poll_interval_seconds,
+                    smtp_host, smtp_port, smtp_security,
                     enabled, last_uid, created_at, updated_at
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 0, $13, $13)",
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 0, $12, $12)",
                 params![
                     mailbox.id.to_string(),
                     mailbox.organization_id,
@@ -109,7 +109,6 @@ impl Database {
                     mailbox.smtp_host,
                     i64::from(mailbox.smtp_port),
                     mailbox.smtp_security.as_str(),
-                    i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX),
                     mailbox.created_at,
                 ],
             );
@@ -161,7 +160,7 @@ impl Database {
             "UPDATE mailboxes SET last_uid=$2, last_sync_at=$3,
                     last_error_code=NULL, last_error_message=NULL, updated_at=$3,
                     display_name=$4, smtp_skarbiec_item_id=$5, smtp_host=$6,
-                    smtp_port=$7, smtp_security=$8, poll_interval_seconds=$9
+                    smtp_port=$7, smtp_security=$8
              WHERE id=$1",
             params![
                 mailbox.id.to_string(),
@@ -172,7 +171,6 @@ impl Database {
                 mailbox.smtp_host,
                 i64::from(mailbox.smtp_port),
                 mailbox.smtp_security.as_str(),
-                i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX),
             ],
         )?;
         transaction.commit()?;

@@ -71,12 +71,17 @@ See [managed service and receiving diagnostics](https://skrzynka.wisent.com/docs
 For a foreground development session instead:
 
 ```sh
-cargo run -- serve --bind 127.0.0.1:PORT --poll-seconds N
+cargo run -- serve --bind 127.0.0.1:PORT
 ```
 
-`--poll-seconds` is the interval a mailbox whose Skarbiec item declares no
-`poll_interval_seconds` is polled at; nothing is assumed. The service sleeps
-until the next mailbox is due rather than waking on a fixed tick.
+`serve` keeps no polling interval. Each enabled mailbox imports what is
+waiting, then holds an IMAP IDLE (RFC 2177) and is read again the moment its
+provider announces new mail. A mailbox whose sync or IDLE connection fails
+records the error on the mailbox (`last_error_code`, `last_error_message`) and
+is watched again on the next round, which also takes up newly declared items;
+rounds are spaced by the IDLE refresh boundary RFC 2177 states (29 minutes),
+not by a number Skrzynka chose. `skrzynka sync` and `POST /mailboxes/:id/sync`
+read a mailbox now.
 
 In another shell, declare a mailbox whose complete profile is stored in a
 Skarbiec `bundle`:
@@ -94,9 +99,8 @@ held at a time and a failure part way keeps everything before it; the next
 `skrzynka sync` continues from the cursor. Its JSON result reports mailbox
 state, imported, unchanged, conflicting, and rejected message counts and
 rejection reasons; an equal mailbox UID is unchanged and is never inserted
-twice. The item must supply the account address and server profile, and
-optionally `poll_interval_seconds`. There are no local account-profile
-overrides.
+twice. The item must supply the account address and server profile. There
+are no local account-profile overrides.
 
 Tagging the item directly works the same way:
 
@@ -253,9 +257,8 @@ For password-backed providers, Skrzynka persists the exact item selected by the 
 | `smtp_port` | no | Defaults to `587` for STARTTLS or `465` for implicit TLS |
 | `smtp_security` | no | `starttls` (default) or `tls` |
 | `display_name` | no | Human-readable mailbox name |
-| `poll_interval_seconds` | no | Seconds between polls (at least 1); without it the mailbox takes `serve --poll-seconds`, and a one-shot CLI command, which states no interval, refuses the item by name |
 
-Skarbiec stores the account list, the account profiles, and the credentials: the tag `skrzynka:mailbox` declares an item a mailbox. `mailbox declare` accepts only `--skarbiec-item`; CLI profile flags and API profile overrides are refused. The fleet database keeps the imported non-secret snapshot and mail-processing state, not a separately editable account definition. Every reconciliation adopts source display-name, SMTP, and poll-interval changes (`mailbox_state: updated` on declare). A changed receiving address or IMAP endpoint is refused because the retained UID cursor cannot safely identify another source.
+Skarbiec stores the account list, the account profiles, and the credentials: the tag `skrzynka:mailbox` declares an item a mailbox. `mailbox declare` accepts only `--skarbiec-item`; CLI profile flags and API profile overrides are refused. The fleet database keeps the imported non-secret snapshot and mail-processing state, not a separately editable account definition. Every reconciliation adopts source display-name and SMTP changes (`mailbox_state: updated` on declare). A changed receiving address or IMAP endpoint is refused because the retained UID cursor cannot safely identify another source.
 
 Each declared profile has a receiving `skarbiec_item_id` and may contain `smtp_skarbiec_item_id` for a separate sending credential. Gmail connection methods persist complete bundles in Skarbiec and declare them there. OAuth stores its refresh token in Skarbiec; delegation stores a service-account reference. No mailbox secret crosses the desktop API or enters the database.
 

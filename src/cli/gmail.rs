@@ -18,7 +18,7 @@ pub(super) async fn authorize_gmail(
     bind: SocketAddr,
 ) -> Result<(), AppError> {
     let callback_base_url = loopback_callback(bind)?;
-    let state = AppState::new(database, resolver, None, Some(&callback_base_url))?;
+    let state = AppState::new(database, resolver, Some(&callback_base_url))?;
     let listener = tokio::net::TcpListener::bind(bind)
         .await
         .map_err(|_| AppError::internal("loopback OAuth callback address could not be bound"))?;

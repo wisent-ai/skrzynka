@@ -28,7 +28,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub(super) enum Command {
-    /// Run the loopback HTTP API and poll every declared mailbox on its interval.
+    /// Run the loopback HTTP API and read every declared mailbox as its provider reports new mail.
     Serve(ServeArgs),
     /// Report the database path, version, mailbox and message counts, and
     /// whether `skarbiec` can be found.
@@ -74,10 +74,6 @@ pub(super) struct ServeArgs {
     /// No address is assumed: the service declaration that runs `serve` names it.
     #[arg(long)]
     pub(super) bind: SocketAddr,
-    /// Seconds between polls of each mailbox. No interval is assumed: the
-    /// service declaration that runs `serve` names it.
-    #[arg(long)]
-    pub(super) poll_seconds: u64,
 }
 
 /// The mail providers `skrzynka account` implements.
@@ -146,7 +142,7 @@ pub(super) enum AccountCommand {
 pub(super) enum MailboxCommand {
     /// Tag a Skarbiec item skrzynka:mailbox and import every message its INBOX holds.
     Declare(DeclareMailboxArgs),
-    /// Remove the skrzynka:mailbox tag; the mailbox keeps its mail and stops polling.
+    /// Remove the skrzynka:mailbox tag; the mailbox keeps its mail and stops being read.
     Undeclare {
         /// Mailbox ID, as `skrzynka mailbox list` prints it.
         id: Uuid,

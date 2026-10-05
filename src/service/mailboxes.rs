@@ -21,9 +21,9 @@ use uuid::Uuid;
 impl AppState {
     /// Bring Skrzynka's mailboxes in line with what Skarbiec declares: a declared
     /// item gets a mailbox whose profile is the item's; a mailbox whose item lost
-    /// the tag stops being polled and keeps its mail. A caller naming its
+    /// the tag stops being read and keeps its mail. A caller naming its
     /// organization (`create_for`, where new mailboxes go) touches only that
-    /// organization's mailboxes; the background poll passes `None` and all.
+    /// organization's mailboxes; the background watcher passes `None` and all.
     pub async fn reconcile_mailboxes(
         &self,
         create_for: Option<&str>,
@@ -38,16 +38,15 @@ impl AppState {
             let row = existing
                 .iter()
                 .find(|mailbox| &mailbox.skarbiec_item_id == item_id);
-            let mut config = match self
-                .resolver
-                .resolve_mailbox_config(item_id, self.poll_interval_seconds)
-                .await
-            {
+            let mut config = match self.resolver.resolve_mailbox_config(item_id).await {
                 Ok(config) => config,
                 Err(error) => {
                     if let Some(mailbox) = row {
-                        self.database
-                            .record_sync_failure(mailbox.id, error.code, &error.message)?;
+                        self.database.record_sync_failure(
+                            mailbox.id,
+                            error.code,
+                            &error.message,
+                        )?;
                     }
                     report.refused.push(MailboxDeclarationRefusal {
                         skarbiec_item_id: item_id.clone(),
@@ -61,8 +60,11 @@ impl AppState {
                 Some(mailbox) => {
                     config.organization_id = mailbox.organization_id.clone();
                     if let Some(refusal) = endpoint_conflict(mailbox, &config) {
-                        self.database
-                            .record_sync_failure(mailbox.id, &refusal.code, &refusal.message)?;
+                        self.database.record_sync_failure(
+                            mailbox.id,
+                            &refusal.code,
+                            &refusal.message,
+                        )?;
                         report.refused.push(refusal);
                         continue;
                     }
@@ -77,7 +79,9 @@ impl AppState {
                 None => {
                     if let Some(organization_id) = create_for {
                         config.organization_id = organization_id.to_string();
-                        report.created.push(self.database.create_mailbox(&config)?.id);
+                        report
+                            .created
+                            .push(self.database.create_mailbox(&config)?.id);
                     }
                 }
             }
@@ -93,7 +97,7 @@ impl AppState {
                 mailbox.id,
                 "MAILBOX_NOT_DECLARED",
                 &format!(
-                    "Skarbiec item '{}' does not carry {MAILBOX_TAG}; Skrzynka keeps its mail and no longer polls it",
+                    "Skarbiec item '{}' does not carry {MAILBOX_TAG}; Skrzynka keeps its mail and no longer reads it",
                     mailbox.skarbiec_item_id
                 ),
             )?;
@@ -114,7 +118,7 @@ impl AppState {
     ) -> Result<MailboxImportResult, AppError> {
         let mut config = self
             .resolver
-            .resolve_mailbox_config(skarbiec_item_id, self.poll_interval_seconds)
+            .resolve_mailbox_config(skarbiec_item_id)
             .await?;
         let credentials = self.resolver.resolve_credentials(skarbiec_item_id).await?;
         self.resolver
@@ -210,7 +214,7 @@ impl AppState {
     }
 
     /// Stop treating one mailbox's item as a mailbox: remove the tag in
-    /// Skarbiec, then reconcile. The mailbox keeps its mail and stops polling.
+    /// Skarbiec, then reconcile. The mailbox keeps its mail and stops being read.
     pub async fn undeclare_mailbox(
         &self,
         organization_id: &str,
@@ -264,7 +268,6 @@ fn mailbox_from_config(config: &MailboxConfig) -> Mailbox {
         smtp_host: config.smtp_host.clone(),
         smtp_port: config.smtp_port,
         smtp_security: config.smtp_security,
-        poll_interval_seconds: config.poll_interval_seconds,
         enabled: true,
         last_uid: 0,
         last_sync_at: None,
@@ -286,7 +289,6 @@ fn mailbox_matches_config(mailbox: &Mailbox, config: &MailboxConfig) -> bool {
         && mailbox.smtp_host == config.smtp_host
         && mailbox.smtp_port == config.smtp_port
         && mailbox.smtp_security == config.smtp_security
-        && mailbox.poll_interval_seconds == config.poll_interval_seconds
 }
 
 /// A declared item whose receiving address or IMAP endpoint changed: the
@@ -311,5 +313,4 @@ fn apply_config(mailbox: &mut Mailbox, config: &MailboxConfig) {
     mailbox.smtp_host = config.smtp_host.clone();
     mailbox.smtp_port = config.smtp_port;
     mailbox.smtp_security = config.smtp_security;
-    mailbox.poll_interval_seconds = config.poll_interval_seconds;
 }

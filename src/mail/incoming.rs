@@ -111,18 +111,33 @@ fn password_login_refusal(error: imap::Error, host: &str, password: &str) -> Pas
     }
 }
 
-/// Read every message the provider holds past the mailbox cursor, oldest UID
-/// first, and hand each to `commit` with the cursor it reaches. A pass imports
-/// everything there is, one message at a time: no batch size decides how much
-/// mail arrives, only one message is held at once, and a failure part way
-/// keeps what was committed before it, so the next pass continues from there.
-/// A UID that yields no importable message is committed as an empty slice, so
-/// the cursor still passes it.
-pub fn fetch_messages(
+/// Block until the provider reports new mail in INBOX (IMAP IDLE, RFC 2177).
+/// The connection re-issues IDLE on the RFC's own refresh boundary by itself;
+/// no interval is chosen here. Returns when an `EXISTS` arrives, or with the
+/// error that ended the connection.
+pub fn wait_for_new_mail(
     mailbox: &Mailbox,
     credentials: &ResolvedCredentials,
-    mut commit: impl FnMut(&[NewMessage], u32) -> Result<(), AppError>,
-) -> Result<FetchedMessages, AppError> {
+) -> Result<(), AppError> {
+    let mut session = open_inbox(mailbox, credentials)?;
+    session
+        .idle()
+        .wait_while(|response| !matches!(response, imap::types::UnsolicitedResponse::Exists(_)))
+        .map_err(|error| {
+            dependency_error(
+                "IMAP_IDLE_FAILED",
+                format!("IMAP IDLE on INBOX ended: {error:?}"),
+                true,
+            )
+        })?;
+    Ok(())
+}
+
+/// Connect over TLS, authenticate with the mailbox's credentials and select INBOX.
+fn open_inbox(
+    mailbox: &Mailbox,
+    credentials: &ResolvedCredentials,
+) -> Result<imap::Session<imap::Connection>, AppError> {
     let client = imap::ClientBuilder::new(mailbox.imap_host.as_str(), mailbox.imap_port)
         .mode(imap::ConnectionMode::Tls)
         .tls_kind(imap::TlsKind::Native)
@@ -137,8 +152,11 @@ pub fn fetch_messages(
     let mut session = match credentials {
         ResolvedCredentials::Password { username, password } => {
             client.login(username, password).map_err(|(error, _)| {
-                password_login_refusal(error, &mailbox.imap_host, password)
-                    .into_error(&mailbox.organization_id, &mailbox.email, &mailbox.skarbiec_item_id)
+                password_login_refusal(error, &mailbox.imap_host, password).into_error(
+                    &mailbox.organization_id,
+                    &mailbox.email,
+                    &mailbox.skarbiec_item_id,
+                )
             })?
         }
         ResolvedCredentials::OAuth2 {
@@ -167,6 +185,22 @@ pub fn fetch_messages(
             true,
         )
     })?;
+    Ok(session)
+}
+
+/// Read every message the provider holds past the mailbox cursor, oldest UID
+/// first, and hand each to `commit` with the cursor it reaches. A pass imports
+/// everything there is, one message at a time: no batch size decides how much
+/// mail arrives, only one message is held at once, and a failure part way
+/// keeps what was committed before it, so the next pass continues from there.
+/// A UID that yields no importable message is committed as an empty slice, so
+/// the cursor still passes it.
+pub fn fetch_messages(
+    mailbox: &Mailbox,
+    credentials: &ResolvedCredentials,
+    mut commit: impl FnMut(&[NewMessage], u32) -> Result<(), AppError>,
+) -> Result<FetchedMessages, AppError> {
+    let mut session = open_inbox(mailbox, credentials)?;
 
     let first_uid = mailbox.last_uid.saturating_add(1).max(1);
     let query = format!("UID {first_uid}:*");

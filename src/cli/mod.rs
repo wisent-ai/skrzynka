@@ -45,11 +45,11 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
     let organization = cli.organization.as_deref().ok_or_else(|| {
         AppError::invalid(
             "ORGANIZATION_REQUIRED",
-            "--organization <ID> is required: the CLI acts for one organization and assumes none; `serve` alone polls every organization",
+            "--organization <ID> is required: the CLI acts for one organization and assumes none; `serve` alone watches every organization",
         )
     })?;
     let state =
-        |callback: Option<&str>| AppState::new(database.clone(), resolver.clone(), None, callback);
+        |callback: Option<&str>| AppState::new(database.clone(), resolver.clone(), callback);
     match command {
         Command::Serve(_) => unreachable!(),
         Command::Status => {
@@ -125,13 +125,8 @@ async fn serve(
     args: ServeArgs,
 ) -> Result<(), AppError> {
     let callback_base_url = loopback_callback(args.bind)?;
-    let state = AppState::new(
-        database,
-        resolver,
-        Some(args.poll_seconds),
-        Some(&callback_base_url),
-    )?;
-    state.clone().start_polling();
+    let state = AppState::new(database, resolver, Some(&callback_base_url))?;
+    state.clone().start_watching();
     let listener = tokio::net::TcpListener::bind(args.bind)
         .await
         .map_err(|_| AppError::internal("loopback API address could not be bound"))?;

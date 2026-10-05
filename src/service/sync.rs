@@ -1,4 +1,4 @@
-//! Polling: one mailbox, every due mailbox, or all of them.
+//! Mail reception: one mailbox, all of them, or a mailbox watched for new mail.
 
 use super::AppState;
 use crate::{
@@ -85,70 +85,51 @@ impl AppState {
         self.sync_mailboxes(reconciliation, mailboxes).await
     }
 
-    /// The background poll. A vault that cannot be read this tick does not
-    /// stop mail that is already declared: the tick polls what it has and the
-    /// next one reads Skarbiec again.
-    pub(super) async fn sync_due(&self) -> Result<SyncAllSummary, AppError> {
-        let reconciliation = match self.reconcile_mailboxes(None).await {
-            Ok(reconciliation) => reconciliation,
-            Err(error) => {
-                tracing::warn!(code = error.code, message = %error.message, "Skarbiec mailbox declarations could not be read");
-                MailboxReconciliation::default()
+    /// One mailbox's reception: import what is waiting, then hold an IMAP IDLE
+    /// until the provider announces new mail, and repeat. Ends, with the failure
+    /// recorded on the mailbox, when a sync or the IDLE connection fails; the
+    /// watching loop starts it again on its next round.
+    pub(super) async fn watch_mailbox(&self, id: Uuid) {
+        loop {
+            if let Err(error) = self.sync_mailbox_internal(id).await {
+                tracing::warn!(mailbox = %id, code = error.code, message = %error.message, "mailbox sync failed; its watcher stops until the next round");
+                return;
             }
-        };
-        let now = Utc::now();
-        let mailboxes = self
-            .database
-            .list_all_mailboxes()?
-            .into_iter()
-            .filter(|mailbox| {
-                if !mailbox.enabled {
-                    return false;
+            let mailbox = match self.database.get_mailbox_internal(id) {
+                Ok(mailbox) if mailbox.enabled => mailbox,
+                Ok(_) => return,
+                Err(error) => {
+                    tracing::warn!(mailbox = %id, code = error.code, "mailbox could not be read");
+                    return;
                 }
-                mailbox
-                    .last_sync_at
-                    .as_deref()
-                    .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-                    .map(|last| {
-                        now.signed_duration_since(last.with_timezone(&Utc))
-                            .num_seconds()
-                            >= mailbox.poll_interval_seconds as i64
-                    })
-                    .unwrap_or(true)
+            };
+            let credentials = match self
+                .resolver
+                .resolve_credentials(&mailbox.skarbiec_item_id)
+                .await
+            {
+                Ok(credentials) => credentials,
+                Err(error) => {
+                    let _ = self
+                        .database
+                        .record_sync_failure(id, error.code, &error.message);
+                    return;
+                }
+            };
+            let waited = tokio::task::spawn_blocking(move || {
+                mail::wait_for_new_mail(&mailbox, &credentials)
             })
-            .collect::<Vec<_>>();
-        self.sync_mailboxes(reconciliation, mailboxes).await
-    }
-
-    /// How long until the next enabled mailbox is due; zero when one already is, and this
-    /// process's own interval when no mailbox is enabled.
-    pub(super) fn next_due_in(&self) -> Result<std::time::Duration, AppError> {
-        let now = Utc::now();
-        let earliest = self
-            .database
-            .list_all_mailboxes()?
-            .into_iter()
-            .filter(|mailbox| mailbox.enabled)
-            .map(|mailbox| {
-                let interval = i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX);
-                mailbox
-                    .last_sync_at
-                    .as_deref()
-                    .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-                    .map(|last| {
-                        interval.saturating_sub(
-                            now.signed_duration_since(last.with_timezone(&Utc))
-                                .num_seconds(),
-                        )
-                    })
-                    .unwrap_or(0)
-            })
-            .min();
-        let seconds = match earliest {
-            Some(seconds) => u64::try_from(seconds).unwrap_or(0),
-            None => self.poll_interval_seconds.unwrap_or_default(),
-        };
-        Ok(std::time::Duration::from_secs(seconds))
+            .await
+            .map_err(|_| AppError::internal("mailbox IDLE task stopped unexpectedly"))
+            .and_then(|result| result);
+            if let Err(error) = waited {
+                let _ = self
+                    .database
+                    .record_sync_failure(id, error.code, &error.message);
+                tracing::warn!(mailbox = %id, code = error.code, message = %error.message, "mailbox IDLE ended; its watcher stops until the next round");
+                return;
+            }
+        }
     }
 
     pub(super) async fn sync_mailboxes(

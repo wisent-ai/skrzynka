@@ -34,7 +34,6 @@ pub struct MailboxConfig {
     pub smtp_host: String,
     pub smtp_port: u16,
     pub smtp_security: SmtpSecurity,
-    pub poll_interval_seconds: u64,
 }
 
 #[derive(Clone)]
@@ -125,10 +124,6 @@ fn checked_u16(value: i64, column: usize) -> sql::Result<u16> {
 
 fn checked_u32(value: i64, column: usize) -> sql::Result<u32> {
     u32::try_from(value).map_err(|error| conversion_error(column, error))
-}
-
-fn checked_u64(value: i64, column: usize) -> sql::Result<u64> {
-    u64::try_from(value).map_err(|error| conversion_error(column, error))
 }
 
 fn conversion_error(column: usize, error: impl std::error::Error) -> sql::Error {

@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     smtp_host TEXT NOT NULL,
     smtp_port BIGINT NOT NULL,
     smtp_security TEXT NOT NULL CHECK (smtp_security IN ('starttls', 'tls')),
-    poll_interval_seconds BIGINT NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     last_uid BIGINT NOT NULL DEFAULT 0,
     last_sync_at TEXT,
@@ -24,6 +23,9 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     updated_at TEXT NOT NULL,
     UNIQUE (organization_id, skarbiec_item_id)
 );
+-- A mailbox is read when its provider reports new mail (IMAP IDLE), not on a
+-- stored interval, so the interval column of older databases is dropped.
+ALTER TABLE mailboxes DROP COLUMN IF EXISTS poll_interval_seconds;
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     mailbox_id TEXT NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,

@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-/// How long a mailbox's host names may be (RFC 1035). How often a mailbox is polled is its
-/// Skarbiec item's `poll_interval_seconds`, or `serve --poll-seconds`.
+/// How long a mailbox's host names may be (RFC 1035). A mailbox is read when its
+/// provider reports new mail (IMAP IDLE); no polling interval exists.
 pub const MAX_HOST_LENGTH: usize = 253;
 
 #[derive(Debug, thiserror::Error)]
@@ -24,7 +24,6 @@ pub struct Mailbox {
     pub smtp_host: String,
     pub smtp_port: u16,
     pub smtp_security: SmtpSecurity,
-    pub poll_interval_seconds: u64,
     pub enabled: bool,
     pub last_uid: u32,
     pub last_sync_at: Option<String>,

@@ -1,5 +1,5 @@
 //! The service behind the API: one `AppState` whose methods are grouped by topic in the
-//! sub-modules (Gmail connection, mailboxes, polling, messages, outbound mail).
+//! sub-modules (Gmail connection, mailboxes, mail reception, messages, outbound mail).
 
 use crate::{
     auth::AuthVerifier,
@@ -10,7 +10,7 @@ use crate::{
     skarbiec::SkarbiecResolver,
 };
 use serde::Serialize;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -29,7 +29,6 @@ pub struct AppState {
     /// service and `account authorize`, or `account connection`, which
     /// names the callback address it reports on.
     gmail_oauth: Option<GmailOAuthBroker>,
-    pub poll_interval_seconds: Option<u64>,
     operation_lock: Arc<Mutex<()>>,
 }
 
@@ -77,21 +76,11 @@ pub struct GmailConnectionPath {
 }
 
 impl AppState {
-    /// `poll_interval_seconds` is the interval a mailbox whose Skarbiec item declares none is
-    /// polled at: `serve --poll-seconds` states it; a one-shot CLI command polls nothing and
-    /// passes `None`, so such an item is refused by name instead of given an invented interval.
     pub fn new(
         database: Database,
         resolver: SkarbiecResolver,
-        poll_interval_seconds: Option<u64>,
         callback_base_url: Option<&str>,
     ) -> Result<Self, AppError> {
-        if poll_interval_seconds == Some(0) {
-            return Err(AppError::invalid(
-                "POLL_INTERVAL_INVALID",
-                "poll interval must be at least 1 second",
-            ));
-        }
         let gmail_oauth = callback_base_url
             .map(|url| GmailOAuthBroker::new(resolver.clone(), url))
             .transpose()?;
@@ -101,7 +90,6 @@ impl AppState {
             database,
             resolver,
             gmail_oauth,
-            poll_interval_seconds,
             operation_lock: Arc::new(Mutex::new(())),
         })
     }
@@ -118,7 +106,6 @@ impl AppState {
             mailbox_count,
             enabled_mailbox_count,
             message_count,
-            poll_interval_seconds: self.poll_interval_seconds,
             skarbiec_available,
         })
     }
@@ -144,35 +131,45 @@ impl AppState {
         })
     }
 
-    /// Polls every due mailbox, then sleeps until the next one is due: the earliest
-    /// `last_sync_at + poll_interval_seconds` among enabled mailboxes, or this process's own
-    /// interval when none is enabled yet. No tick is assumed between the two.
-    pub fn start_polling(self) {
+    /// Reads every enabled mailbox as its provider reports new mail. Each round
+    /// reconciles Skarbiec's declarations and starts a watcher for every enabled
+    /// mailbox that has none; a watcher imports what is waiting, then holds an
+    /// IMAP IDLE until the provider announces new mail, and ends, recording its
+    /// error on the mailbox, when the connection fails. Rounds are spaced by the
+    /// IDLE refresh boundary RFC 2177 states for servers, so a failed watcher and
+    /// a newly declared item are taken up within it; no cadence is chosen here.
+    pub fn start_watching(self) {
         tokio::spawn(async move {
+            let mut watchers: HashMap<Uuid, tokio::task::JoinHandle<()>> = HashMap::new();
             loop {
-                match self.sync_due().await {
-                    Ok(summary) => {
-                        let failed = summary.mailboxes.iter().filter(|result| !result.ok).count();
-                        tracing::info!(
-                            mailboxes = summary.mailboxes.len(),
-                            failed,
-                            "mailbox poll completed"
-                        );
-                    }
-                    Err(error) => tracing::error!(code = error.code, "mailbox poll failed"),
+                if let Err(error) = self.reconcile_mailboxes(None).await {
+                    tracing::warn!(code = error.code, message = %error.message, "Skarbiec mailbox declarations could not be read");
                 }
-                let wait = match self.next_due_in() {
-                    Ok(wait) => wait,
-                    Err(error) => {
-                        tracing::error!(
-                            code = error.code,
-                            "next mailbox poll could not be scheduled"
-                        );
-                        Duration::from_secs(self.poll_interval_seconds.unwrap_or_default())
+                match self.database.list_all_mailboxes() {
+                    Ok(mailboxes) => {
+                        watchers.retain(|_, watcher| !watcher.is_finished());
+                        for mailbox in mailboxes.into_iter().filter(|mailbox| mailbox.enabled) {
+                            if !watchers.contains_key(&mailbox.id) {
+                                let state = self.clone();
+                                watchers.insert(
+                                    mailbox.id,
+                                    tokio::spawn(
+                                        async move { state.watch_mailbox(mailbox.id).await },
+                                    ),
+                                );
+                            }
+                        }
                     }
-                };
-                tokio::time::sleep(wait).await;
+                    Err(error) => {
+                        tracing::error!(code = error.code, "mailboxes could not be listed")
+                    }
+                }
+                tokio::time::sleep(IMAP_IDLE_REFRESH).await;
             }
         });
     }
 }
+
+/// RFC 2177: a server may drop an IDLE that has not been re-issued within 30
+/// minutes, so clients refresh it every 29. The standard's number, not ours.
+const IMAP_IDLE_REFRESH: Duration = Duration::from_secs(29 * 60);

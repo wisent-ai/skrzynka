@@ -128,14 +128,8 @@ impl SkarbiecResolver {
         Ok(ResolvedCredentials::Password { username, password })
     }
 
-    /// The mailbox profile an item declares. Every value comes from the item;
-    /// `poll_interval_seconds` is read from it too, else from the process's stated
-    /// interval, else refused by name.
-    pub async fn resolve_mailbox_config(
-        &self,
-        item_id: &str,
-        default_poll_interval_seconds: Option<u64>,
-    ) -> Result<MailboxConfig, AppError> {
+    /// The mailbox profile an item declares. Every value comes from the item.
+    pub async fn resolve_mailbox_config(&self, item_id: &str) -> Result<MailboxConfig, AppError> {
         validate_item_id(item_id)?;
         let payload = self.get_item(item_id).await?;
         let kind = payload
@@ -210,21 +204,6 @@ impl SkarbiecResolver {
         if let Some(item_id) = smtp_skarbiec_item_id.as_deref() {
             validate_item_id(item_id)?;
         }
-        let poll_interval_seconds = match fields.get("poll_interval_seconds") {
-            Some(value) => value.as_u64().ok_or_else(|| {
-                profile_error("Skarbiec item poll_interval_seconds must be a whole number")
-            })?,
-            None => default_poll_interval_seconds.ok_or_else(|| {
-                profile_error(
-                    "the Skarbiec item declares no poll_interval_seconds and this one-shot command \
-                     states no interval: declare poll_interval_seconds on the item, or connect \
-                     through the API of `skrzynka serve --poll-seconds N`, whose N applies",
-                )
-            })?,
-        };
-        if poll_interval_seconds == 0 {
-            return Err(profile_error("poll_interval_seconds must be at least 1"));
-        }
         let display_name = display_name.trim().to_string();
         if display_name.is_empty() {
             return Err(profile_error("display_name must not be empty"));
@@ -241,7 +220,6 @@ impl SkarbiecResolver {
             smtp_host,
             smtp_port,
             smtp_security,
-            poll_interval_seconds,
         })
     }
 }

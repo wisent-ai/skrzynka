@@ -139,7 +139,7 @@ pub struct SyncSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncAllSummary {
     pub completed_at: String,
-    /// What Skarbiec's declarations changed before the mailboxes were polled.
+    /// What Skarbiec's declarations changed before the mailboxes were read.
     pub reconciliation: super::MailboxReconciliation,
     pub mailboxes: Vec<MailboxSyncResult>,
 }
@@ -163,8 +163,6 @@ pub struct StatusResponse {
     pub mailbox_count: usize,
     pub enabled_mailbox_count: usize,
     pub message_count: usize,
-    /// The `serve --poll-seconds` default; null in a one-shot CLI command, which polls nothing.
-    pub poll_interval_seconds: Option<u64>,
     pub skarbiec_available: bool,
 }
 

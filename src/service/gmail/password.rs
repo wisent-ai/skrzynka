@@ -87,7 +87,7 @@ impl AppState {
         skarbiec_item_id: &str,
     ) -> Result<Mailbox, AppError> {
         self.resolver
-            .resolve_mailbox_config(skarbiec_item_id, self.poll_interval_seconds)
+            .resolve_mailbox_config(skarbiec_item_id)
             .await?;
         self.resolver
             .set_mailbox_declared(skarbiec_item_id, true)

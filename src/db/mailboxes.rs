@@ -2,8 +2,7 @@
 
 use super::sql::{self, params, OptionalExtension, Row};
 use super::{
-    checked_u16, checked_u32, checked_u64, is_unique_constraint, parse_enum, parse_uuid, Database,
-    MailboxConfig,
+    checked_u16, checked_u32, is_unique_constraint, parse_enum, parse_uuid, Database, MailboxConfig,
 };
 use crate::{error::AppError, models::Mailbox};
 use chrono::Utc;
@@ -17,9 +16,9 @@ impl Database {
             "INSERT INTO mailboxes (
                 id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
                 display_name, email, imap_host, imap_port,
-                smtp_host, smtp_port, smtp_security, poll_interval_seconds,
+                smtp_host, smtp_port, smtp_security,
                 enabled, last_uid, created_at, updated_at
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 0, $13, $13)",
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 0, $12, $12)",
             params![
                 id.to_string(),
                 config.organization_id,
@@ -32,7 +31,6 @@ impl Database {
                 config.smtp_host,
                 i64::from(config.smtp_port),
                 config.smtp_security.as_str(),
-                i64::try_from(config.poll_interval_seconds).unwrap_or(i64::MAX),
                 now,
             ],
         );
@@ -51,7 +49,7 @@ impl Database {
         let mut statement = connection.prepare(
             "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
                     display_name, email, imap_host, imap_port, smtp_host, smtp_port,
-                    smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                    smtp_security, enabled, last_uid, last_sync_at,
                     last_error_code, last_error_message, created_at, updated_at
              FROM mailboxes WHERE organization_id=$1
              ORDER BY lower(display_name), email",
@@ -65,7 +63,7 @@ impl Database {
         let mut statement = connection.prepare(
             "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
                     display_name, email, imap_host, imap_port, smtp_host, smtp_port,
-                    smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                    smtp_security, enabled, last_uid, last_sync_at,
                     last_error_code, last_error_message, created_at, updated_at
              FROM mailboxes ORDER BY lower(display_name), email",
         )?;
@@ -86,7 +84,7 @@ impl Database {
             .query_row(
                 "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
                         display_name, email, imap_host, imap_port, smtp_host, smtp_port,
-                        smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                        smtp_security, enabled, last_uid, last_sync_at,
                         last_error_code, last_error_message, created_at, updated_at
                  FROM mailboxes WHERE id = $1 AND organization_id = $2",
                 params![id.to_string(), organization_id],
@@ -101,7 +99,7 @@ impl Database {
             .query_row(
                 "SELECT id, organization_id, skarbiec_item_id, smtp_skarbiec_item_id,
                         display_name, email, imap_host, imap_port, smtp_host, smtp_port,
-                        smtp_security, poll_interval_seconds, enabled, last_uid, last_sync_at,
+                        smtp_security, enabled, last_uid, last_sync_at,
                         last_error_code, last_error_message, created_at, updated_at
                  FROM mailboxes WHERE id = $1",
                 [id.to_string()],
@@ -117,7 +115,7 @@ impl Database {
             "UPDATE mailboxes SET skarbiec_item_id=$3, smtp_skarbiec_item_id=$4,
                     display_name=$5, email=$6, imap_host=$7, imap_port=$8,
                     smtp_host=$9, smtp_port=$10, smtp_security=$11,
-                    poll_interval_seconds=$12, enabled=$13, updated_at=$14
+                    enabled=$12, updated_at=$13
              WHERE id=$1 AND organization_id=$2",
             params![
                 mailbox.id.to_string(),
@@ -131,7 +129,6 @@ impl Database {
                 mailbox.smtp_host,
                 i64::from(mailbox.smtp_port),
                 mailbox.smtp_security.as_str(),
-                i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX),
                 mailbox.enabled,
                 now,
             ],
@@ -177,13 +174,12 @@ fn mailbox_from_row(row: &Row<'_>) -> sql::Result<Mailbox> {
         smtp_host: row.get(8)?,
         smtp_port: checked_u16(row.get::<_, i64>(9)?, 9)?,
         smtp_security: parse_enum(row.get::<_, String>(10)?, 10)?,
-        poll_interval_seconds: checked_u64(row.get::<_, i64>(11)?, 11)?,
-        enabled: row.get::<_, bool>(12)?,
-        last_uid: checked_u32(row.get::<_, i64>(13)?, 13)?,
-        last_sync_at: row.get(14)?,
-        last_error_code: row.get(15)?,
-        last_error_message: row.get(16)?,
-        created_at: row.get(17)?,
-        updated_at: row.get(18)?,
+        enabled: row.get::<_, bool>(11)?,
+        last_uid: checked_u32(row.get::<_, i64>(12)?, 12)?,
+        last_sync_at: row.get(13)?,
+        last_error_code: row.get(14)?,
+        last_error_message: row.get(15)?,
+        created_at: row.get(16)?,
+        updated_at: row.get(17)?,
     })
 }
