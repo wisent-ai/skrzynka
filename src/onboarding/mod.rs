@@ -20,9 +20,6 @@ const JOURNEY_ID: &str = "first-use";
 const STATE_SCHEMA: &str = "skrzynka.onboarding-state.v1";
 const FIRST_SUCCESS_FACT: &str = "mailbox_import_persisted";
 const DEFINITION: &str = include_str!("first_use.json");
-/// A canonical first-use journey has three to five screens.
-const MIN_JOURNEY_SCREENS: usize = 3;
-const MAX_JOURNEY_SCREENS: usize = 5;
 
 #[derive(Deserialize, Serialize)]
 struct OnboardingState {

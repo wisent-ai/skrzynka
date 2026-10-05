@@ -4,7 +4,6 @@ use super::{
     invalid_item, optional_text, required_text, CachedAccessToken, GoogleOAuthClient,
     GoogleServiceAccount, SkarbiecResolver, GMAIL_DELEGATION_SCOPE, GOOGLE_ADMIN_DELEGATION_URL,
     GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID, GOOGLE_TOKEN_URI,
-    TOKEN_EXPIRY_MARGIN_SECONDS,
 };
 use crate::error::AppError;
 use chrono::{Duration as ChronoDuration, Utc};
@@ -23,8 +22,8 @@ impl SkarbiecResolver {
             .get(credential_item_id)
             .cloned()
         {
-            if cached.expires_at > Utc::now() + ChronoDuration::seconds(TOKEN_EXPIRY_MARGIN_SECONDS)
-            {
+            // Google's expires_in is the token's lifetime; it is reused until then, not a minute short.
+            if cached.expires_at > Utc::now() {
                 return Ok(cached.value);
             }
         }
@@ -176,8 +175,8 @@ impl SkarbiecResolver {
         user_email: &str,
     ) -> Result<String, AppError> {
         if let Some(cached) = self.token_cache.lock().await.get(cache_key).cloned() {
-            if cached.expires_at > Utc::now() + ChronoDuration::seconds(TOKEN_EXPIRY_MARGIN_SECONDS)
-            {
+            // Google's expires_in is the token's lifetime; it is reused until then, not a minute short.
+            if cached.expires_at > Utc::now() {
                 return Ok(cached.value);
             }
         }

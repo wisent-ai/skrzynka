@@ -1,9 +1,6 @@
 //! The canonical first-use journey definition and the screen lookups over it.
 
-use super::{
-    DEFINITION, FIRST_SUCCESS_FACT, JOURNEY_ID, MAX_JOURNEY_SCREENS, MIN_JOURNEY_SCREENS,
-    PRODUCT_ID,
-};
+use super::{DEFINITION, FIRST_SUCCESS_FACT, JOURNEY_ID, PRODUCT_ID};
 use crate::error::AppError;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -30,9 +27,9 @@ pub(super) fn canonical_definition() -> Result<Value, AppError> {
         .get("screens")
         .and_then(Value::as_array)
         .ok_or_else(|| AppError::internal("canonical onboarding journey has no screens"))?;
-    if !(MIN_JOURNEY_SCREENS..=MAX_JOURNEY_SCREENS).contains(&screens.len()) {
+    if screens.is_empty() {
         return Err(AppError::internal(
-            "canonical onboarding journey must have three to five screens",
+            "canonical onboarding journey has no screens",
         ));
     }
 

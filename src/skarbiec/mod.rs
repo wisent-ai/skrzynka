@@ -17,8 +17,6 @@ mod mailboxes;
 
 pub use mailboxes::MAILBOX_TAG;
 
-/// A cached token is reused only while it has more than a minute left.
-const TOKEN_EXPIRY_MARGIN_SECONDS: i64 = 60;
 /// The Google desktop OAuth client, asked of Skarbiec by the role its item
 /// plays (`skarbiec get role:<role>` reads the one live item tagged
 /// `stado:role:<role>`), so no item id is written here.
