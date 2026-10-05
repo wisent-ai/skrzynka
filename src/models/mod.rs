@@ -2,10 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-/// The bounds a mailbox profile is held to: how often it may be polled, and how long its
-/// host names may be (RFC 1035).
-pub const MIN_POLL_INTERVAL_SECONDS: u64 = 15;
-pub const MAX_POLL_INTERVAL_SECONDS: u64 = 86_400;
+/// How long a mailbox's host names may be (RFC 1035). How often a mailbox is polled is its
+/// Skarbiec item's `poll_interval_seconds`, or `serve --poll-seconds`.
 pub const MAX_HOST_LENGTH: usize = 253;
 
 #[derive(Debug, thiserror::Error)]

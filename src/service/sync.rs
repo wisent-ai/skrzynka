@@ -39,13 +39,14 @@ impl AppState {
         let result = tokio::task::spawn_blocking(move || {
             let mut current = mailbox;
             let mut received = 0usize;
-            let fetched = mail::fetch_messages(&current.clone(), &credentials, |messages, last_uid| {
-                let (stored, added, _) =
-                    database.commit_mailbox_import(&current, false, messages, last_uid)?;
-                received += added;
-                current = stored;
-                Ok(())
-            })?;
+            let fetched =
+                mail::fetch_messages(&current.clone(), &credentials, |messages, last_uid| {
+                    let (stored, added, _) =
+                        database.commit_mailbox_import(&current, false, messages, last_uid)?;
+                    received += added;
+                    current = stored;
+                    Ok(())
+                })?;
             Ok::<_, AppError>(SyncSummary {
                 mailbox_id: current.id,
                 received,
@@ -117,6 +118,37 @@ impl AppState {
             })
             .collect::<Vec<_>>();
         self.sync_mailboxes(reconciliation, mailboxes).await
+    }
+
+    /// How long until the next enabled mailbox is due; zero when one already is, and this
+    /// process's own interval when no mailbox is enabled.
+    pub(super) fn next_due_in(&self) -> Result<std::time::Duration, AppError> {
+        let now = Utc::now();
+        let earliest = self
+            .database
+            .list_all_mailboxes()?
+            .into_iter()
+            .filter(|mailbox| mailbox.enabled)
+            .map(|mailbox| {
+                let interval = i64::try_from(mailbox.poll_interval_seconds).unwrap_or(i64::MAX);
+                mailbox
+                    .last_sync_at
+                    .as_deref()
+                    .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                    .map(|last| {
+                        interval.saturating_sub(
+                            now.signed_duration_since(last.with_timezone(&Utc))
+                                .num_seconds(),
+                        )
+                    })
+                    .unwrap_or(0)
+            })
+            .min();
+        let seconds = match earliest {
+            Some(seconds) => u64::try_from(seconds).unwrap_or(0),
+            None => self.poll_interval_seconds.unwrap_or_default(),
+        };
+        Ok(std::time::Duration::from_secs(seconds))
     }
 
     pub(super) async fn sync_mailboxes(

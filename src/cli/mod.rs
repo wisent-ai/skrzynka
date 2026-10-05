@@ -5,7 +5,7 @@ use crate::{
     db::Database, error::AppError, onboarding, service::AppState, skarbiec::SkarbiecResolver,
 };
 use axum::http::StatusCode;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{net::SocketAddr, sync::OnceLock};
 
 mod arguments;
@@ -18,9 +18,6 @@ use arguments::{AccountCommand, Command, MailProvider, ServeArgs};
 use gmail::{authorize_gmail, read_gmail_app_password};
 use mailbox::run_mailbox;
 use message::run_message;
-
-/// A one-shot CLI command never polls; the interval only has to satisfy the service's bounds.
-pub(super) const CLI_POLL_INTERVAL_SECONDS: u64 = 60;
 
 /// Whether this invocation asked for `--text`; set once before any command runs.
 static TEXT: OnceLock<bool> = OnceLock::new();
@@ -51,14 +48,8 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
             "--organization <ID> is required: the CLI acts for one organization and assumes none; `serve` alone polls every organization",
         )
     })?;
-    let state = |callback: Option<&str>| {
-        AppState::new(
-            database.clone(),
-            resolver.clone(),
-            CLI_POLL_INTERVAL_SECONDS,
-            callback,
-        )
-    };
+    let state =
+        |callback: Option<&str>| AppState::new(database.clone(), resolver.clone(), None, callback);
     match command {
         Command::Serve(_) => unreachable!(),
         Command::Status => {
@@ -67,10 +58,13 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         }
         Command::Mailbox { command } => run_mailbox(state(None)?, organization, command).await,
         Command::Account { provider, command } => match (provider, command) {
-            (MailProvider::Gmail, AccountCommand::Authorize {
-                skarbiec_item,
-                bind,
-            }) => authorize_gmail(database, resolver, organization, skarbiec_item, bind).await,
+            (
+                MailProvider::Gmail,
+                AccountCommand::Authorize {
+                    skarbiec_item,
+                    bind,
+                },
+            ) => authorize_gmail(database, resolver, organization, skarbiec_item, bind).await,
             (MailProvider::Gmail, AccountCommand::Connection { email, bind }) => {
                 let callback = loopback_callback(bind)?;
                 print_json(
@@ -79,10 +73,13 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (MailProvider::Gmail, AccountCommand::Delegate {
-                email,
-                display_name,
-            }) => {
+            (
+                MailProvider::Gmail,
+                AccountCommand::Delegate {
+                    email,
+                    display_name,
+                },
+            ) => {
                 let state = state(None)?;
                 print_json(
                     &state
@@ -90,20 +87,18 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (MailProvider::Gmail, AccountCommand::AppPassword {
-                email,
-                display_name,
-            }) => {
+            (
+                MailProvider::Gmail,
+                AccountCommand::AppPassword {
+                    email,
+                    display_name,
+                },
+            ) => {
                 let password = read_gmail_app_password()?;
                 let state = state(None)?;
                 print_json(
                     &state
-                        .connect_gmail_app_password(
-                            organization,
-                            &email,
-                            &password,
-                            display_name,
-                        )
+                        .connect_gmail_app_password(organization, &email, &password, display_name)
                         .await?,
                 )
             }
@@ -133,7 +128,7 @@ async fn serve(
     let state = AppState::new(
         database,
         resolver,
-        args.poll_seconds,
+        Some(args.poll_seconds),
         Some(&callback_base_url),
     )?;
     state.clone().start_polling();
@@ -184,7 +179,11 @@ fn flatten(path: &str, value: &Value, lines: &mut String) {
     match value {
         Value::Object(map) if !map.is_empty() => {
             for (key, item) in map {
-                let child = if path.is_empty() { key.clone() } else { format!("{path}.{key}") };
+                let child = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
                 flatten(&child, item, lines);
             }
         }

@@ -1,6 +1,6 @@
 //! The Gmail subcommands: the browser authorization and the app-password prompt.
 
-use super::{loopback_callback, print_json, CLI_POLL_INTERVAL_SECONDS};
+use super::{loopback_callback, print_json};
 use crate::{
     db::Database, error::AppError, gmail::StartGmailOAuthRequest, service::AppState,
     skarbiec::SkarbiecResolver,
@@ -18,12 +18,7 @@ pub(super) async fn authorize_gmail(
     bind: SocketAddr,
 ) -> Result<(), AppError> {
     let callback_base_url = loopback_callback(bind)?;
-    let state = AppState::new(
-        database,
-        resolver,
-        CLI_POLL_INTERVAL_SECONDS,
-        Some(&callback_base_url),
-    )?;
+    let state = AppState::new(database, resolver, None, Some(&callback_base_url))?;
     let listener = tokio::net::TcpListener::bind(bind)
         .await
         .map_err(|_| AppError::internal("loopback OAuth callback address could not be bound"))?;

@@ -71,8 +71,12 @@ See [managed service and receiving diagnostics](https://skrzynka.wisent.com/docs
 For a foreground development session instead:
 
 ```sh
-cargo run -- serve
+cargo run -- serve --bind 127.0.0.1:PORT --poll-seconds N
 ```
+
+`--poll-seconds` is the interval a mailbox whose Skarbiec item declares no
+`poll_interval_seconds` is polled at; nothing is assumed. The service sleeps
+until the next mailbox is due rather than waking on a fixed tick.
 
 In another shell, declare a mailbox whose complete profile is stored in a
 Skarbiec `bundle`:
@@ -249,7 +253,7 @@ For password-backed providers, Skrzynka persists the exact item selected by the 
 | `smtp_port` | no | Defaults to `587` for STARTTLS or `465` for implicit TLS |
 | `smtp_security` | no | `starttls` (default) or `tls` |
 | `display_name` | no | Human-readable mailbox name |
-| `poll_interval_seconds` | no | Seconds between polls, 15–86400; defaults to the service setting |
+| `poll_interval_seconds` | no | Seconds between polls (at least 1); without it the mailbox takes `serve --poll-seconds`, and a one-shot CLI command, which states no interval, refuses the item by name |
 
 Skarbiec stores the account list, the account profiles, and the credentials: the tag `skrzynka:mailbox` declares an item a mailbox. `mailbox declare` accepts only `--skarbiec-item`; CLI profile flags and API profile overrides are refused. The fleet database keeps the imported non-secret snapshot and mail-processing state, not a separately editable account definition. Every reconciliation adopts source display-name, SMTP, and poll-interval changes (`mailbox_state: updated` on declare). A changed receiving address or IMAP endpoint is refused because the retained UID cursor cannot safely identify another source.
 

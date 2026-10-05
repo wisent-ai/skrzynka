@@ -163,7 +163,8 @@ pub struct StatusResponse {
     pub mailbox_count: usize,
     pub enabled_mailbox_count: usize,
     pub message_count: usize,
-    pub poll_interval_seconds: u64,
+    /// The `serve --poll-seconds` default; null in a one-shot CLI command, which polls nothing.
+    pub poll_interval_seconds: Option<u64>,
     pub skarbiec_available: bool,
 }
 

@@ -6,10 +6,7 @@ use crate::{
     db::Database,
     error::AppError,
     gmail::{GmailOAuthBroker, GmailProfile},
-    models::{
-        Mailbox, SkarbiecItemMetadata, StatusResponse, MAX_POLL_INTERVAL_SECONDS,
-        MIN_POLL_INTERVAL_SECONDS,
-    },
+    models::{Mailbox, SkarbiecItemMetadata, StatusResponse},
     skarbiec::SkarbiecResolver,
 };
 use serde::Serialize;
@@ -23,9 +20,6 @@ mod messages;
 mod outbound;
 mod sync;
 
-/// Due mailboxes are polled this often; each mailbox's own interval decides whether it is due.
-const POLL_TICK: Duration = Duration::from_secs(15);
-
 #[derive(Clone)]
 pub struct AppState {
     pub auth_verifier: AuthVerifier,
@@ -35,7 +29,7 @@ pub struct AppState {
     /// service and `account authorize`, or `account connection`, which
     /// names the callback address it reports on.
     gmail_oauth: Option<GmailOAuthBroker>,
-    pub poll_interval_seconds: u64,
+    pub poll_interval_seconds: Option<u64>,
     operation_lock: Arc<Mutex<()>>,
 }
 
@@ -84,17 +78,19 @@ pub struct GmailConnectionPath {
 }
 
 impl AppState {
+    /// `poll_interval_seconds` is the interval a mailbox whose Skarbiec item declares none is
+    /// polled at: `serve --poll-seconds` states it; a one-shot CLI command polls nothing and
+    /// passes `None`, so such an item is refused by name instead of given an invented interval.
     pub fn new(
         database: Database,
         resolver: SkarbiecResolver,
-        poll_interval_seconds: u64,
+        poll_interval_seconds: Option<u64>,
         callback_base_url: Option<&str>,
     ) -> Result<Self, AppError> {
-        if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS).contains(&poll_interval_seconds)
-        {
+        if poll_interval_seconds == Some(0) {
             return Err(AppError::invalid(
                 "POLL_INTERVAL_INVALID",
-                "poll interval must be between 15 and 86400 seconds",
+                "poll interval must be at least 1 second",
             ));
         }
         let gmail_oauth = callback_base_url
@@ -149,13 +145,12 @@ impl AppState {
         })
     }
 
+    /// Polls every due mailbox, then sleeps until the next one is due: the earliest
+    /// `last_sync_at + poll_interval_seconds` among enabled mailboxes, or this process's own
+    /// interval when none is enabled yet. No tick is assumed between the two.
     pub fn start_polling(self) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(POLL_TICK);
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            interval.tick().await;
             loop {
-                interval.tick().await;
                 match self.sync_due().await {
                     Ok(summary) => {
                         let failed = summary.mailboxes.iter().filter(|result| !result.ok).count();
@@ -167,6 +162,17 @@ impl AppState {
                     }
                     Err(error) => tracing::error!(code = error.code, "mailbox poll failed"),
                 }
+                let wait = match self.next_due_in() {
+                    Ok(wait) => wait,
+                    Err(error) => {
+                        tracing::error!(
+                            code = error.code,
+                            "next mailbox poll could not be scheduled"
+                        );
+                        Duration::from_secs(self.poll_interval_seconds.unwrap_or_default())
+                    }
+                };
+                tokio::time::sleep(wait).await;
             }
         });
     }

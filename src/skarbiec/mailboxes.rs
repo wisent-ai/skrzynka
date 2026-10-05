@@ -8,14 +8,10 @@
 
 use super::{
     invalid_item, optional_port, optional_text, profile_error, required_text, validate_hostname,
-    validate_item_id, ResolvedCredentials, SkarbiecResolver,
-    GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
+    validate_item_id, ResolvedCredentials, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID,
+    GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
 };
-use crate::{
-    db::MailboxConfig,
-    error::AppError,
-    models::{SmtpSecurity, MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS},
-};
+use crate::{db::MailboxConfig, error::AppError, models::SmtpSecurity};
 use lettre::Address;
 use serde_json::Value;
 use std::str::FromStr;
@@ -37,7 +33,11 @@ impl SkarbiecResolver {
 
     /// Add or remove [`MAILBOX_TAG`] on one item, keeping every other tag it
     /// carries. Nothing else about the item changes.
-    pub async fn set_mailbox_declared(&self, item_id: &str, declared: bool) -> Result<(), AppError> {
+    pub async fn set_mailbox_declared(
+        &self,
+        item_id: &str,
+        declared: bool,
+    ) -> Result<(), AppError> {
         validate_item_id(item_id)?;
         let item = self
             .list_items()
@@ -129,12 +129,12 @@ impl SkarbiecResolver {
     }
 
     /// The mailbox profile an item declares. Every value comes from the item;
-    /// `poll_interval_seconds` is read from it too and defaults to the
-    /// process setting.
+    /// `poll_interval_seconds` is read from it too, else from the process's stated
+    /// interval, else refused by name.
     pub async fn resolve_mailbox_config(
         &self,
         item_id: &str,
-        default_poll_interval_seconds: u64,
+        default_poll_interval_seconds: Option<u64>,
     ) -> Result<MailboxConfig, AppError> {
         validate_item_id(item_id)?;
         let payload = self.get_item(item_id).await?;
@@ -211,16 +211,19 @@ impl SkarbiecResolver {
             validate_item_id(item_id)?;
         }
         let poll_interval_seconds = match fields.get("poll_interval_seconds") {
-            None => default_poll_interval_seconds,
             Some(value) => value.as_u64().ok_or_else(|| {
                 profile_error("Skarbiec item poll_interval_seconds must be a whole number")
             })?,
+            None => default_poll_interval_seconds.ok_or_else(|| {
+                profile_error(
+                    "the Skarbiec item declares no poll_interval_seconds and this one-shot command \
+                     states no interval: declare poll_interval_seconds on the item, or connect \
+                     through the API of `skrzynka serve --poll-seconds N`, whose N applies",
+                )
+            })?,
         };
-        if !(MIN_POLL_INTERVAL_SECONDS..=MAX_POLL_INTERVAL_SECONDS).contains(&poll_interval_seconds)
-        {
-            return Err(profile_error(
-                "poll_interval_seconds must be between 15 and 86400",
-            ));
+        if poll_interval_seconds == 0 {
+            return Err(profile_error("poll_interval_seconds must be at least 1"));
         }
         let display_name = display_name.trim().to_string();
         if display_name.is_empty() {
