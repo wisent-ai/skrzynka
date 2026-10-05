@@ -7,7 +7,6 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
-const MAX_RAW_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MESSAGES_PER_SYNC: usize = 200;
 /// Gmail's own IMAP endpoint: the only host the Gmail connection paths speak
 /// for, and the boundary that decides whether a refusal is Google's.
@@ -209,13 +208,6 @@ pub fn fetch_messages(
                 .or_default() += 1;
             continue;
         };
-        if body.len() > MAX_RAW_MESSAGE_BYTES {
-            skipped += 1;
-            *rejected_by_reason
-                .entry("message_exceeds_2_mib".to_string())
-                .or_default() += 1;
-            continue;
-        }
         match normalize_message(uid, body) {
             Ok(message) => messages.push(message),
             Err(error) => {

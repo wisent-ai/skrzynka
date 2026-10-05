@@ -1,6 +1,6 @@
-//! The Skarbiec CLI transport: get and set one item, with bounded output.
+//! The Skarbiec CLI transport: get and set one item.
 
-use super::{invalid_item, validate_item_id, SkarbiecResolver, MAX_SKARBIEC_RESPONSE_BYTES};
+use super::{invalid_item, validate_item_id, SkarbiecResolver};
 use crate::error::AppError;
 use serde_json::Value;
 use std::process::Stdio;
@@ -78,7 +78,6 @@ impl SkarbiecResolver {
                 "selected Skarbiec item is missing, unreadable, or unavailable",
             ));
         }
-        bounded_stdout(&output.stdout)?;
         serde_json::from_slice(&output.stdout).map_err(|_| {
             AppError::dependency(
                 "SKARBIEC_RESPONSE_INVALID",
@@ -124,15 +123,4 @@ impl SkarbiecResolver {
             )
         })
     }
-}
-
-pub(super) fn bounded_stdout(stdout: &[u8]) -> Result<(), AppError> {
-    if stdout.len() > MAX_SKARBIEC_RESPONSE_BYTES {
-        return Err(AppError::dependency(
-            "SKARBIEC_RESPONSE_TOO_LARGE",
-            "Skarbiec response exceeded the 2 MiB safety limit",
-            false,
-        ));
-    }
-    Ok(())
 }

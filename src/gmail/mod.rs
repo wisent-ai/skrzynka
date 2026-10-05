@@ -19,8 +19,6 @@ pub use diagnosis::{
 };
 
 const GMAIL_SCOPES: &str = "openid email https://mail.google.com/";
-/// An OAuth authorization code is short; anything longer is not one.
-const MAX_AUTHORIZATION_CODE_LENGTH: usize = 4096;
 const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 const FLOW_LIFETIME_MINUTES: i64 = 10;
 

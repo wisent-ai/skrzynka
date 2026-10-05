@@ -4,10 +4,7 @@ use super::AppState;
 use crate::{
     error::AppError,
     mail,
-    models::{
-        CreateReplyRequest, DeliveryStatus, Message, ReplyAttempt, MAX_BODY_BYTES,
-        MAX_IDEMPOTENCY_KEY_LENGTH,
-    },
+    models::{CreateReplyRequest, DeliveryStatus, Message, ReplyAttempt},
 };
 use uuid::Uuid;
 
@@ -122,25 +119,16 @@ impl AppState {
 
 fn validate_reply_request(request: &CreateReplyRequest) -> Result<(), AppError> {
     let key = request.idempotency_key.trim();
-    if key.is_empty()
-        || key.len() > MAX_IDEMPOTENCY_KEY_LENGTH
-        || key.chars().any(char::is_whitespace)
-    {
+    if key.is_empty() || key.chars().any(char::is_whitespace) {
         return Err(AppError::invalid(
             "IDEMPOTENCY_KEY_INVALID",
-            "idempotency_key must contain 1 to 200 non-whitespace characters",
+            "idempotency_key must contain non-whitespace characters only",
         ));
     }
     if request.body.trim().is_empty() {
         return Err(AppError::invalid(
             "REPLY_BODY_INVALID",
             "reply body must not be empty",
-        ));
-    }
-    if request.body.len() > MAX_BODY_BYTES {
-        return Err(AppError::invalid(
-            "REPLY_BODY_TOO_LARGE",
-            "reply body exceeds the 256 KiB limit",
         ));
     }
     Ok(())

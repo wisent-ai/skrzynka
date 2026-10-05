@@ -3,7 +3,7 @@
 use super::{arguments::MessageCommand, print_json};
 use crate::{
     error::AppError,
-    models::{CreateOutboundRequest, CreateReplyRequest, MAX_BODY_BYTES},
+    models::{CreateOutboundRequest, CreateReplyRequest},
     service::AppState,
 };
 use std::path::Path;
@@ -75,11 +75,8 @@ pub(super) async fn run_message(
 pub(super) fn read_body_file(path: &Path, code: &'static str) -> Result<String, AppError> {
     let metadata = std::fs::metadata(path)
         .map_err(|_| AppError::invalid(code, "message body file could not be read"))?;
-    if !metadata.is_file() || metadata.len() > MAX_BODY_BYTES as u64 {
-        return Err(AppError::invalid(
-            code,
-            "message body file must be a regular file no larger than 256 KiB",
-        ));
+    if !metadata.is_file() {
+        return Err(AppError::invalid(code, "message body file must be a regular file"));
     }
     std::fs::read_to_string(path)
         .map_err(|_| AppError::invalid(code, "message body file must contain valid UTF-8 text"))

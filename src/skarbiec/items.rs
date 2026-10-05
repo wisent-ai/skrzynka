@@ -1,7 +1,7 @@
 //! Skarbiec items: the catalog, Google profiles, and the Gmail credentials written back.
 
 use super::{
-    cli::bounded_stdout, invalid_item, looks_like_google_profile, profile_preference,
+    invalid_item, looks_like_google_profile, profile_preference,
     validate_item_id, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID,
     GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
 };
@@ -25,7 +25,6 @@ impl SkarbiecResolver {
                 true,
             ));
         }
-        bounded_stdout(&output.stdout)?;
         let values: Vec<Value> = serde_json::from_slice(&output.stdout).map_err(|_| {
             AppError::dependency(
                 "SKARBIEC_RESPONSE_INVALID",

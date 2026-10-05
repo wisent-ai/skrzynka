@@ -4,10 +4,7 @@ use super::AppState;
 use crate::{
     error::AppError,
     mail,
-    models::{
-        CreateOutboundRequest, DeliveryStatus, Mailbox, OutboundMessage, MAX_BODY_BYTES,
-        MAX_IDEMPOTENCY_KEY_LENGTH, MAX_SUBJECT_CHARS,
-    },
+    models::{CreateOutboundRequest, DeliveryStatus, Mailbox, OutboundMessage},
 };
 use lettre::Address;
 use std::str::FromStr;
@@ -176,32 +173,23 @@ fn validate_outbound_request(
     request: &CreateOutboundRequest,
 ) -> Result<NormalizedOutbound, AppError> {
     let key = request.idempotency_key.trim();
-    if key.is_empty()
-        || key.len() > MAX_IDEMPOTENCY_KEY_LENGTH
-        || key.chars().any(char::is_whitespace)
-    {
+    if key.is_empty() || key.chars().any(char::is_whitespace) {
         return Err(AppError::invalid(
             "IDEMPOTENCY_KEY_INVALID",
-            "idempotency_key must contain 1 to 200 non-whitespace characters",
+            "idempotency_key must contain non-whitespace characters only",
         ));
     }
     let subject = request.subject.trim().to_string();
-    if subject.is_empty() || subject.chars().count() > MAX_SUBJECT_CHARS {
+    if subject.is_empty() {
         return Err(AppError::invalid(
             "OUTBOUND_SUBJECT_INVALID",
-            "subject must contain between 1 and 500 characters",
+            "subject must not be empty",
         ));
     }
     if request.body.trim().is_empty() {
         return Err(AppError::invalid(
             "OUTBOUND_BODY_INVALID",
             "outbound body must not be empty",
-        ));
-    }
-    if request.body.len() > MAX_BODY_BYTES {
-        return Err(AppError::invalid(
-            "OUTBOUND_BODY_TOO_LARGE",
-            "outbound body exceeds the 256 KiB limit",
         ));
     }
     let recipients = normalize_addresses(&request.to)?;

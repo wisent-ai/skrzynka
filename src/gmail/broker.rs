@@ -4,7 +4,6 @@ use super::{
     FlowRecord, GmailAuthorization, GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFailure,
     GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, GmailRedirectProbe, PendingFlow,
     StartGmailOAuthRequest, StartGmailOAuthResponse, FLOW_LIFETIME_MINUTES, GMAIL_SCOPES,
-    MAX_AUTHORIZATION_CODE_LENGTH,
 };
 use crate::{
     error::AppError,
@@ -167,7 +166,7 @@ impl GmailOAuthBroker {
             .code
             .as_deref()
             .map(str::trim)
-            .filter(|value| !value.is_empty() && value.len() <= MAX_AUTHORIZATION_CODE_LENGTH)
+            .filter(|value| !value.is_empty())
             .map(str::to_string)
         else {
             let error = AppError::invalid(

@@ -78,24 +78,13 @@ pub(super) async fn authorize_gmail(
 }
 
 pub(super) fn read_gmail_app_password() -> Result<String, AppError> {
-    const MAX_APP_PASSWORD_BYTES: u64 = 4 * 1024;
     let mut input = Vec::new();
-    io::stdin()
-        .lock()
-        .take(MAX_APP_PASSWORD_BYTES + 1)
-        .read_to_end(&mut input)
-        .map_err(|_| {
-            AppError::invalid(
-                "GMAIL_APP_PASSWORD_INPUT_INVALID",
-                "Google app-specific password could not be read from stdin",
-            )
-        })?;
-    if input.len() as u64 > MAX_APP_PASSWORD_BYTES {
-        return Err(AppError::invalid(
+    io::stdin().lock().read_to_end(&mut input).map_err(|_| {
+        AppError::invalid(
             "GMAIL_APP_PASSWORD_INPUT_INVALID",
-            "Google app-specific password supplied through stdin is too long",
-        ));
-    }
+            "Google app-specific password could not be read from stdin",
+        )
+    })?;
     let input = String::from_utf8(input).map_err(|_| {
         AppError::invalid(
             "GMAIL_APP_PASSWORD_INPUT_INVALID",

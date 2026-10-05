@@ -2,10 +2,7 @@
 //! item-shape helpers; the sub-modules extend it with the CLI transport, item reads and
 //! writes, mailbox resolution and Google token minting.
 
-use crate::{
-    error::AppError,
-    models::{MAX_HOST_LENGTH, MAX_ITEM_ID_LENGTH},
-};
+use crate::{error::AppError, models::MAX_HOST_LENGTH};
 use chrono::Utc;
 use reqwest::Client;
 use serde_json::Value;
@@ -20,7 +17,6 @@ mod mailboxes;
 
 pub use mailboxes::MAILBOX_TAG;
 
-const MAX_SKARBIEC_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 /// A cached token is reused only while it has more than a minute left.
 const TOKEN_EXPIRY_MARGIN_SECONDS: i64 = 60;
 /// The Google desktop OAuth client, asked of Skarbiec by the role its item
@@ -168,12 +164,9 @@ pub(super) fn reference_names(
 }
 
 pub(super) fn validate_item_id(item_id: &str) -> Result<(), AppError> {
-    if item_id.is_empty()
-        || item_id.len() > MAX_ITEM_ID_LENGTH
-        || item_id.chars().any(char::is_whitespace)
-    {
+    if item_id.is_empty() || item_id.chars().any(char::is_whitespace) {
         return Err(profile_error(
-            "skarbiec_item_id must contain 1 to 256 non-whitespace characters",
+            "skarbiec_item_id must contain non-whitespace characters only",
         ));
     }
     Ok(())

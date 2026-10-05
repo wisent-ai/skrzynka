@@ -14,9 +14,7 @@ use super::{
 use crate::{
     db::MailboxConfig,
     error::AppError,
-    models::{
-        SmtpSecurity, MAX_DISPLAY_NAME_CHARS, MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS,
-    },
+    models::{SmtpSecurity, MAX_POLL_INTERVAL_SECONDS, MIN_POLL_INTERVAL_SECONDS},
 };
 use lettre::Address;
 use serde_json::Value;
@@ -225,10 +223,8 @@ impl SkarbiecResolver {
             ));
         }
         let display_name = display_name.trim().to_string();
-        if display_name.is_empty() || display_name.chars().count() > MAX_DISPLAY_NAME_CHARS {
-            return Err(profile_error(
-                "display_name must contain between 1 and 200 characters",
-            ));
+        if display_name.is_empty() {
+            return Err(profile_error("display_name must not be empty"));
         }
 
         Ok(MailboxConfig {

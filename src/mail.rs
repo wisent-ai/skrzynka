@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    models::{Mailbox, Message, NewMessage, OutboundMessage, SmtpSecurity, MAX_BODY_BYTES},
+    models::{Mailbox, Message, NewMessage, OutboundMessage, SmtpSecurity},
     skarbiec::ResolvedCredentials,
 };
 use lettre::{
@@ -21,7 +21,7 @@ pub fn send_reply(
     inbound: &Message,
     body: &str,
 ) -> Result<String, AppError> {
-    validate_body(body, "REPLY_BODY_INVALID", "REPLY_BODY_TOO_LARGE")?;
+    validate_body(body, "REPLY_BODY_INVALID")?;
     let from_address = mailbox.email.parse().map_err(|_| {
         AppError::invalid(
             "MAILBOX_PROFILE_INVALID",
@@ -78,11 +78,7 @@ pub fn send_outbound(
     credentials: &ResolvedCredentials,
     outbound: &OutboundMessage,
 ) -> Result<String, AppError> {
-    validate_body(
-        &outbound.body,
-        "OUTBOUND_BODY_INVALID",
-        "OUTBOUND_BODY_TOO_LARGE",
-    )?;
+    validate_body(&outbound.body, "OUTBOUND_BODY_INVALID")?;
     let recipients = split_addresses(&outbound.recipients);
     if recipients.is_empty() {
         return Err(AppError::invalid(
@@ -185,21 +181,13 @@ fn deliver(
     Ok(())
 }
 
-fn validate_body(
-    body: &str,
-    empty_code: &'static str,
-    too_large_code: &'static str,
-) -> Result<(), AppError> {
+/// A body's size is the provider's to bound: its SMTP server refuses what it
+/// will not carry, and that refusal is reported as the delivery's failure.
+fn validate_body(body: &str, empty_code: &'static str) -> Result<(), AppError> {
     if body.trim().is_empty() {
         return Err(AppError::invalid(
             empty_code,
             "message body must not be empty",
-        ));
-    }
-    if body.len() > MAX_BODY_BYTES {
-        return Err(AppError::invalid(
-            too_large_code,
-            "message body exceeds the 256 KiB limit",
         ));
     }
     Ok(())
