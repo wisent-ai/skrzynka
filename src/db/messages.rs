@@ -11,11 +11,12 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 impl Database {
-    /// Commit a newly adopted mailbox (when `create_mailbox` is true), every
-    /// validated message, and the source cursor in one database transaction.
-    /// Existing UIDs are compared before mutation: identical rows are
-    /// unchanged, while a different payload for the same provider UID refuses
-    /// the entire page as a conflict.
+    /// Commit a newly adopted mailbox (when `create_mailbox` is true), the
+    /// validated messages given, and the source cursor in one database
+    /// transaction. A pass calls it once per provider message, so each message
+    /// and the cursor past it land together. Existing UIDs are compared before
+    /// mutation: identical rows are unchanged, while a different payload for
+    /// the same provider UID refuses the commit as a conflict.
     pub fn commit_mailbox_import(
         &self,
         mailbox: &Mailbox,

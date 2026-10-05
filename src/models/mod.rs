@@ -74,8 +74,8 @@ impl std::str::FromStr for SmtpSecurity {
     }
 }
 
-/// Declare one Skarbiec item a mailbox: tag it in Skarbiec and import its
-/// first INBOX page. The item supplies every profile value.
+/// Declare one Skarbiec item a mailbox: tag it in Skarbiec and import every
+/// message its INBOX holds. The item supplies every profile value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeclareMailboxRequest {
@@ -131,7 +131,6 @@ pub struct MailboxImportResult {
     pub mailbox: Mailbox,
     pub messages: ImportItemCounts,
     pub rejected_by_reason: BTreeMap<String, usize>,
-    pub has_more: bool,
 }
 
 mod messages;

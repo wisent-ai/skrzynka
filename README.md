@@ -83,15 +83,15 @@ cargo run -- message list
 ```
 
 `mailbox declare` reads the item's profile, tags the item `skrzynka:mailbox`
-in Skarbiec, resolves the credential only inside Skrzynka, fetches and
-validates up to 200 INBOX messages in ascending UID order, then commits the
-mailbox, accepted messages, and UID cursor in one database transaction. Taking
-the oldest remaining UIDs before applying the page limit prevents skipped mail.
-Its JSON result reports mailbox state, imported, unchanged, conflicting, and
-rejected message counts, rejection reasons, and `has_more`. Run `skrzynka sync`
-while `has_more` is true; an equal mailbox UID is unchanged and is never
-inserted twice. The item must supply the account address and server profile,
-and optionally `poll_interval_seconds`. There are no local account-profile
+in Skarbiec, resolves the credential only inside Skrzynka, and imports every
+INBOX message in ascending UID order. Each message is committed with the UID
+cursor past it, the first commit adopting the mailbox, so only one message is
+held at a time and a failure part way keeps everything before it; the next
+`skrzynka sync` continues from the cursor. Its JSON result reports mailbox
+state, imported, unchanged, conflicting, and rejected message counts and
+rejection reasons; an equal mailbox UID is unchanged and is never inserted
+twice. The item must supply the account address and server profile, and
+optionally `poll_interval_seconds`. There are no local account-profile
 overrides.
 
 Tagging the item directly works the same way:
@@ -277,7 +277,7 @@ All three roles can read organization resources, synchronize mailboxes, send rep
 
 ## Operating model
 
-Skrzynka is an operated product whose state lives in the fleet database `skrzynka`, which Stado provisions (`stado database create skrzynka --consumer skrzynka`) and names; every host and organization reads the same record. It contains organization-scoped mailbox metadata, normalized inbound message content, reply bodies and delivery state, and every originated message's recipients, cc, subject, full plain-text body, delivery status, provider message id, and refusal, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Message bodies are bounded to 2 MiB, each sync imports at most 200 messages per mailbox, and dependency retries are explicit rather than infinite.
+Skrzynka is an operated product whose state lives in the fleet database `skrzynka`, which Stado provisions (`stado database create skrzynka --consumer skrzynka`) and names; every host and organization reads the same record. It contains organization-scoped mailbox metadata, normalized inbound message content, reply bodies and delivery state, and every originated message's recipients, cc, subject, full plain-text body, delivery status, provider message id, and refusal, but no mailbox passwords or Wisent session tokens. The service polls enabled mailboxes every 60 seconds by default. Each sync imports every new message whole, committing each with the cursor past it, and dependency retries are explicit rather than infinite.
 
 Every command connects in four steps, and a failure answers `DATABASE_UNREACHABLE` naming the step:
 

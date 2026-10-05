@@ -14,10 +14,10 @@ SKRZYNKA_BIN=${SKRZYNKA_BIN:-target/debug/skrzynka}
 
 [ -x "$SKRZYNKA_BIN" ] || { echo "ERROR: executable not found: $SKRZYNKA_BIN" >&2; exit 1; }
 
-printf '%s\n' '== declare: tag the Skarbiec item skrzynka:mailbox and import its first INBOX page'
+printf '%s\n' '== declare: tag the Skarbiec item skrzynka:mailbox and import every INBOX message'
 "$SKRZYNKA_BIN" --organization "$ORGANIZATION" mailbox declare --skarbiec-item "$ITEM_ID"
 
-printf '%s\n' '== receive: read Skarbiec declarations again and perform one bounded IMAP synchronization'
+printf '%s\n' '== receive: read Skarbiec declarations again and import whatever arrived past each cursor'
 "$SKRZYNKA_BIN" --organization "$ORGANIZATION" sync
 
 printf '%s\n' "== observe: list normalized messages of the organization"

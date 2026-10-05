@@ -13,7 +13,7 @@ const { values } = parseArgs({ options: {
   organization: { type: 'string' }, mailbox: { type: 'string' },
   fixture: { type: 'string' }, binary: { type: 'string', default: 'skrzynka' },
 } });
-const outputRoot = join(root, '.build/real-tests/mailbox-pagination');
+const outputRoot = join(root, '.build/real-tests/mailbox-backlog');
 mkdirSync(outputRoot, { recursive: true });
 const output = mkdtempSync(join(outputRoot, 'run-'));
 const report = { started_at: new Date().toISOString(), commands: [], status: 'running' };
@@ -38,14 +38,9 @@ function command(args, organization = values.organization) {
   return JSON.parse(successful(values.binary, ['--organization', organization, ...args]));
 }
 function allMessages() {
-  const messages = [];
-  for (let offset = 0; ; offset += 500) {
-    const page = command(['message', 'list', '--mailbox', values.mailbox,
-      '--limit', '500', '--offset', String(offset)]);
-    assert(Array.isArray(page), 'message list did not return an array');
-    messages.push(...page);
-    if (page.length < 500) return messages;
-  }
+  const messages = command(['message', 'list', '--mailbox', values.mailbox]);
+  assert(Array.isArray(messages), 'message list did not return an array');
+  return messages;
 }
 try {
   report.source_revision = successful('git', ['rev-parse', 'HEAD']).trim();
@@ -60,12 +55,12 @@ try {
   // Fail on an incompatible installed CLI before inspecting fixture data.
   successful(values.binary, ['--organization', values.organization, 'sync', '--help']);
   assert(values.mailbox && values.fixture,
-    '--mailbox and --fixture are required; use a dedicated real mailbox with an unimported multipage fixture');
+    '--mailbox and --fixture are required; use a dedicated real mailbox with an unimported backlog fixture');
   const fixtureBytes = readFileSync(resolve(values.fixture));
   report.fixture_sha256 = hash(fixtureBytes);
   const expected = JSON.parse(fixtureBytes);
-  assert(Array.isArray(expected) && expected.length > 200,
-    'Fixture must describe more than 200 real messages, not generated or simulated provider responses');
+  assert(Array.isArray(expected) && expected.length > 1,
+    'Fixture must describe real messages, not generated or simulated provider responses');
   for (const message of expected) {
     assert(Number.isSafeInteger(message.external_uid) && message.external_uid > 0);
     for (const field of ['message_id', 'subject', 'body_text']) assert.equal(typeof message[field], 'string');
@@ -73,23 +68,16 @@ try {
   assert.equal(new Set(expected.map(message => message.external_uid)).size, expected.length);
   const before = command(['mailbox', 'show', values.mailbox]);
   const pending = expected.filter(message => message.external_uid > before.last_uid);
-  assert(pending.length > 200, 'Fixture has no multipage backlog; qualification cannot pass without exercising it');
-  const summaries = [];
-  let cursor = before.last_uid;
-  do {
-    const summary = command(['sync', '--mailbox', values.mailbox]);
-    assert.equal(typeof summary.has_more, 'boolean', 'Sync lost provider continuation state');
-    assert.equal(summary.mailbox_id, values.mailbox);
-    assert(summary.last_uid >= cursor, 'Import cursor moved backwards');
-    if (summary.has_more) assert(summary.last_uid > cursor, 'Continuation made no progress');
-    const stored = command(['mailbox', 'show', values.mailbox]);
-    assert.equal(stored.last_uid, summary.last_uid, 'Reported cursor was not persisted');
-    cursor = summary.last_uid;
-    summaries.push(summary);
-    if (!summary.has_more) break;
-  } while (true);
-  assert.equal(summaries[0].has_more, true, 'First page falsely reported an exhausted mailbox');
-  assert(summaries.length >= 2, 'Multipage import was not exercised');
+  assert(pending.length > 1, 'Fixture has no backlog past the cursor; qualification cannot pass without importing one');
+  // One pass imports everything past the cursor: no batch bound leaves a remainder.
+  const summary = command(['sync', '--mailbox', values.mailbox]);
+  const summaries = [summary];
+  assert.equal(summary.mailbox_id, values.mailbox);
+  assert.equal('has_more' in summary, false, 'Sync still reports a page continuation');
+  const highest = Math.max(...pending.map(message => message.external_uid));
+  assert(summary.last_uid >= highest, `One pass stopped at UID ${summary.last_uid} before ${highest}`);
+  const stored = command(['mailbox', 'show', values.mailbox]);
+  assert.equal(stored.last_uid, summary.last_uid, 'Reported cursor was not persisted');
   const messages = allMessages();
   for (const fixture of expected) {
     const matches = messages.filter(message => message.external_uid === fixture.external_uid);

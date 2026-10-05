@@ -102,11 +102,11 @@ impl AppState {
         Ok(report)
     }
 
-    /// Declare one Skarbiec item a mailbox and import its first INBOX page.
+    /// Declare one Skarbiec item a mailbox and import every INBOX message.
     ///
     /// The tag is written to Skarbiec first, so the declaration outlives this
-    /// process; the page is then fully fetched and normalized before the fleet
-    /// database commits the mailbox, messages, and cursor in one transaction.
+    /// process; each message is then committed with the cursor past it, the
+    /// first commit adopting the mailbox.
     pub async fn declare_mailbox(
         &self,
         organization_id: &str,
@@ -156,13 +156,31 @@ impl AppState {
         let source_item_id = config.skarbiec_item_id.clone();
         let database = self.database.clone();
         let (mailbox, imported, unchanged, fetched) = tokio::task::spawn_blocking(move || {
-            let fetched = mail::fetch_messages(&mailbox, &credentials)?;
-            let (mailbox, imported, unchanged) = database.commit_mailbox_import(
-                &mailbox,
-                create_mailbox,
-                &fetched.messages,
-                fetched.last_uid,
-            )?;
+            // The first commit adopts the mailbox; every later one adds one
+            // message and moves the cursor past it.
+            let mut adopted: Option<Mailbox> = None;
+            let mut imported = 0usize;
+            let mut unchanged = 0usize;
+            let fetched = mail::fetch_messages(&mailbox, &credentials, |messages, last_uid| {
+                let current = adopted.as_ref().unwrap_or(&mailbox);
+                let create = create_mailbox && adopted.is_none();
+                let (stored, added, retained) =
+                    database.commit_mailbox_import(current, create, messages, last_uid)?;
+                imported += added;
+                unchanged += retained;
+                adopted = Some(stored);
+                Ok(())
+            })?;
+            let mailbox = match adopted {
+                Some(stored) => stored,
+                // The provider had nothing past the cursor: the mailbox is
+                // still adopted, with its cursor where the provider left it.
+                None => {
+                    database
+                        .commit_mailbox_import(&mailbox, create_mailbox, &[], fetched.last_uid)?
+                        .0
+                }
+            };
             Ok::<_, AppError>((mailbox, imported, unchanged, fetched))
         })
         .await
@@ -188,7 +206,6 @@ impl AppState {
                 rejected: fetched.skipped,
             },
             rejected_by_reason: fetched.rejected_by_reason,
-            has_more: fetched.has_more,
         })
     }
 

@@ -7,18 +7,17 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
-const MAX_MESSAGES_PER_SYNC: usize = 200;
 /// Gmail's own IMAP endpoint: the only host the Gmail connection paths speak
 /// for, and the boundary that decides whether a refusal is Google's.
 pub const GMAIL_IMAP_HOST: &str = "imap.gmail.com";
 
+/// What one pass read from the provider besides the messages it handed to
+/// `commit`: what it could not import and why, and the cursor it reached.
 #[derive(Debug)]
 pub struct FetchedMessages {
-    pub messages: Vec<NewMessage>,
     pub skipped: usize,
     pub rejected_by_reason: BTreeMap<String, usize>,
     pub last_uid: u32,
-    pub has_more: bool,
 }
 
 struct OAuth2Authenticator<'a> {
@@ -112,9 +111,17 @@ fn password_login_refusal(error: imap::Error, host: &str, password: &str) -> Pas
     }
 }
 
+/// Read every message the provider holds past the mailbox cursor, oldest UID
+/// first, and hand each to `commit` with the cursor it reaches. A pass imports
+/// everything there is, one message at a time: no batch size decides how much
+/// mail arrives, only one message is held at once, and a failure part way
+/// keeps what was committed before it, so the next pass continues from there.
+/// A UID that yields no importable message is committed as an empty slice, so
+/// the cursor still passes it.
 pub fn fetch_messages(
     mailbox: &Mailbox,
     credentials: &ResolvedCredentials,
+    mut commit: impl FnMut(&[NewMessage], u32) -> Result<(), AppError>,
 ) -> Result<FetchedMessages, AppError> {
     let client = imap::ClientBuilder::new(mailbox.imap_host.as_str(), mailbox.imap_port)
         .mode(imap::ConnectionMode::Tls)
@@ -169,15 +176,10 @@ pub fn fetch_messages(
         .into_iter()
         .filter(|uid| *uid >= first_uid)
         .collect::<Vec<_>>();
-    // SEARCH returns a HashSet. Advance only through the oldest remaining UIDs:
-    // truncating arbitrary hash order would permanently jump over unread rows.
+    // SEARCH returns a HashSet. Advance through UIDs in order, so a pass that
+    // stops part way never leaves an older unread row behind its cursor.
     uids.sort_unstable();
-    let has_more = uids.len() > MAX_MESSAGES_PER_SYNC;
-    if has_more {
-        uids.truncate(MAX_MESSAGES_PER_SYNC);
-    }
 
-    let mut messages = Vec::with_capacity(uids.len());
     let mut skipped = 0usize;
     let mut rejected_by_reason = BTreeMap::new();
     let mut last_uid = mailbox.last_uid;
@@ -197,6 +199,7 @@ pub fn fetch_messages(
                 .entry("provider_row_missing".to_string())
                 .or_default() += 1;
             last_uid = last_uid.max(requested_uid);
+            commit(&[], last_uid)?;
             continue;
         };
         let uid = fetch.uid.unwrap_or(requested_uid);
@@ -206,24 +209,24 @@ pub fn fetch_messages(
             *rejected_by_reason
                 .entry("message_body_missing".to_string())
                 .or_default() += 1;
+            commit(&[], last_uid)?;
             continue;
         };
         match normalize_message(uid, body) {
-            Ok(message) => messages.push(message),
+            Ok(message) => commit(std::slice::from_ref(&message), last_uid)?,
             Err(error) => {
                 skipped += 1;
                 *rejected_by_reason
                     .entry(error.code.to_ascii_lowercase())
                     .or_default() += 1;
+                commit(&[], last_uid)?;
             }
         }
     }
     let _ = session.logout();
     Ok(FetchedMessages {
-        messages,
         skipped,
         rejected_by_reason,
         last_uid,
-        has_more,
     })
 }

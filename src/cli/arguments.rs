@@ -9,7 +9,7 @@ use uuid::Uuid;
     name = "skrzynka",
     version,
     about = "Receive and reply across multiple mailboxes without moving credentials out of Skarbiec",
-    after_help = "Mailboxes are the Skarbiec items tagged skrzynka:mailbox. Safe first result: skrzynka mailbox declare --skarbiec-item <ITEM_ID>; skrzynka sync while has_more=true"
+    after_help = "Mailboxes are the Skarbiec items tagged skrzynka:mailbox. Safe first result: skrzynka mailbox declare --skarbiec-item <ITEM_ID>, which imports every message the INBOX holds"
 )]
 pub struct Cli {
     /// The organization a command acts for in the fleet database. Every
@@ -60,7 +60,7 @@ pub(super) enum Command {
         #[command(subcommand)]
         command: MessageCommand,
     },
-    /// Run one bounded import pass; run it again while the result says has_more=true.
+    /// Import every message each mailbox's INBOX holds past its cursor, one message per commit.
     Sync {
         /// Import only this mailbox.
         #[arg(long)]
@@ -144,7 +144,7 @@ pub(super) enum AccountCommand {
 /// the tag; they keep no list of their own.
 #[derive(Subcommand)]
 pub(super) enum MailboxCommand {
-    /// Tag a Skarbiec item skrzynka:mailbox and import its first INBOX page.
+    /// Tag a Skarbiec item skrzynka:mailbox and import every message its INBOX holds.
     Declare(DeclareMailboxArgs),
     /// Remove the skrzynka:mailbox tag; the mailbox keeps its mail and stops polling.
     Undeclare {

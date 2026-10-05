@@ -37,20 +37,21 @@ impl AppState {
         };
         let database = self.database.clone();
         let result = tokio::task::spawn_blocking(move || {
-            let fetched = mail::fetch_messages(&mailbox, &credentials)?;
-            let (mailbox, received, _) = database.commit_mailbox_import(
-                &mailbox,
-                false,
-                &fetched.messages,
-                fetched.last_uid,
-            )?;
+            let mut current = mailbox;
+            let mut received = 0usize;
+            let fetched = mail::fetch_messages(&current.clone(), &credentials, |messages, last_uid| {
+                let (stored, added, _) =
+                    database.commit_mailbox_import(&current, false, messages, last_uid)?;
+                received += added;
+                current = stored;
+                Ok(())
+            })?;
             Ok::<_, AppError>(SyncSummary {
-                mailbox_id: mailbox.id,
+                mailbox_id: current.id,
                 received,
                 skipped: fetched.skipped,
                 last_uid: fetched.last_uid,
-                has_more: fetched.has_more,
-                completed_at: mailbox
+                completed_at: current
                     .last_sync_at
                     .unwrap_or_else(|| Utc::now().to_rfc3339()),
             })
