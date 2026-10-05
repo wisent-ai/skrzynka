@@ -103,7 +103,6 @@ impl AppState {
         Ok(GmailOAuthStatusResponse {
             flow_id: snapshot.flow_id,
             status,
-            expires_at: snapshot.expires_at.to_rfc3339(),
             mailbox,
             error,
         })

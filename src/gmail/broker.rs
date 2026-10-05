@@ -1,16 +1,15 @@
 //! The broker: construction, profiles, starting a flow, receiving the callback, status.
 
 use super::{
-    FlowRecord, GmailAuthorization, GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFailure,
-    GmailOAuthFlowSnapshot, GmailOAuthFlowStatus, GmailRedirectProbe, PendingFlow,
-    StartGmailOAuthRequest, StartGmailOAuthResponse, FLOW_LIFETIME_MINUTES, GMAIL_SCOPES,
+    FlowRecord, GmailAuthorization, GmailOAuthBroker, GmailOAuthCallback, GmailOAuthFlowSnapshot,
+    GmailOAuthFlowStatus, GmailRedirectProbe, PendingFlow, StartGmailOAuthRequest,
+    StartGmailOAuthResponse, GMAIL_SCOPES,
 };
 use crate::{
     error::AppError,
     skarbiec::{GoogleOAuthClient, SkarbiecResolver},
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use chrono::{Duration, Utc};
 use reqwest::{Client, Url};
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, sync::Arc};
@@ -85,7 +84,6 @@ impl GmailOAuthBroker {
         let verifier = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
         let flow_id = Uuid::new_v4();
-        let expires_at = Utc::now() + Duration::minutes(FLOW_LIFETIME_MINUTES);
         let authorization_url = authorization_url(
             &oauth_client,
             &self.callback_url,
@@ -98,7 +96,6 @@ impl GmailOAuthBroker {
             flow_id,
             FlowRecord {
                 organization_id: organization_id.to_string(),
-                expires_at,
                 status: GmailOAuthFlowStatus::Pending,
                 pending: Some(PendingFlow {
                     organization_id: organization_id.to_string(),
@@ -112,7 +109,6 @@ impl GmailOAuthBroker {
         Ok(StartGmailOAuthResponse {
             flow_id,
             authorization_url: authorization_url.to_string(),
-            expires_at: expires_at.to_rfc3339(),
         })
     }
 
@@ -222,29 +218,15 @@ impl GmailOAuthBroker {
         flow_id: Uuid,
         organization_id: &str,
     ) -> Result<GmailOAuthFlowSnapshot, AppError> {
-        let mut flows = self.flows.lock().await;
+        let flows = self.flows.lock().await;
         let record = flows
-            .get_mut(&flow_id)
+            .get(&flow_id)
             .ok_or_else(|| AppError::not_found("Gmail OAuth flow"))?;
         if record.organization_id != organization_id {
             return Err(AppError::not_found("Gmail OAuth flow"));
         }
-        if record.expires_at < Utc::now()
-            && matches!(
-                record.status,
-                GmailOAuthFlowStatus::Pending | GmailOAuthFlowStatus::Processing
-            )
-        {
-            record.status = GmailOAuthFlowStatus::Failed(GmailOAuthFailure {
-                code: "GMAIL_OAUTH_FLOW_EXPIRED",
-                message: "Gmail authorization flow expired".to_string(),
-                retryable: true,
-            });
-            record.pending = None;
-        }
         Ok(GmailOAuthFlowSnapshot {
             flow_id,
-            expires_at: record.expires_at,
             status: record.status.clone(),
         })
     }

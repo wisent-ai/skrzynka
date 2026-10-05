@@ -36,8 +36,8 @@ pub fn oauth_error_code(landing_url: &str) -> Option<String> {
 /// The refusal an unregistered loopback redirect deserves.
 ///
 /// Google refuses the authorization inside the browser, so no callback ever
-/// reaches this process and the flow spends its whole ten-minute lifetime
-/// saying nothing. The client id, the redirect URI presented and the one
+/// reaches this process and the flow stays pending, saying nothing. The
+/// client id, the redirect URI presented and the one
 /// setting that fixes it are the sentence an operator needs, and none of them
 /// were anywhere in this product's output.
 pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError {

@@ -37,7 +37,6 @@ pub struct AppState {
 pub struct GmailOAuthStatusResponse {
     pub flow_id: Uuid,
     pub status: &'static str,
-    pub expires_at: String,
     pub mailbox: Option<Mailbox>,
     pub error: Option<GmailOAuthStatusError>,
 }

@@ -5,7 +5,6 @@ use super::{
     GOOGLE_USERINFO_URL,
 };
 use crate::error::AppError;
-use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -15,18 +14,6 @@ impl GmailOAuthBroker {
         let record = flows
             .get_mut(&flow_id)
             .ok_or_else(|| AppError::not_found("Gmail OAuth flow"))?;
-        if record.expires_at < Utc::now() {
-            record.pending = None;
-            record.status = GmailOAuthFlowStatus::Failed(GmailOAuthFailure {
-                code: "GMAIL_OAUTH_FLOW_EXPIRED",
-                message: "Gmail authorization flow expired".to_string(),
-                retryable: true,
-            });
-            return Err(AppError::invalid(
-                "GMAIL_OAUTH_FLOW_EXPIRED",
-                "Gmail authorization flow expired",
-            ));
-        }
         if !matches!(record.status, GmailOAuthFlowStatus::Pending) {
             return Err(AppError::conflict(
                 "GMAIL_OAUTH_FLOW_CONSUMED",

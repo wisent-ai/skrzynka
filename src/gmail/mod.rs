@@ -2,7 +2,6 @@
 //! `exchange`; `diagnosis` explains a failed authorization.
 
 use crate::skarbiec::{GoogleOAuthClient, SkarbiecResolver};
-use chrono::Utc;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -20,7 +19,6 @@ pub use diagnosis::{
 
 const GMAIL_SCOPES: &str = "openid email https://mail.google.com/";
 const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
-const FLOW_LIFETIME_MINUTES: i64 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GmailProfile {
@@ -49,7 +47,6 @@ pub struct StartGmailOAuthRequest {
 pub struct StartGmailOAuthResponse {
     pub flow_id: Uuid,
     pub authorization_url: String,
-    pub expires_at: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,7 +82,6 @@ pub enum GmailOAuthFlowStatus {
 #[derive(Debug, Clone)]
 pub struct GmailOAuthFlowSnapshot {
     pub flow_id: Uuid,
-    pub expires_at: chrono::DateTime<Utc>,
     pub status: GmailOAuthFlowStatus,
 }
 
@@ -112,7 +108,6 @@ struct PendingFlow {
 #[derive(Clone)]
 struct FlowRecord {
     organization_id: String,
-    expires_at: chrono::DateTime<Utc>,
     status: GmailOAuthFlowStatus,
     pending: Option<PendingFlow>,
 }
