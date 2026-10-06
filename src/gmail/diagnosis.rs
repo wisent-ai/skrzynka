@@ -62,7 +62,7 @@ pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError 
 /// refusal that needs an app password names this one command rather than asking
 /// somebody to make one by hand.
 pub fn app_password_action(organization: &str, account: &str) -> String {
-    format!("weles app-password --login-role <Skarbiec role the Google login of {account} plays> --organization {organization}")
+    format!("weles app-password --provider google --login-role <Skarbiec role the Google login of {account} plays> --organization {organization}")
 }
 
 /// The refusal when Google IMAP rejects a password credential.
