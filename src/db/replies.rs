@@ -1,12 +1,12 @@
 //! Reply attempt rows: begin, update and read.
 
+use super::sql::{self, params, OptionalExtension, Row};
 use super::{is_unique_constraint, parse_enum, parse_uuid, Database};
 use crate::{
     error::AppError,
     models::{DeliveryStatus, ReplyAttempt},
 };
 use chrono::Utc;
-use super::sql::{self, params, OptionalExtension, Row};
 use uuid::Uuid;
 
 impl Database {

@@ -58,7 +58,8 @@ impl AppState {
             self.app_password_path(organization_id, account.as_deref(), mailbox.as_ref())
                 .await,
             self.oauth_path(organization_id).await,
-            self.delegation_path(organization_id, account.as_deref()).await,
+            self.delegation_path(organization_id, account.as_deref())
+                .await,
         ];
         Ok(GmailConnectionReadiness {
             account,

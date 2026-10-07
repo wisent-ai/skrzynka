@@ -49,8 +49,12 @@ impl AppState {
         let mut removed = Vec::new();
         for item in held {
             let payload = self.resolver.get_item(&item.id).await?;
-            let method = payload.pointer("/fields/auth_method").and_then(Value::as_str);
-            let token = payload.pointer("/fields/refresh_token").and_then(Value::as_str);
+            let method = payload
+                .pointer("/fields/auth_method")
+                .and_then(Value::as_str);
+            let token = payload
+                .pointer("/fields/refresh_token")
+                .and_then(Value::as_str);
             let grant = match (method, token) {
                 (Some("oauth2"), Some(token)) => revoke(token).await?,
                 _ => "none",

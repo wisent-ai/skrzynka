@@ -12,7 +12,11 @@ use crate::skarbiec::{GMAIL_DELEGATION_SCOPE, GOOGLE_ADMIN_DELEGATION_URL};
 use std::collections::BTreeMap;
 
 impl AppState {
-    pub(super) async fn delegation_path(&self, organization_id: &str, account: Option<&str>) -> GmailConnectionPath {
+    pub(super) async fn delegation_path(
+        &self,
+        organization_id: &str,
+        account: Option<&str>,
+    ) -> GmailConnectionPath {
         let service_account = match self.resolver.google_service_account().await {
             Ok(service_account) => service_account,
             Err(error) => {

@@ -62,9 +62,7 @@ pub(super) async fn run_message(
             offset,
         } => {
             let mailbox_id = match mailbox {
-                Some(selector) => {
-                    Some(state.resolve_mailbox(organization, &selector)?.id)
-                }
+                Some(selector) => Some(state.resolve_mailbox(organization, &selector)?.id),
                 None => None,
             };
             print_json(&state.list_outbound(organization, mailbox_id, limit, offset)?)
@@ -76,7 +74,10 @@ pub(super) fn read_body_file(path: &Path, code: &'static str) -> Result<String, 
     let metadata = std::fs::metadata(path)
         .map_err(|_| AppError::invalid(code, "message body file could not be read"))?;
     if !metadata.is_file() {
-        return Err(AppError::invalid(code, "message body file must be a regular file"));
+        return Err(AppError::invalid(
+            code,
+            "message body file must be a regular file",
+        ));
     }
     std::fs::read_to_string(path)
         .map_err(|_| AppError::invalid(code, "message body file must contain valid UTF-8 text"))

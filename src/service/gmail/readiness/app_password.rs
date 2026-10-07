@@ -90,7 +90,10 @@ impl AppState {
                     "{GMAIL_IMAP_HOST} accepted the password credential in Skarbiec item \
                      '{item}' for {account}."
                 ),
-                action: format!("skrzynka --organization {organization_id} sync --mailbox {}", mailbox.id),
+                action: format!(
+                    "skrzynka --organization {organization_id} sync --mailbox {}",
+                    mailbox.id
+                ),
                 observed,
             },
             // The provider's own words, without the guidance the refusal

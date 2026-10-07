@@ -1,12 +1,12 @@
 //! Outbound message rows: begin, update, read and interrupted-send recovery.
 
+use super::sql::{self, params, OptionalExtension, Row};
 use super::{is_unique_constraint, parse_enum, parse_uuid, Database};
 use crate::{
     error::AppError,
     models::{DeliveryStatus, OutboundMessage},
 };
 use chrono::Utc;
-use super::sql::{self, params, OptionalExtension, Row};
 use uuid::Uuid;
 
 impl Database {
@@ -173,7 +173,11 @@ impl Database {
             )?
         } else {
             statement.query_map(
-                params![organization_id, super::messages::page_limit(limit), i64::from(offset)],
+                params![
+                    organization_id,
+                    super::messages::page_limit(limit),
+                    i64::from(offset)
+                ],
                 outbound_from_row,
             )?
         };

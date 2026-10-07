@@ -1,15 +1,10 @@
 //! Skarbiec items: the catalog, Google profiles, and the Gmail credentials written back.
 
 use super::{
-    invalid_item, looks_like_google_profile, profile_preference,
-    validate_item_id, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID,
-    GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
+    invalid_item, looks_like_google_profile, profile_preference, validate_item_id,
+    SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
 };
-use crate::{
-    error::AppError,
-    gmail::GmailProfile,
-    models::SkarbiecItemMetadata,
-};
+use crate::{error::AppError, gmail::GmailProfile, models::SkarbiecItemMetadata};
 use lettre::Address;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};

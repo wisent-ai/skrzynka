@@ -50,10 +50,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/gmail/disconnect", post(disconnect_gmail))
         .route("/v1/mailboxes", get(list_mailboxes))
         .route("/v1/mailboxes/declare", post(declare_mailbox))
-        .route(
-            "/v1/mailboxes/:id",
-            get(get_mailbox).delete(delete_mailbox),
-        )
+        .route("/v1/mailboxes/:id", get(get_mailbox).delete(delete_mailbox))
         .route("/v1/mailboxes/:id/undeclare", post(undeclare_mailbox))
         .route("/v1/mailboxes/:id/sync", post(sync_mailbox))
         .route("/v1/sync", post(sync_all))
