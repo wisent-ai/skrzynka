@@ -74,18 +74,17 @@ impl SkarbiecResolver {
                 )
             })?
             .to_string();
-        let expires_in = payload
-            .get("expires_in")
-            .and_then(Value::as_i64)
-            .unwrap_or(3600)
-            .clamp(60, 86_400);
-        self.token_cache.lock().await.insert(
-            credential_item_id.to_string(),
-            CachedAccessToken {
-                value: access_token.clone(),
-                expires_at: Utc::now() + ChronoDuration::seconds(expires_in),
-            },
-        );
+        // Cached only for the lifetime Google states; an answer without
+        // expires_in is used for this call and asked for again next time.
+        if let Some(expires_in) = payload.get("expires_in").and_then(Value::as_i64) {
+            self.token_cache.lock().await.insert(
+                credential_item_id.to_string(),
+                CachedAccessToken {
+                    value: access_token.clone(),
+                    expires_at: Utc::now() + ChronoDuration::seconds(expires_in),
+                },
+            );
+        }
         Ok(access_token)
     }
 
@@ -263,18 +262,16 @@ impl SkarbiecResolver {
                 )
             })?
             .to_string();
-        let expires_in = payload
-            .get("expires_in")
-            .and_then(Value::as_i64)
-            .unwrap_or(3600)
-            .clamp(60, 86_400);
-        self.token_cache.lock().await.insert(
-            cache_key.to_string(),
-            CachedAccessToken {
-                value: access_token.clone(),
-                expires_at: Utc::now() + ChronoDuration::seconds(expires_in),
-            },
-        );
+        // Cached only for the lifetime Google states, as above.
+        if let Some(expires_in) = payload.get("expires_in").and_then(Value::as_i64) {
+            self.token_cache.lock().await.insert(
+                cache_key.to_string(),
+                CachedAccessToken {
+                    value: access_token.clone(),
+                    expires_at: Utc::now() + ChronoDuration::seconds(expires_in),
+                },
+            );
+        }
         Ok(access_token)
     }
 }
