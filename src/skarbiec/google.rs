@@ -6,8 +6,10 @@ use super::{
     GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID, GOOGLE_TOKEN_URI,
 };
 use crate::error::AppError;
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::Utc;
 use serde_json::{json, Value};
+mod token_response;
+use token_response::{refresh_refusal, token_expiry};
 
 impl SkarbiecResolver {
     pub(super) async fn refresh_google_access_token(
@@ -56,11 +58,7 @@ impl SkarbiecResolver {
             )
         })?;
         if !status.is_success() {
-            return Err(AppError::dependency(
-                "GMAIL_AUTHORIZATION_EXPIRED",
-                "Google rejected the saved Gmail authorization; reconnect the profile",
-                false,
-            ));
+            return Err(refresh_refusal(status, &payload));
         }
         let access_token = payload
             .get("access_token")
@@ -276,30 +274,4 @@ impl SkarbiecResolver {
         }
         Ok(access_token)
     }
-}
-
-fn token_expiry(
-    payload: &Value,
-    requested_at: chrono::DateTime<Utc>,
-) -> Result<Option<chrono::DateTime<Utc>>, AppError> {
-    let Some(value) = payload.get("expires_in") else {
-        return Ok(None);
-    };
-    let seconds = value.as_i64().ok_or_else(|| {
-        AppError::dependency(
-            "GMAIL_TOKEN_RESPONSE_INVALID",
-            format!("Google expires_in must be an integer number of seconds, received {value}"),
-            false,
-        )
-    })?;
-    ChronoDuration::try_seconds(seconds)
-        .and_then(|duration| requested_at.checked_add_signed(duration))
-        .map(Some)
-        .ok_or_else(|| {
-            AppError::dependency(
-                "GMAIL_TOKEN_RESPONSE_INVALID",
-                format!("Google expires_in {seconds} cannot be represented as a token expiry"),
-                false,
-            )
-        })
 }

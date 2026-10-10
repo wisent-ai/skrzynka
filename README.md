@@ -295,6 +295,12 @@ a failed child wait reports that persisted state is unknown, rather than
 asserting that nothing was saved. Full input delivery and a successful child
 exit are both required before Skrzynka continues.
 
+Refresh refusals do not all mean expired authorization. Only Google's
+`invalid_grant` maps to `GMAIL_AUTHORIZATION_EXPIRED` and reconnect guidance.
+Other JSON refusals retain their HTTP status, OAuth error and error description
+under `GMAIL_TOKEN_REFRESH_UNAVAILABLE`; server errors and rate limiting remain
+retryable. Token response payloads are not copied wholesale into diagnostics.
+
 The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret`, and one `value` field of type `oauth_client`; that value is the unmodified JSON downloaded for a Google OAuth client whose application type is **Desktop app**. Skrzynka accepts only the `installed` client shape and Google's canonical authorization and token endpoints.
 
 That client belongs in Wisent's own Google Cloud project, the one that holds the OAuth consent brand titled "Wisent". **Desktop app** is not a preference: Google grants installed-app clients the loopback exemption, so any `127.0.0.1` port is accepted without registering each one, and a single Desktop client therefore satisfies Skrzynka's `127.0.0.1:8790` callback and Oko's `--redirect-port` at the same time. A Web-type client has no such exemption and refuses every unregistered redirect URI with `redirect_uri_mismatch` before any consent screen appears.
