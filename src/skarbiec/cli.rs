@@ -13,6 +13,16 @@ use std::process::Stdio;
 use tokio::{io::AsyncWriteExt, process::Command};
 
 impl SkarbiecResolver {
+    /// The Skarbiec executable this resolver runs, so recovery guidance names
+    /// the one `--skarbiec-bin` selected; `None` when an explicit credentials
+    /// file answers instead of Skarbiec.
+    pub(crate) fn status_executable(&self) -> Option<&std::path::Path> {
+        match self.local {
+            Some(_) => None,
+            None => Some(&self.binary),
+        }
+    }
+
     /// Observe the selected vault without reading any credential payload.
     pub(crate) async fn credential_source(&self) -> crate::models::CredentialSource {
         let mut source = crate::models::CredentialSource {

@@ -228,7 +228,7 @@ impl AppState {
             .set_mailbox_declared(&mailbox.skarbiec_item_id, false)
             .await?;
         self.reconcile_mailboxes(Some(organization_id)).await?;
-        self.database.get_mailbox(organization_id, id)
+        self.get_mailbox(organization_id, id).await
     }
 
     pub async fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
@@ -237,6 +237,8 @@ impl AppState {
         if !mailboxes.is_empty() {
             let source = self.resolver.credential_source().await;
             for mailbox in &mut mailboxes {
+                mailbox.recovery_command =
+                    mailbox.recovery_command(self.resolver.status_executable());
                 mailbox.credential_source = Some(source.clone());
             }
         }
@@ -245,6 +247,7 @@ impl AppState {
 
     pub async fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
         let mut mailbox = self.database.get_mailbox(organization_id, id)?;
+        mailbox.recovery_command = mailbox.recovery_command(self.resolver.status_executable());
         mailbox.credential_source = Some(self.resolver.credential_source().await);
         Ok(mailbox)
     }
