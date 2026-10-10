@@ -224,7 +224,10 @@ impl SkarbiecResolver {
                 SmtpSecurity::Tls => 465,
             },
         )?;
-        let smtp_skarbiec_item_id = optional_text(fields.get("smtp_skarbiec_item_id"));
+        let smtp_skarbiec_item_id = match fields.get("smtp_skarbiec_item_id") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(required_text(Some(value), "smtp_skarbiec_item_id")?),
+        };
         if let Some(item_id) = smtp_skarbiec_item_id.as_deref() {
             validate_item_id(item_id)?;
         }

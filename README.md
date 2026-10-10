@@ -297,6 +297,9 @@ For password-backed providers, Skrzynka persists the exact item selected by the 
 Skarbiec stores the account list, the account profiles, and the credentials: the tag `skrzynka:mailbox` declares an item a mailbox. `mailbox declare` accepts only `--skarbiec-item`; CLI profile flags and API profile overrides are refused. The fleet database keeps the imported non-secret snapshot and mail-processing state, not a separately editable account definition. Every reconciliation adopts source display-name and SMTP changes (`mailbox_state: updated` on declare). A changed receiving address or IMAP endpoint is refused because the retained UID cursor cannot safely identify another source.
 
 Each declared profile has a receiving `skarbiec_item_id` and may contain `smtp_skarbiec_item_id` for a separate sending credential. Gmail connection methods persist complete bundles in Skarbiec and declare them there. OAuth stores its refresh token in Skarbiec; delegation stores a service-account reference. No mailbox secret crosses the desktop API or enters the database.
+An absent or JSON-null `smtp_skarbiec_item_id` uses the receiving credential.
+A present non-null value must be nonblank text naming a valid item; malformed
+sending declarations refuse by field name instead of silently switching identities.
 
 Credential writes feed Skarbiec's stdin while concurrently draining its stdout
 and stderr. A child that reports a refusal before consuming the payload cannot
