@@ -19,6 +19,29 @@ use std::str::FromStr;
 /// The Skarbiec tag that declares an item one of Skrzynka's mailboxes.
 pub const MAILBOX_TAG: &str = "skrzynka:mailbox";
 
+#[derive(PartialEq, Eq)]
+enum MailAuthentication {
+    Password,
+    GoogleOAuth,
+    GoogleDelegation,
+}
+
+fn authentication_method(
+    fields: &serde_json::Map<String, Value>,
+) -> Result<MailAuthentication, AppError> {
+    let Some(value) = fields.get("auth_method") else {
+        return Ok(MailAuthentication::Password);
+    };
+    match value.as_str().map(str::trim) {
+        Some("password") => Ok(MailAuthentication::Password),
+        Some("oauth2") => Ok(MailAuthentication::GoogleOAuth),
+        Some("oauth2_service_account") => Ok(MailAuthentication::GoogleDelegation),
+        _ => Err(invalid_item(
+            "auth_method must be password, oauth2, or oauth2_service_account when present; an invalid declaration does not select password authentication",
+        )),
+    }
+}
+
 impl SkarbiecResolver {
     /// Every item the vault declares a mailbox, by id.
     pub async fn declared_mailbox_items(&self) -> Result<Vec<String>, AppError> {
@@ -81,7 +104,8 @@ impl SkarbiecResolver {
             .and_then(Value::as_object)
             .ok_or_else(|| invalid_item("item has no canonical fields object"))?;
         let username = required_text(fields.get("username"), "username")?;
-        if optional_text(fields.get("auth_method")).as_deref() == Some("oauth2") {
+        let method = authentication_method(fields)?;
+        if method == MailAuthentication::GoogleOAuth {
             if optional_text(fields.get("oauth_provider")).as_deref() != Some("google") {
                 return Err(invalid_item("unsupported OAuth mail provider"));
             }
@@ -104,7 +128,7 @@ impl SkarbiecResolver {
                 access_token,
             });
         }
-        if optional_text(fields.get("auth_method")).as_deref() == Some("oauth2_service_account") {
+        if method == MailAuthentication::GoogleDelegation {
             if optional_text(fields.get("oauth_provider")).as_deref() != Some("google") {
                 return Err(invalid_item("unsupported OAuth mail provider"));
             }
@@ -144,17 +168,17 @@ impl SkarbiecResolver {
             .and_then(Value::as_object)
             .ok_or_else(|| invalid_item("item has no canonical fields object"))?;
         let username = required_text(fields.get("username"), "username")?;
-        match optional_text(fields.get("auth_method")).as_deref() {
-            Some("oauth2") => {
+        match authentication_method(fields)? {
+            MailAuthentication::GoogleOAuth => {
                 required_text(fields.get("refresh_token"), "refresh_token")?;
             }
-            Some("oauth2_service_account") => {
+            MailAuthentication::GoogleDelegation => {
                 required_text(
                     fields.get("service_account_item_id"),
                     "service_account_item_id",
                 )?;
             }
-            _ => {
+            MailAuthentication::Password => {
                 required_text(fields.get("password"), "password")?;
             }
         }

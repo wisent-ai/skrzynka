@@ -34,6 +34,10 @@ The observable result is one local inbox with mailbox identity preserved on ever
   credential resolver, IMAP normalizer, and atomic database commit.
 - Read password-backed `login` items with explicit non-secret server settings
   or complete `bundle` profiles.
+- An omitted `auth_method` identifies a password-backed item. When present,
+  it must be `password`, `oauth2` or `oauth2_service_account`; blank, non-text
+  and unknown declarations fail with `SKARBIEC_ITEM_INVALID` before provider
+  authentication. Profile import and credential use enforce the same choice.
 - Poll IMAP over TLS, normalize text messages, and deduplicate them by mailbox
   and IMAP UID.
 - List mailboxes and messages without exposing credentials.
