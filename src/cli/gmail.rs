@@ -32,30 +32,30 @@ pub(super) async fn authorize_gmail(
         .await?;
     print_json(&flow)?;
 
-    // An unregistered redirect URI is refused by Google inside the browser:
-    // nothing ever reaches this listener, so no callback would ever settle the
-    // flow. Ask Google before waiting, and report that cause instead.
-    if crate::gmail::diagnose_authorization(&flow.authorization_url)
-        .await
-        .as_deref()
-        == Some("redirect_uri_mismatch")
-    {
-        if let Some((client_id, redirect_uri)) =
-            crate::gmail::authorization_operands(&flow.authorization_url)
-        {
-            return Err(crate::gmail::redirect_not_registered(
-                &client_id,
-                &redirect_uri,
-            ));
-        }
-    }
-
     let callback_state = state.clone();
     let server =
         tokio::spawn(
             async move { axum::serve(listener, crate::api::router(callback_state)).await },
         );
-    let status = state.gmail_oauth_settled(organization, flow.flow_id).await;
+    let status = async {
+        tokio::select! {
+            settled = state.gmail_oauth_settled(organization, flow.flow_id) => settled,
+            diagnosis = crate::gmail::diagnose_authorization(&flow.authorization_url) => {
+                if diagnosis.as_deref() == Some("redirect_uri_mismatch") {
+                    if let Some((client_id, redirect_uri)) =
+                        crate::gmail::authorization_operands(&flow.authorization_url)
+                    {
+                        return Err(crate::gmail::redirect_not_registered(
+                            &client_id,
+                            &redirect_uri,
+                        ));
+                    }
+                }
+                state.gmail_oauth_settled(organization, flow.flow_id).await
+            }
+        }
+    }
+    .await;
     server.abort();
     let status = status?;
     if status.status == "completed" {

@@ -249,12 +249,12 @@ The OAuth alternative remains:
 target/debug/skrzynka account authorize --provider gmail --bind 127.0.0.1:8790 --skarbiec-item <google-login-item>
 ```
 
-It prints Google's authorization URL, then asks Google whether that client
-accepts the loopback redirect. A `redirect_uri_mismatch` answer ends the
-command at once with `GMAIL_OAUTH_REDIRECT_NOT_REGISTERED`, naming the client
-id and redirect URI, because Google would refuse inside the browser
-and no callback would ever arrive. Otherwise it waits on the `--bind` address with
-no deadline until Google's callback settles the flow: it exits 0 after the
+It prints Google's authorization URL and starts serving the loopback callback
+while asking Google whether that client accepts the redirect. A completed
+callback settles the command without waiting for the diagnostic response.
+If the diagnostic answers first with `redirect_uri_mismatch`, the command
+refuses with `GMAIL_OAUTH_REDIRECT_NOT_REGISTERED`, naming the client and
+redirect URI. Otherwise it waits without a deadline: it exits 0 after the
 callback stores a dedicated `skrzynka-gmail-*` OAuth bundle and declares it a
 mailbox in Skarbiec, or exits non-zero with `GMAIL_OAUTH_FAILED` carrying the
 refusal the callback reported (declined consent, an invalid code, a failed
