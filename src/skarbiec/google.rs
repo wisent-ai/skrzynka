@@ -9,7 +9,7 @@ use crate::error::AppError;
 use chrono::Utc;
 use serde_json::{json, Value};
 mod token_response;
-use token_response::{refresh_refusal, token_expiry};
+use token_response::{credential_fingerprint, refresh_refusal, token_expiry};
 
 impl SkarbiecResolver {
     pub(super) async fn refresh_google_access_token(
@@ -17,6 +17,14 @@ impl SkarbiecResolver {
         credential_item_id: &str,
         refresh_token: &str,
     ) -> Result<String, AppError> {
+        let oauth_client = self.google_oauth_client().await?;
+        let fingerprint = credential_fingerprint([
+            "refresh",
+            refresh_token,
+            &oauth_client.client_id,
+            &oauth_client.client_secret,
+            &oauth_client.token_uri,
+        ]);
         if let Some(cached) = self
             .token_cache
             .lock()
@@ -25,11 +33,10 @@ impl SkarbiecResolver {
             .cloned()
         {
             // Google's expires_in is the token's lifetime; it is reused until then, not a minute short.
-            if cached.expires_at > Utc::now() {
+            if cached.expires_at > Utc::now() && cached.credential_fingerprint == fingerprint {
                 return Ok(cached.value);
             }
         }
-        let oauth_client = self.google_oauth_client().await?;
         let requested_at = Utc::now();
         let response = self
             .client
@@ -81,6 +88,7 @@ impl SkarbiecResolver {
                 CachedAccessToken {
                     value: access_token.clone(),
                     expires_at,
+                    credential_fingerprint: fingerprint,
                 },
             );
         }
@@ -178,13 +186,26 @@ impl SkarbiecResolver {
         cache_key: &str,
         user_email: &str,
     ) -> Result<String, AppError> {
+        let account = self.google_service_account().await?;
+        let fingerprint = credential_fingerprint(
+            [
+                "delegated",
+                user_email,
+                account.client_email.as_str(),
+                account.client_id.as_str(),
+                account.private_key.as_str(),
+                account.token_uri.as_str(),
+                GMAIL_DELEGATION_SCOPE,
+            ]
+            .into_iter()
+            .chain(account.private_key_id.as_deref()),
+        );
         if let Some(cached) = self.token_cache.lock().await.get(cache_key).cloned() {
             // Google's expires_in is the token's lifetime; it is reused until then, not a minute short.
-            if cached.expires_at > Utc::now() {
+            if cached.expires_at > Utc::now() && cached.credential_fingerprint == fingerprint {
                 return Ok(cached.value);
             }
         }
-        let account = self.google_service_account().await?;
         let now = Utc::now().timestamp();
         let claims = json!({
             "iss": account.client_email,
@@ -283,6 +304,7 @@ impl SkarbiecResolver {
                 CachedAccessToken {
                     value: access_token.clone(),
                     expires_at,
+                    credential_fingerprint: fingerprint,
                 },
             );
         }

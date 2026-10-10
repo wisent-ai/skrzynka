@@ -103,6 +103,12 @@ deadline is measured from request start, so transport time cannot extend the
 provider's lifetime. An absent lifetime means no caching; a malformed or
 unrepresentable lifetime returns `GMAIL_TOKEN_RESPONSE_INVALID`, not a panic or
 an invented default. Refresh and delegated grants use the same calculation.
+Reuse also requires the current credential identity to match the minting
+inputs: refresh token, OAuth client and endpoint, or delegated subject, service
+account key and scope. The resolver reads the current vault declaration before
+consulting cached tokens. A changed or unreadable declaration cannot reuse a
+token minted from the old one; only a length-framed digest, not additional
+credential plaintext, is retained as the cache identity.
 Transport and JSON decoding refusals distinguish refresh-token from
 delegated-token operations and retain the underlying cause; decoding failures
 also include the observed HTTP status. Diagnostics do not print token response

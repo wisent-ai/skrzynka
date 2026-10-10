@@ -43,6 +43,7 @@ pub enum ResolvedCredentials {
 struct CachedAccessToken {
     value: String,
     expires_at: chrono::DateTime<Utc>,
+    credential_fingerprint: sha2::digest::Output<sha2::Sha256>,
 }
 
 #[derive(Clone)]

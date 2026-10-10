@@ -1,6 +1,20 @@
 use crate::error::AppError;
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+/// Frame every field with its byte length so distinct credential tuples
+/// cannot become the same hash input through concatenation.
+pub(super) fn credential_fingerprint<'a>(
+    parts: impl IntoIterator<Item = &'a str>,
+) -> sha2::digest::Output<Sha256> {
+    let mut digest = Sha256::new();
+    for part in parts {
+        digest.update(part.len().to_le_bytes());
+        digest.update(part.as_bytes());
+    }
+    digest.finalize()
+}
 
 pub(super) fn refresh_refusal(status: reqwest::StatusCode, payload: &Value) -> AppError {
     let code = payload.get("error").and_then(Value::as_str);
