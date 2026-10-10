@@ -28,6 +28,7 @@ impl SkarbiecResolver {
             }
         }
         let oauth_client = self.google_oauth_client().await?;
+        let requested_at = Utc::now();
         let response = self
             .client
             .post(&oauth_client.token_uri)
@@ -76,12 +77,12 @@ impl SkarbiecResolver {
             .to_string();
         // Cached only for the lifetime Google states; an answer without
         // expires_in is used for this call and asked for again next time.
-        if let Some(expires_in) = payload.get("expires_in").and_then(Value::as_i64) {
+        if let Some(expires_at) = token_expiry(&payload, requested_at)? {
             self.token_cache.lock().await.insert(
                 credential_item_id.to_string(),
                 CachedAccessToken {
                     value: access_token.clone(),
-                    expires_at: Utc::now() + ChronoDuration::seconds(expires_in),
+                    expires_at,
                 },
             );
         }
@@ -196,6 +197,7 @@ impl SkarbiecResolver {
         )?;
         let assertion = jsonwebtoken::encode(&header, &claims, &key)
             .map_err(|_| AppError::internal("delegation assertion could not be signed"))?;
+        let requested_at = Utc::now();
         let response = self
             .client
             .post(&account.token_uri)
@@ -263,15 +265,41 @@ impl SkarbiecResolver {
             })?
             .to_string();
         // Cached only for the lifetime Google states, as above.
-        if let Some(expires_in) = payload.get("expires_in").and_then(Value::as_i64) {
+        if let Some(expires_at) = token_expiry(&payload, requested_at)? {
             self.token_cache.lock().await.insert(
                 cache_key.to_string(),
                 CachedAccessToken {
                     value: access_token.clone(),
-                    expires_at: Utc::now() + ChronoDuration::seconds(expires_in),
+                    expires_at,
                 },
             );
         }
         Ok(access_token)
     }
+}
+
+fn token_expiry(
+    payload: &Value,
+    requested_at: chrono::DateTime<Utc>,
+) -> Result<Option<chrono::DateTime<Utc>>, AppError> {
+    let Some(value) = payload.get("expires_in") else {
+        return Ok(None);
+    };
+    let seconds = value.as_i64().ok_or_else(|| {
+        AppError::dependency(
+            "GMAIL_TOKEN_RESPONSE_INVALID",
+            format!("Google expires_in must be an integer number of seconds, received {value}"),
+            false,
+        )
+    })?;
+    ChronoDuration::try_seconds(seconds)
+        .and_then(|duration| requested_at.checked_add_signed(duration))
+        .map(Some)
+        .ok_or_else(|| {
+            AppError::dependency(
+                "GMAIL_TOKEN_RESPONSE_INVALID",
+                format!("Google expires_in {seconds} cannot be represented as a token expiry"),
+                false,
+            )
+        })
 }

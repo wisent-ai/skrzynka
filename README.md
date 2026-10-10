@@ -94,6 +94,12 @@ the original code and cause and appends the persistence failure; the watcher
 logs both. A failed worker task is recorded through the same path. Inspect the
 live refusal rather than treating an older `last_error_message` as current.
 
+Google access-token caching uses only a supplied integer `expires_in`. The
+deadline is measured from request start, so transport time cannot extend the
+provider's lifetime. An absent lifetime means no caching; a malformed or
+unrepresentable lifetime returns `GMAIL_TOKEN_RESPONSE_INVALID`, not a panic or
+an invented default. Refresh and delegated grants use the same calculation.
+
 In another shell, declare a mailbox whose complete profile is stored in a
 Skarbiec `bundle`:
 
