@@ -105,19 +105,39 @@ pub fn authorization_operands(authorization_url: &str) -> Option<(String, String
     Some((client_id?, redirect_uri?))
 }
 
-/// Ask Google what it says about this authorization, for use only AFTER a flow
-/// has already failed.
-///
-/// Never a pre-flight gate: Google shows a sign-in page before validating the
-/// redirect for some forms, so a response that is not an error page does not
-/// mean the redirect is registered. This only explains a failure that has
-/// already happened.
-pub async fn diagnose_authorization(authorization_url: &str) -> Option<String> {
+/// Ask Google for an authorization-page refusal without gating callback serving.
+/// An answering page with no OAuth error is weaker than a completed flow;
+/// request failure is a separate diagnostic error, never proof of acceptance.
+pub async fn diagnose_authorization(authorization_url: &str) -> Result<Option<String>, AppError> {
     let response = Client::new()
         .get(authorization_url)
         .header("user-agent", "Mozilla/5.0")
         .send()
         .await
-        .ok()?;
-    oauth_error_code(response.url().as_str())
+        .map_err(|error| {
+            let error = error.without_url();
+            let mut detail = error.to_string();
+            let mut cause = std::error::Error::source(&error);
+            while let Some(source) = cause {
+                detail.push_str(&format!("; {source}"));
+                cause = source.source();
+            }
+            AppError::dependency(
+                "GMAIL_OAUTH_DIAGNOSIS_FAILED",
+                format!("requesting Google authorization-page diagnosis failed: {detail}"),
+                true,
+            )
+        })?;
+    let refusal = oauth_error_code(response.url().as_str());
+    if refusal.is_none() && !response.status().is_success() {
+        return Err(AppError::dependency(
+            "GMAIL_OAUTH_DIAGNOSIS_FAILED",
+            format!(
+                "Google authorization-page diagnosis returned HTTP {} without a decoded OAuth refusal",
+                response.status()
+            ),
+            response.status().is_server_error(),
+        ));
+    }
+    Ok(refusal)
 }

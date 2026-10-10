@@ -263,6 +263,12 @@ Binding failures name the requested socket and operating-system cause. The CLI
 also observes its callback server while awaiting authorization: an early exit,
 serve error or failed task is reported as `INTERNAL_ERROR` with the socket and
 observed cause, rather than waiting for a callback that cannot be processed.
+An authorization-page diagnostic request that fails reports
+`GMAIL_OAUTH_DIAGNOSIS_FAILED` with its transport cause or HTTP status, without
+printing the authorization URL. The explicit connection probe retains this
+failure; during authorization the CLI prints it to stderr and keeps serving
+the real callback. A failed diagnosis is not evidence that Google accepted
+the redirect, and it does not invalidate a subsequently completed callback.
 
 The redirect is refused when the client stored in
 `skrzynka-google-oauth-desktop` has no loopback redirect, so no consent screen

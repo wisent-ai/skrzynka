@@ -67,7 +67,7 @@ impl GmailOAuthBroker {
         Ok(GmailRedirectProbe {
             client_id: oauth_client.client_id,
             redirect_uri: self.callback_url.to_string(),
-            refusal: super::diagnose_authorization(authorization_url.as_str()).await,
+            refusal: super::diagnose_authorization(authorization_url.as_str()).await?,
         })
     }
 

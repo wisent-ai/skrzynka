@@ -43,7 +43,10 @@ pub(super) async fn authorize_gmail(
         tokio::select! {
             settled = state.gmail_oauth_settled(organization, flow.flow_id) => settled,
             diagnosis = crate::gmail::diagnose_authorization(&flow.authorization_url) => {
-                if diagnosis.as_deref() == Some("redirect_uri_mismatch") {
+                if let Err(error) = &diagnosis {
+                    eprintln!("{error}; callback authorization remains pending");
+                }
+                if matches!(diagnosis.as_ref(), Ok(Some(refusal)) if refusal == "redirect_uri_mismatch") {
                     if let Some((client_id, redirect_uri)) =
                         crate::gmail::authorization_operands(&flow.authorization_url)
                     {
