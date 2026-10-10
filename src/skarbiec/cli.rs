@@ -33,6 +33,7 @@ impl SkarbiecResolver {
                         source.vault = status
                             .get("vault")
                             .and_then(Value::as_str)
+                            .filter(|vault| !vault.trim().is_empty())
                             .map(str::to_string);
                         source.route = status
                             .pointer("/source/route")
@@ -44,7 +45,7 @@ impl SkarbiecResolver {
                             .map(str::to_string);
                         if source.vault.is_none() {
                             source.error = Some(format!(
-                                "{} status returned no vault identity",
+                                "{} status returned no non-empty vault identity",
                                 self.binary.display()
                             ));
                         }
