@@ -116,26 +116,23 @@ impl SkarbiecResolver {
             .stdin
             .take()
             .ok_or_else(|| AppError::internal("Skarbiec input pipe was unavailable"))?;
-        stdin.write_all(&bytes).await.map_err(|error| {
+        let (written, output) = tokio::join!(
+            async {
+                let result = stdin.write_all(&bytes).await;
+                drop(stdin);
+                result
+            },
+            stado_wait::child_output_async(
+                child,
+                format!("skarbiec set-json {item_id} --type {kind}"),
+            )
+        );
+        let output = output.map_err(|error| {
             AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
                 format!(
-                    "write Gmail authorization to {} for item '{item_id}': {error}",
-                    self.binary.display()
+                    "wait for Skarbiec set-json for item '{item_id}': {error}; persisted state is unknown"
                 ),
-                false,
-            )
-        })?;
-        drop(stdin);
-        let output = stado_wait::child_output_async(
-            child,
-            format!("skarbiec set-json {item_id} --type {kind}"),
-        )
-        .await
-        .map_err(|error| {
-            AppError::dependency(
-                "SKARBIEC_WRITE_FAILED",
-                format!("Skarbiec did not persist the item '{item_id}': {error}"),
                 false,
             )
         })?;
@@ -150,6 +147,16 @@ impl SkarbiecResolver {
                 false,
             ));
         }
+        written.map_err(|error| {
+            AppError::dependency(
+                "SKARBIEC_WRITE_FAILED",
+                format!(
+                    "write Gmail authorization to {} for item '{item_id}': {error}; Skarbiec exited successfully but full input delivery was not confirmed",
+                    self.binary.display()
+                ),
+                false,
+            )
+        })?;
         Ok(())
     }
 
