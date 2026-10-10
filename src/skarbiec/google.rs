@@ -54,7 +54,7 @@ impl SkarbiecResolver {
             AppError::dependency(
                 "GMAIL_TOKEN_RESPONSE_INVALID",
                 format!("decode Google refresh-token response after HTTP {status}: {error}"),
-                false,
+                status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS,
             )
         })?;
         if !status.is_success() {
@@ -97,8 +97,11 @@ impl SkarbiecResolver {
             .and_then(Value::as_str)
             .or_else(|| wrapped.as_str())
             .ok_or_else(|| invalid_item("Google OAuth client value is not text"))?;
-        let document: Value = serde_json::from_str(raw)
-            .map_err(|_| invalid_item("Google OAuth client value is invalid JSON"))?;
+        let document: Value = serde_json::from_str(raw).map_err(|error| {
+            invalid_item(&format!(
+                "Google OAuth client value is invalid JSON: {error}"
+            ))
+        })?;
         let profile = document
             .get("installed")
             .and_then(Value::as_object)
@@ -134,8 +137,11 @@ impl SkarbiecResolver {
             .and_then(Value::as_str)
             .or_else(|| wrapped.as_str())
             .ok_or_else(|| invalid_item("Google service account value is not text"))?;
-        let document: Value = serde_json::from_str(raw)
-            .map_err(|_| invalid_item("Google service account value is invalid JSON"))?;
+        let document: Value = serde_json::from_str(raw).map_err(|error| {
+            invalid_item(&format!(
+                "Google service account value is invalid JSON: {error}"
+            ))
+        })?;
         if document.get("type").and_then(Value::as_str) != Some("service_account") {
             return Err(invalid_item(
                 "Google service account JSON is not a service_account key",
@@ -222,7 +228,7 @@ impl SkarbiecResolver {
             AppError::dependency(
                 "GMAIL_TOKEN_RESPONSE_INVALID",
                 format!("decode Google delegated-token response after HTTP {status}: {error}"),
-                false,
+                status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS,
             )
         })?;
         if !status.is_success() {
