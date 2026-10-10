@@ -89,6 +89,10 @@ Fetch errors also identify the UID. XOAUTH2 diagnostics redact the supplied
 access token and distinguish transport failures from authorization refusals.
 CLI, HTTP and Desktop receive the same service error; worker-task failures name
 the mailbox and retain the task failure rather than claiming a provider refusal.
+If recording that failure in mailbox state also fails, the returned error keeps
+the original code and cause and appends the persistence failure; the watcher
+logs both. A failed worker task is recorded through the same path. Inspect the
+live refusal rather than treating an older `last_error_message` as current.
 
 In another shell, declare a mailbox whose complete profile is stored in a
 Skarbiec `bundle`:

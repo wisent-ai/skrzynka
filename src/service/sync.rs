@@ -10,6 +10,19 @@ use chrono::Utc;
 use uuid::Uuid;
 
 impl AppState {
+    fn persist_sync_failure(&self, id: Uuid, mut error: AppError) -> AppError {
+        if let Err(recording) = self
+            .database
+            .record_sync_failure(id, error.code, &error.message)
+        {
+            tracing::error!(mailbox = %id, failure = %error, cause = %recording, "could not persist mailbox failure");
+            error.message.push_str(&format!(
+                "; recording this failure for mailbox {id} also failed: {recording}"
+            ));
+        }
+        error
+    }
+
     pub async fn sync_mailbox(
         &self,
         organization_id: &str,
@@ -28,12 +41,7 @@ impl AppState {
             .await
         {
             Ok(credentials) => credentials,
-            Err(error) => {
-                let _ = self
-                    .database
-                    .record_sync_failure(id, error.code, &error.message);
-                return Err(error);
-            }
+            Err(error) => return Err(self.persist_sync_failure(id, error)),
         };
         let database = self.database.clone();
         let result = tokio::task::spawn_blocking(move || {
@@ -62,12 +70,9 @@ impl AppState {
             AppError::internal(format!(
                 "mailbox {id} synchronization task stopped: {error}"
             ))
-        })?;
-        if let Err(error) = &result {
-            let _ = self
-                .database
-                .record_sync_failure(id, error.code, &error.message);
-        }
+        })
+        .and_then(|result| result)
+        .map_err(|error| self.persist_sync_failure(id, error));
         if let Ok(summary) = &result {
             if summary.received > 0 {
                 if let Err(error) = crate::onboarding::record_mailbox_import_completed() {
@@ -114,9 +119,8 @@ impl AppState {
             {
                 Ok(credentials) => credentials,
                 Err(error) => {
-                    let _ = self
-                        .database
-                        .record_sync_failure(id, error.code, &error.message);
+                    let error = self.persist_sync_failure(id, error);
+                    tracing::warn!(mailbox = %id, code = error.code, message = %error.message, "mailbox credential resolution failed; its watcher stops until the next round");
                     return;
                 }
             };
@@ -129,9 +133,7 @@ impl AppState {
             })
             .and_then(|result| result);
             if let Err(error) = waited {
-                let _ = self
-                    .database
-                    .record_sync_failure(id, error.code, &error.message);
+                let error = self.persist_sync_failure(id, error);
                 tracing::warn!(mailbox = %id, code = error.code, message = %error.message, "mailbox IDLE ended; its watcher stops until the next round");
                 return;
             }
