@@ -259,6 +259,10 @@ callback stores a dedicated `skrzynka-gmail-*` OAuth bundle and declares it a
 mailbox in Skarbiec, or exits non-zero with `GMAIL_OAUTH_FAILED` carrying the
 refusal the callback reported (declined consent, an invalid code, a failed
 token exchange). Interrupt it to abandon an authorization nobody completes.
+Binding failures name the requested socket and operating-system cause. The CLI
+also observes its callback server while awaiting authorization: an early exit,
+serve error or failed task is reported as `INTERNAL_ERROR` with the socket and
+observed cause, rather than waiting for a callback that cannot be processed.
 
 The redirect is refused when the client stored in
 `skrzynka-google-oauth-desktop` has no loopback redirect, so no consent screen

@@ -19,9 +19,11 @@ pub(super) async fn authorize_gmail(
 ) -> Result<(), AppError> {
     let callback_base_url = loopback_callback(bind)?;
     let state = AppState::new(database, resolver, Some(&callback_base_url))?;
-    let listener = tokio::net::TcpListener::bind(bind)
-        .await
-        .map_err(|_| AppError::internal("loopback OAuth callback address could not be bound"))?;
+    let listener = tokio::net::TcpListener::bind(bind).await.map_err(|error| {
+        AppError::internal(format!(
+            "binding loopback OAuth callback at {bind} failed: {error}"
+        ))
+    })?;
     let flow = state
         .start_gmail_oauth(
             organization,
@@ -33,11 +35,11 @@ pub(super) async fn authorize_gmail(
     print_json(&flow)?;
 
     let callback_state = state.clone();
-    let server =
+    let mut server =
         tokio::spawn(
             async move { axum::serve(listener, crate::api::router(callback_state)).await },
         );
-    let status = async {
+    let completion = async {
         tokio::select! {
             settled = state.gmail_oauth_settled(organization, flow.flow_id) => settled,
             diagnosis = crate::gmail::diagnose_authorization(&flow.authorization_url) => {
@@ -54,8 +56,21 @@ pub(super) async fn authorize_gmail(
                 state.gmail_oauth_settled(organization, flow.flow_id).await
             }
         }
-    }
-    .await;
+    };
+    let status = tokio::select! {
+        status = completion => status,
+        result = &mut server => Err(AppError::internal(match result {
+            Ok(Ok(())) => format!(
+                "loopback OAuth callback server at {bind} stopped before authorization settled"
+            ),
+            Ok(Err(error)) => format!(
+                "serving loopback OAuth callback at {bind} failed: {error}"
+            ),
+            Err(error) => format!(
+                "loopback OAuth callback task at {bind} failed: {error}"
+            ),
+        })),
+    };
     server.abort();
     let status = status?;
     if status.status == "completed" {
