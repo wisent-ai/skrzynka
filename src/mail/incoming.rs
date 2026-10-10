@@ -254,7 +254,18 @@ pub fn fetch_messages(
                     true,
                 )
             })?;
-        let Some(fetch) = fetches.iter().next() else {
+        let Some(fetch) = fetches
+            .iter()
+            .find(|fetch| fetch.uid == Some(requested_uid))
+        else {
+            if !fetches.is_empty() {
+                let observed = fetches.iter().map(|fetch| fetch.uid).collect::<Vec<_>>();
+                return Err(dependency_error(
+                    "IMAP_FETCH_UID_MISMATCH",
+                    format!("IMAP fetch at UID {requested_uid} on {}:{} returned rows with UIDs {observed:?}, none matching the requested message; cursor not advanced", mailbox.imap_host, mailbox.imap_port),
+                    true,
+                ));
+            }
             skipped += 1;
             *rejected_by_reason
                 .entry("provider_row_missing".to_string())
@@ -263,8 +274,8 @@ pub fn fetch_messages(
             commit(&[], last_uid)?;
             continue;
         };
-        let uid = fetch.uid.unwrap_or(requested_uid);
-        last_uid = last_uid.max(uid);
+        let uid = requested_uid;
+        last_uid = requested_uid;
         let Some(body) = fetch.body() else {
             skipped += 1;
             *rejected_by_reason

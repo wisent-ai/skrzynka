@@ -93,6 +93,10 @@ If recording that failure in mailbox state also fails, the returned error keeps
 the original code and cause and appends the persistence failure; the watcher
 logs both. A failed worker task is recorded through the same path. Inspect the
 live refusal rather than treating an older `last_error_message` as current.
+`IMAP_FETCH_UID_MISMATCH` means a nonempty FETCH response contained no row for
+the requested UID. The refusal names the endpoint, requested UID and observed
+UIDs; that response cannot advance the cursor or be imported under a guessed
+identity. Unsolicited rows are ignored when the requested message is present.
 
 Google access-token caching uses only a supplied integer `expires_in`. The
 deadline is measured from request start, so transport time cannot extend the
@@ -160,12 +164,13 @@ The equivalent reusable surfaces are **Declare** in Skrzynka Desktop and the
 authenticated `POST /v1/mailboxes/declare` and
 `POST /v1/mailboxes/:id/undeclare`. The secret is never accepted in argv or
 the API, and the result does not return it or provider message bodies.
-A changed receiving address or IMAP endpoint, or differing normalized data for
-a retained UID is a conflict: the old mailbox, messages, and cursor are
-preserved and the fetched page is not partially committed. Authentication,
-source, fetch, and normalization errors likewise leave no new mailbox or
-advanced cursor. Unsupported provider rows are counted by reason rather than
-silently disappearing. Declaring nothing leaves an empty usable installation.
+A changed receiving address or IMAP endpoint is a profile conflict and leaves
+the retained mailbox unchanged. Differing normalized data for a retained UID
+is an import conflict. Each message commits independently: a later failure
+preserves earlier committed messages and their cursor, and the next sync
+continues from there. Authentication and source failures before import advance
+nothing. Unsupported provider rows are counted by reason rather than silently
+disappearing. Declaring nothing leaves an empty usable installation.
 See the [executable examples](https://skrzynka.wisent.com/docs/examples) and the
 [onboarding contract](https://skrzynka.wisent.com/docs/onboarding).
 
