@@ -234,13 +234,7 @@ fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, AppError> {
         .get_first_value("Subject")
         .unwrap_or_else(|| "(no subject)".to_string());
     let body_text = extract_text(&parsed).unwrap_or_default().trim().to_string();
-    let snippet = body_text
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .take(240)
-        .collect();
+    let snippet = body_text.split_whitespace().collect::<Vec<_>>().join(" ");
     let sent_at = headers
         .get_first_value("Date")
         .and_then(|value| mailparse::dateparse(&value).ok())

@@ -74,7 +74,13 @@ impl Database {
                     },
                 )
                 .optional()?;
-            if let Some(existing) = existing {
+            if let Some(mut existing) = existing {
+                // The preview is derived presentation, not provider identity.
+                existing.snippet = existing
+                    .body_text
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 if &existing != message {
                     return Err(AppError::conflict(
                         "MAILBOX_IMPORT_CONFLICT",
@@ -250,7 +256,7 @@ pub(super) fn page_limit(limit: Option<u32>) -> Option<i64> {
 }
 
 fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {
-    Ok(Message {
+    let mut message = Message {
         id: parse_uuid(row.get::<_, String>(0)?)?,
         mailbox_id: parse_uuid(row.get::<_, String>(1)?)?,
         external_uid: checked_u32(row.get::<_, i64>(2)?, 2)?,
@@ -264,6 +270,12 @@ fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {
         sent_at: row.get(10)?,
         received_at: row.get(11)?,
         body_text: row.get(12)?,
-        snippet: row.get(13)?,
-    })
+        snippet: String::new(),
+    };
+    message.snippet = message
+        .body_text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Ok(message)
 }
