@@ -16,7 +16,10 @@ impl SkarbiecResolver {
         if !output.status.success() {
             return Err(AppError::dependency(
                 "SKARBIEC_UNAVAILABLE",
-                "Skarbiec metadata listing failed",
+                format!(
+                    "Skarbiec metadata listing failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
                 true,
             ));
         }
