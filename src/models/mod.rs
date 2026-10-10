@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+mod credential_source;
+mod mailbox;
+pub use credential_source::CredentialSource;
+
 /// How long a mailbox's host names may be (RFC 1035). A mailbox is read when its
 /// provider reports new mail (IMAP IDLE); no polling interval exists.
 pub const MAX_HOST_LENGTH: usize = 253;
@@ -29,6 +33,10 @@ pub struct Mailbox {
     pub last_sync_at: Option<String>,
     pub last_error_code: Option<String>,
     pub last_error_message: Option<String>,
+    #[serde(default)]
+    pub recovery_command: Option<String>,
+    #[serde(default)]
+    pub credential_source: Option<CredentialSource>,
     pub created_at: String,
     pub updated_at: String,
 }

@@ -57,7 +57,9 @@ pub(super) async fn get_mailbox(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     Ok(Json(json!(
-        state.get_mailbox(&auth.organization_id, parse_uuid(&id)?)?
+        state
+            .get_mailbox(&auth.organization_id, parse_uuid(&id)?)
+            .await?
     )))
 }
 

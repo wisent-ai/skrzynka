@@ -18,6 +18,9 @@ use crate::{
 use chrono::Utc;
 use uuid::Uuid;
 
+mod profile;
+use profile::{apply_config, endpoint_conflict, mailbox_matches_config};
+
 impl AppState {
     /// Bring Skrzynka's mailboxes in line with what Skarbiec declares: a declared
     /// item gets a mailbox whose profile is the item's; a mailbox whose item lost
@@ -230,11 +233,20 @@ impl AppState {
 
     pub async fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
         self.reconcile_mailboxes(Some(organization_id)).await?;
-        self.database.list_mailboxes(organization_id)
+        let mut mailboxes = self.database.list_mailboxes(organization_id)?;
+        if !mailboxes.is_empty() {
+            let source = self.resolver.credential_source().await;
+            for mailbox in &mut mailboxes {
+                mailbox.credential_source = Some(source.clone());
+            }
+        }
+        Ok(mailboxes)
     }
 
-    pub fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
-        self.database.get_mailbox(organization_id, id)
+    pub async fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
+        let mut mailbox = self.database.get_mailbox(organization_id, id)?;
+        mailbox.credential_source = Some(self.resolver.credential_source().await);
+        Ok(mailbox)
     }
 
     /// Delete one mailbox's local mail. Only a mailbox Skarbiec no longer
@@ -273,44 +285,9 @@ fn mailbox_from_config(config: &MailboxConfig) -> Mailbox {
         last_sync_at: None,
         last_error_code: None,
         last_error_message: None,
+        recovery_command: None,
+        credential_source: None,
         created_at: now.clone(),
         updated_at: now,
     }
-}
-
-fn mailbox_matches_config(mailbox: &Mailbox, config: &MailboxConfig) -> bool {
-    mailbox.organization_id == config.organization_id
-        && mailbox.skarbiec_item_id == config.skarbiec_item_id
-        && mailbox.smtp_skarbiec_item_id == config.smtp_skarbiec_item_id
-        && mailbox.display_name == config.display_name
-        && mailbox.email == config.email
-        && mailbox.imap_host == config.imap_host
-        && mailbox.imap_port == config.imap_port
-        && mailbox.smtp_host == config.smtp_host
-        && mailbox.smtp_port == config.smtp_port
-        && mailbox.smtp_security == config.smtp_security
-}
-
-/// A declared item whose receiving address or IMAP endpoint changed: the
-/// retained UID cursor belongs to the old mailbox and cannot be reused.
-fn endpoint_conflict(
-    mailbox: &Mailbox,
-    config: &MailboxConfig,
-) -> Option<MailboxDeclarationRefusal> {
-    (mailbox.email != config.email
-        || mailbox.imap_host != config.imap_host
-        || mailbox.imap_port != config.imap_port)
-        .then(|| MailboxDeclarationRefusal {
-            skarbiec_item_id: config.skarbiec_item_id.clone(),
-            code: "MAILBOX_IMPORT_PROFILE_CONFLICT".to_string(),
-            message: "the Skarbiec profile changes the receiving address or IMAP endpoint; the retained UID cursor cannot be reused and no import data was changed".to_string(),
-        })
-}
-
-fn apply_config(mailbox: &mut Mailbox, config: &MailboxConfig) {
-    mailbox.smtp_skarbiec_item_id = config.smtp_skarbiec_item_id.clone();
-    mailbox.display_name = config.display_name.clone();
-    mailbox.smtp_host = config.smtp_host.clone();
-    mailbox.smtp_port = config.smtp_port;
-    mailbox.smtp_security = config.smtp_security;
 }

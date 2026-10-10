@@ -20,7 +20,7 @@ pub(super) async fn run_mailbox(
             print_json(&state.undeclare_mailbox(organization, id).await?)
         }
         MailboxCommand::List => print_json(&state.list_mailboxes(organization).await?),
-        MailboxCommand::Show { id } => print_json(&state.get_mailbox(organization, id)?),
+        MailboxCommand::Show { id } => print_json(&state.get_mailbox(organization, id).await?),
         MailboxCommand::Remove { id, confirm } => {
             if !confirm {
                 return Err(AppError::invalid(

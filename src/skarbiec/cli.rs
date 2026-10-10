@@ -20,6 +20,63 @@ use tokio::{io::AsyncWriteExt, process::Command};
 const STADO: &str = "stado";
 
 impl SkarbiecResolver {
+    /// Observe the selected vault without reading any credential payload.
+    pub(crate) async fn credential_source(&self) -> crate::models::CredentialSource {
+        let mut source = crate::models::CredentialSource {
+            vault: None,
+            route: None,
+            endpoint: None,
+            error: None,
+        };
+        if let Some(path) = &self.local {
+            source.vault = Some(path.display().to_string());
+            source.route = Some(super::local::CREDENTIALS_FILE_ENV.to_string());
+            return source;
+        }
+        match self.run(&self.binary, &["status"]).await {
+            Ok(output) if output.status.success() => {
+                match serde_json::from_slice::<Value>(&output.stdout) {
+                    Ok(status) => {
+                        source.vault = status
+                            .get("vault")
+                            .and_then(Value::as_str)
+                            .map(str::to_string);
+                        source.route = status
+                            .pointer("/source/route")
+                            .and_then(Value::as_str)
+                            .map(str::to_string);
+                        source.endpoint = status
+                            .pointer("/source/endpoint")
+                            .and_then(Value::as_str)
+                            .map(str::to_string);
+                        if source.vault.is_none() {
+                            source.error = Some(format!(
+                                "{} status returned no vault identity",
+                                self.binary.display()
+                            ));
+                        }
+                    }
+                    Err(error) => {
+                        source.error = Some(format!(
+                            "{} status returned invalid JSON: {error}",
+                            self.binary.display()
+                        ))
+                    }
+                }
+            }
+            Ok(output) => {
+                source.error = Some(format!(
+                    "{} status failed ({}): {}",
+                    self.binary.display(),
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ))
+            }
+            Err(error) => source.error = Some(error.message),
+        }
+        source
+    }
+
     pub(super) async fn set_item(
         &self,
         item_id: &str,
@@ -67,15 +124,18 @@ impl SkarbiecResolver {
             )
         })?;
         drop(stdin);
-        let output = stado_wait::child_output_async(child, format!("skarbiec set-json {item_id} --type {kind}"))
-            .await
-            .map_err(|error| {
-                AppError::dependency(
-                    "SKARBIEC_WRITE_FAILED",
-                    format!("Skarbiec did not persist the item '{item_id}': {error}"),
-                    false,
-                )
-            })?;
+        let output = stado_wait::child_output_async(
+            child,
+            format!("skarbiec set-json {item_id} --type {kind}"),
+        )
+        .await
+        .map_err(|error| {
+            AppError::dependency(
+                "SKARBIEC_WRITE_FAILED",
+                format!("Skarbiec did not persist the item '{item_id}': {error}"),
+                false,
+            )
+        })?;
         if !output.status.success() {
             return Err(AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
@@ -145,7 +205,9 @@ impl SkarbiecResolver {
             ["list"] => vec!["credentials", "ls", "--json"],
             _ => return Ok(local),
         };
-        let fleet = self.run(std::path::Path::new(STADO), &through_stado).await?;
+        let fleet = self
+            .run(std::path::Path::new(STADO), &through_stado)
+            .await?;
         if fleet.status.success() {
             return Ok(fleet);
         }
@@ -178,12 +240,14 @@ impl SkarbiecResolver {
         let mut command = Command::new(program);
         command.args(arguments);
         command.kill_on_drop(true);
-        stado_wait::output_async(&mut command).await.map_err(|error| {
-            AppError::dependency(
-                "SKARBIEC_UNAVAILABLE",
-                format!("{} could not be started: {error}", program.display()),
-                true,
-            )
-        })
+        stado_wait::output_async(&mut command)
+            .await
+            .map_err(|error| {
+                AppError::dependency(
+                    "SKARBIEC_UNAVAILABLE",
+                    format!("{} could not be started: {error}", program.display()),
+                    true,
+                )
+            })
     }
 }

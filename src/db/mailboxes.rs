@@ -162,7 +162,7 @@ impl Database {
 }
 
 fn mailbox_from_row(row: &Row<'_>) -> sql::Result<Mailbox> {
-    Ok(Mailbox {
+    let mut mailbox = Mailbox {
         id: parse_uuid(row.get::<_, String>(0)?)?,
         organization_id: row.get(1)?,
         skarbiec_item_id: row.get(2)?,
@@ -179,7 +179,11 @@ fn mailbox_from_row(row: &Row<'_>) -> sql::Result<Mailbox> {
         last_sync_at: row.get(13)?,
         last_error_code: row.get(14)?,
         last_error_message: row.get(15)?,
+        recovery_command: None,
+        credential_source: None,
         created_at: row.get(16)?,
         updated_at: row.get(17)?,
-    })
+    };
+    mailbox.recovery_command = mailbox.recovery_command();
+    Ok(mailbox)
 }
