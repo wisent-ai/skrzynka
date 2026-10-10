@@ -300,6 +300,10 @@ Refresh refusals do not all mean expired authorization. Only Google's
 Other JSON refusals retain their HTTP status, OAuth error and error description
 under `GMAIL_TOKEN_REFRESH_UNAVAILABLE`; server errors and rate limiting remain
 retryable. Token response payloads are not copied wholesale into diagnostics.
+Delegation refusals likewise retain the provider's status, OAuth error and error
+description alongside grant guidance. Key-decoding and assertion-signing failures
+keep their actual library cause; the private key and signed assertion are not
+included in those messages.
 
 The OAuth client item has ID `skrzynka-google-oauth-desktop`, kind `stado-secret`, and one `value` field of type `oauth_client`; that value is the unmodified JSON downloaded for a Google OAuth client whose application type is **Desktop app**. Skrzynka accepts only the `installed` client shape and Google's canonical authorization and token endpoints.
 

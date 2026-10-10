@@ -191,10 +191,15 @@ impl SkarbiecResolver {
         let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
         header.kid = account.private_key_id.clone();
         let key = jsonwebtoken::EncodingKey::from_rsa_pem(account.private_key.as_bytes()).map_err(
-            |_| invalid_item("Google service account private key is not a valid RSA PEM"),
+            |error| {
+                invalid_item(&format!(
+                    "Google service account private key is not a valid RSA PEM: {error}"
+                ))
+            },
         )?;
-        let assertion = jsonwebtoken::encode(&header, &claims, &key)
-            .map_err(|_| AppError::internal("delegation assertion could not be signed"))?;
+        let assertion = jsonwebtoken::encode(&header, &claims, &key).map_err(|error| {
+            AppError::internal(format!("delegation assertion could not be signed: {error}"))
+        })?;
         let requested_at = Utc::now();
         let response = self
             .client
@@ -221,22 +226,25 @@ impl SkarbiecResolver {
             )
         })?;
         if !status.is_success() {
-            let code = payload.get("error").and_then(Value::as_str).unwrap_or("");
+            let code = payload.get("error").and_then(Value::as_str);
+            let description = payload.get("error_description").and_then(Value::as_str);
+            let observed =
+                format!("HTTP {status}; error={code:?}; error_description={description:?}");
             return Err(match code {
-                "unauthorized_client" | "access_denied" => AppError::dependency(
+                Some("unauthorized_client" | "access_denied") => AppError::dependency(
                     "GOOGLE_DELEGATION_NOT_GRANTED",
                     format!(
-                        "The Workspace admin has not granted domain-wide delegation to this \
-                         service account. Open {GOOGLE_ADMIN_DELEGATION_URL}, add client ID \
-                         {} with scope {GMAIL_DELEGATION_SCOPE}, then retry.",
+                        "Google refused domain-wide delegation: {observed}. Check the Workspace \
+                         grant at {GOOGLE_ADMIN_DELEGATION_URL} for client ID \
+                         {} with scope {GMAIL_DELEGATION_SCOPE}.",
                         account.client_id
                     ),
                     false,
                 ),
-                "invalid_grant" => AppError::dependency(
+                Some("invalid_grant") => AppError::dependency(
                     "GOOGLE_DELEGATION_REJECTED",
                     format!(
-                        "Google refused delegated access for {user_email}; verify the address \
+                        "Google refused delegated access for {user_email}: {observed}; verify the address \
                          is an active user in a Workspace domain that granted client ID {}.",
                         account.client_id
                     ),
@@ -244,8 +252,8 @@ impl SkarbiecResolver {
                 ),
                 _ => AppError::dependency(
                     "GMAIL_TOKEN_RESPONSE_INVALID",
-                    format!("Google rejected the delegation grant with HTTP {status}"),
-                    false,
+                    format!("Google rejected the delegation grant: {observed}"),
+                    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS,
                 ),
             });
         }
