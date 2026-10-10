@@ -99,7 +99,12 @@ impl SkarbiecResolver {
             if !output.status.success() {
                 return Err(AppError::dependency(
                     "SKARBIEC_WRITE_FAILED",
-                    String::from_utf8_lossy(&output.stderr).trim().to_string(),
+                    format!(
+                        "the credentials file {} refused item '{item_id}' ({}): {}",
+                        path.display(),
+                        output.status,
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    ),
                     false,
                 ));
             }
@@ -230,9 +235,15 @@ impl SkarbiecResolver {
         stado_wait::output_async(&mut command)
             .await
             .map_err(|error| {
+                // The process may have started: the failure can come from
+                // starting it or from collecting its output and exit status.
                 AppError::dependency(
                     "SKARBIEC_UNAVAILABLE",
-                    format!("{} could not be started: {error}", program.display()),
+                    format!(
+                        "{} {} did not run to an observed exit: {error}",
+                        program.display(),
+                        arguments.join(" ")
+                    ),
                     true,
                 )
             })
