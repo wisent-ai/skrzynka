@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -19,15 +19,26 @@ const output = mkdtempSync(join(outputRoot, 'run-'));
 const report = { started_at: new Date().toISOString(), commands: [], status: 'running' };
 const hash = data => createHash('sha256').update(data).digest('hex');
 function run(binary, args) {
-  const result = spawnSync(binary, args, { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   const index = report.commands.length;
-  writeFileSync(join(output, `${index}.stdout`), result.stdout ?? '');
-  writeFileSync(join(output, `${index}.stderr`), result.stderr ?? '');
+  const stdoutPath = join(output, `${index}.stdout`);
+  const stderrPath = join(output, `${index}.stderr`);
+  const stdout = openSync(stdoutPath, 'wx');
+  let result;
+  try {
+    const stderr = openSync(stderrPath, 'wx');
+    try {
+      result = spawnSync(binary, args, { cwd: root, stdio: ['ignore', stdout, stderr] });
+    } finally {
+      closeSync(stderr);
+    }
+  } finally {
+    closeSync(stdout);
+  }
   report.commands.push({ argv: [binary, ...args], exit_status: result.status,
     signal: result.signal, error: result.error?.message,
     stdout: `${index}.stdout`, stderr: `${index}.stderr` });
   if (result.error) throw result.error;
-  return result;
+  return { ...result, stdout: readFileSync(stdoutPath, 'utf8'), stderr: readFileSync(stderrPath, 'utf8') };
 }
 function successful(binary, args) {
   const result = run(binary, args);
@@ -74,7 +85,7 @@ try {
   const summaries = [summary];
   assert.equal(summary.mailbox_id, values.mailbox);
   assert.equal('has_more' in summary, false, 'Sync still reports a page continuation');
-  const highest = Math.max(...pending.map(message => message.external_uid));
+  const highest = pending.reduce((highest, message) => Math.max(highest, message.external_uid), before.last_uid);
   assert(summary.last_uid >= highest, `One pass stopped at UID ${summary.last_uid} before ${highest}`);
   const stored = command(['mailbox', 'show', values.mailbox]);
   assert.equal(stored.last_uid, summary.last_uid, 'Reported cursor was not persisted');
