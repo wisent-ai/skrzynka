@@ -89,6 +89,7 @@ try {
   assert(summary.last_uid >= highest, `One pass stopped at UID ${summary.last_uid} before ${highest}`);
   const stored = command(['mailbox', 'show', values.mailbox]);
   assert.equal(stored.last_uid, summary.last_uid, 'Reported cursor was not persisted');
+  assert.equal(stored.last_sync_at, summary.completed_at, 'Completion time was not persisted');
   const messages = allMessages();
   for (const fixture of expected) {
     const matches = messages.filter(message => message.external_uid === fixture.external_uid);
@@ -100,6 +101,14 @@ try {
     }
   }
   const repeated = command(['sync', '--mailbox', values.mailbox]);
+  const recovered = command(['mailbox', 'show', values.mailbox]);
+  assert.equal(repeated.received, 0, 'Dedicated fixture received mail during the empty-pass case');
+  assert.equal(repeated.skipped, 0, 'Empty-pass case encountered an unimportable provider row');
+  assert.equal(recovered.last_uid, stored.last_uid, 'Empty pass moved the cursor');
+  assert.equal(recovered.last_error_code, null, 'Successful empty pass retained the failure code');
+  assert.equal(recovered.last_error_message, null, 'Successful empty pass retained the failure cause');
+  assert.equal(recovered.last_sync_at, repeated.completed_at, 'Empty-pass completion was not persisted');
+  assert.notEqual(recovered.last_sync_at, stored.last_sync_at, 'Empty pass retained the old completion');
   const after = allMessages();
   for (const fixture of expected) {
     assert.equal(after.filter(message => message.external_uid === fixture.external_uid).length, 1,
@@ -110,7 +119,7 @@ try {
   assert.equal(refused.status, 1, 'Cross-organization message read was not refused');
   assert.equal(JSON.parse(refused.stderr).error.code, 'NOT_FOUND');
   report.observed = { initial_cursor: before.last_uid, summaries, repeated,
-    verified_message_count: expected.length };
+    recovered, verified_message_count: expected.length };
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';

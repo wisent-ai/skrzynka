@@ -55,22 +55,23 @@ impl AppState {
                     current = stored;
                     Ok(())
                 })?;
+            let (current, _, _) =
+                database.commit_mailbox_import(&current, false, &[], fetched.last_uid)?;
+            let completed_at = current.last_sync_at.ok_or_else(|| {
+                AppError::internal(format!(
+                    "mailbox {id} synchronization completed, but the persisted mailbox has no last_sync_at"
+                ))
+            })?;
             Ok::<_, AppError>(SyncSummary {
                 mailbox_id: current.id,
                 received,
                 skipped: fetched.skipped,
                 last_uid: fetched.last_uid,
-                completed_at: current
-                    .last_sync_at
-                    .unwrap_or_else(|| Utc::now().to_rfc3339()),
+                completed_at,
             })
         })
         .await
-        .map_err(|error| {
-            AppError::internal(format!(
-                "mailbox {id} synchronization task stopped: {error}"
-            ))
-        })
+        .map_err(|error| AppError::internal(format!("mailbox {id} synchronization task stopped: {error}")))
         .and_then(|result| result)
         .map_err(|error| self.persist_sync_failure(id, error));
         if let Ok(summary) = &result {
