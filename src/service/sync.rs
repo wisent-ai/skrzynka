@@ -109,7 +109,7 @@ impl AppState {
                 Ok(mailbox) if mailbox.enabled => mailbox,
                 Ok(_) => return,
                 Err(error) => {
-                    tracing::warn!(mailbox = %id, code = error.code, "mailbox could not be read");
+                    tracing::warn!(mailbox = %id, code = error.code, message = %error.message, "mailbox could not be read; its watcher stops until the next round");
                     return;
                 }
             };
