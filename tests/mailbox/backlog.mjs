@@ -12,6 +12,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const { values } = parseArgs({ options: {
   organization: { type: 'string' }, mailbox: { type: 'string' },
   fixture: { type: 'string' }, binary: { type: 'string', default: 'skrzynka' },
+  'source-revision': { type: 'string' },
 } });
 const outputRoot = join(root, '.build/real-tests/mailbox-backlog');
 mkdirSync(outputRoot, { recursive: true });
@@ -54,14 +55,22 @@ function allMessages() {
   return messages;
 }
 try {
-  report.source_revision = successful('git', ['rev-parse', 'HEAD']).trim();
-  report.source_diff = successful('git', ['diff', '--', 'src', 'Cargo.toml', 'Cargo.lock']);
+  report.harness_revision = successful('git', ['rev-parse', 'HEAD']).trim();
+  report.harness_diff = successful('git', ['diff', '--', 'src', 'tests', 'Cargo.toml', 'Cargo.lock']);
   report.test_sha256 = hash(readFileSync(fileURLToPath(import.meta.url)));
   const binaryPath = values.binary.includes('/') ? resolve(values.binary)
     : successful('/usr/bin/which', [values.binary]).trim();
   report.binary_path = binaryPath;
   report.binary_sha256 = hash(readFileSync(binaryPath));
   report.version = successful(values.binary, ['--version']).trim();
+  assert(values['source-revision']?.trim(), '--source-revision is required: name the exact candidate commit');
+  report.source_revision = successful('git', [
+    'rev-parse', '--verify', `${values['source-revision']}^{commit}`,
+  ]).trim();
+  report.binary_identity = JSON.parse(successful(values.binary, ['version']));
+  assert.equal(report.binary_identity.product, 'skrzynka', 'Candidate identifies a different product');
+  assert.equal(report.binary_identity.source, report.source_revision,
+    'Candidate source identity differs from --source-revision; qualify a release built from that commit');
   assert(values.organization, '--organization is required');
   // Fail on an incompatible installed CLI before inspecting fixture data.
   successful(values.binary, ['--organization', values.organization, 'sync', '--help']);

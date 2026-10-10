@@ -5,6 +5,7 @@ source_dir=${WISENT_SOURCE_DIR:?WISENT_SOURCE_DIR is required}
 output_dir=${WISENT_OUTPUT_DIR:?WISENT_OUTPUT_DIR is required}
 platform=${WISENT_PLATFORM:?WISENT_PLATFORM is required}
 version=${WISENT_VERSION:?WISENT_VERSION is required}
+export SKRZYNKA_SOURCE_REVISION=${WISENT_SOURCE_COMMIT:?WISENT_SOURCE_COMMIT is required}
 : "${CARGO_TARGET_DIR:?The builder-owned CARGO_TARGET_DIR is required}"
 # A fleet builder's job environment carries a minimal PATH; rustup installs
 # cargo under ~/.cargo/bin, so a build that only asked PATH exited 127.
