@@ -103,6 +103,10 @@ deadline is measured from request start, so transport time cannot extend the
 provider's lifetime. An absent lifetime means no caching; a malformed or
 unrepresentable lifetime returns `GMAIL_TOKEN_RESPONSE_INVALID`, not a panic or
 an invented default. Refresh and delegated grants use the same calculation.
+Transport and JSON decoding refusals distinguish refresh-token from
+delegated-token operations and retain the underlying cause; decoding failures
+also include the observed HTTP status. Diagnostics do not print token response
+bodies, assertions or private keys.
 
 In another shell, declare a mailbox whose complete profile is stored in a
 Skarbiec `bundle`:

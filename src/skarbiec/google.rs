@@ -40,18 +40,18 @@ impl SkarbiecResolver {
             ])
             .send()
             .await
-            .map_err(|_| {
+            .map_err(|error| {
                 AppError::dependency(
                     "GMAIL_TOKEN_REFRESH_UNAVAILABLE",
-                    "Google token service is unavailable",
+                    format!("Google refresh-token request failed: {error}"),
                     true,
                 )
             })?;
         let status = response.status();
-        let payload: Value = response.json().await.map_err(|_| {
+        let payload: Value = response.json().await.map_err(|error| {
             AppError::dependency(
                 "GMAIL_TOKEN_RESPONSE_INVALID",
-                "Google token service returned invalid JSON",
+                format!("decode Google refresh-token response after HTTP {status}: {error}"),
                 false,
             )
         })?;
@@ -207,18 +207,18 @@ impl SkarbiecResolver {
             ])
             .send()
             .await
-            .map_err(|_| {
+            .map_err(|error| {
                 AppError::dependency(
                     "GOOGLE_TOKEN_UNAVAILABLE",
-                    "Google token service is unavailable",
+                    format!("Google delegated-token request failed: {error}"),
                     true,
                 )
             })?;
         let status = response.status();
-        let payload: Value = response.json().await.map_err(|_| {
+        let payload: Value = response.json().await.map_err(|error| {
             AppError::dependency(
                 "GMAIL_TOKEN_RESPONSE_INVALID",
-                "Google token service returned invalid JSON",
+                format!("decode Google delegated-token response after HTTP {status}: {error}"),
                 false,
             )
         })?;
