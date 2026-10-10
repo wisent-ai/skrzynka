@@ -84,8 +84,11 @@ impl SkarbiecResolver {
         payload: &Value,
     ) -> Result<(), AppError> {
         validate_item_id(item_id)?;
-        let bytes = serde_json::to_vec(payload)
-            .map_err(|_| AppError::internal("Gmail credential payload could not be encoded"))?;
+        let bytes = serde_json::to_vec(payload).map_err(|error| {
+            AppError::internal(format!(
+                "encode Gmail credential payload for Skarbiec item '{item_id}': {error}"
+            ))
+        })?;
         if let Some(path) = &self.local {
             let output =
                 super::local::run(path, &["set-json", item_id, "--type", kind], Some(&bytes))?;
@@ -105,10 +108,13 @@ impl SkarbiecResolver {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let mut child = command.spawn().map_err(|_| {
+        let mut child = command.spawn().map_err(|error| {
             AppError::dependency(
                 "SKARBIEC_UNAVAILABLE",
-                "Skarbiec could not be started from the configured path",
+                format!(
+                    "start {} set-json for item '{item_id}': {error}",
+                    self.binary.display()
+                ),
                 true,
             )
         })?;
@@ -116,10 +122,13 @@ impl SkarbiecResolver {
             .stdin
             .take()
             .ok_or_else(|| AppError::internal("Skarbiec input pipe was unavailable"))?;
-        stdin.write_all(&bytes).await.map_err(|_| {
+        stdin.write_all(&bytes).await.map_err(|error| {
             AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
-                "Gmail authorization could not be sent to Skarbiec",
+                format!(
+                    "write Gmail authorization to {} for item '{item_id}': {error}",
+                    self.binary.display()
+                ),
                 false,
             )
         })?;
@@ -157,10 +166,10 @@ impl SkarbiecResolver {
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
-        serde_json::from_slice(&output.stdout).map_err(|_| {
+        serde_json::from_slice(&output.stdout).map_err(|error| {
             AppError::dependency(
                 "SKARBIEC_RESPONSE_INVALID",
-                "Skarbiec returned invalid item JSON",
+                format!("decode Skarbiec item '{item_id}' JSON: {error}"),
                 false,
             )
         })
