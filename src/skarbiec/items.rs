@@ -51,9 +51,7 @@ impl SkarbiecResolver {
             if item.kind.as_deref() != Some("login") {
                 continue;
             }
-            let Ok(payload) = self.get_item(&item.id).await else {
-                continue;
-            };
+            let payload = self.get_item(&item.id).await?;
             let Some(email) = payload
                 .pointer("/fields/username")
                 .and_then(Value::as_str)
