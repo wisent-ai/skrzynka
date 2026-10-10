@@ -235,7 +235,7 @@ pub fn fetch_messages(
             )
         })?
         .into_iter()
-        .filter(|uid| *uid >= first_uid)
+        .filter(|uid| *uid > mailbox.last_uid)
         .collect::<Vec<_>>();
     // SEARCH returns a HashSet. Advance through UIDs in order, so a pass that
     // stops part way never leaves an older unread row behind its cursor.

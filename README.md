@@ -101,6 +101,9 @@ live refusal rather than treating an older `last_error_message` as current.
 the requested UID. The refusal names the endpoint, requested UID and observed
 UIDs; that response cannot advance the cursor or be imported under a guessed
 identity. Unsolicited rows are ignored when the requested message is present.
+Search results must be strictly newer than the persisted UID cursor. When the
+cursor reaches the protocol's largest UID, a saturated search lower bound
+cannot cause that same message to be fetched or counted again.
 
 Google access-token caching uses only a supplied integer `expires_in`. The
 deadline is measured from request start, so transport time cannot extend the
