@@ -17,53 +17,27 @@ impl SkarbiecResolver {
             return Err(AppError::dependency(
                 "SKARBIEC_UNAVAILABLE",
                 format!(
-                    "Skarbiec metadata listing failed: {}",
+                    "{} list failed with {}: {}",
+                    self.binary.display(),
+                    output.status,
                     String::from_utf8_lossy(&output.stderr).trim()
                 ),
                 true,
             ));
         }
-        let values: Vec<Value> = serde_json::from_slice(&output.stdout).map_err(|_| {
-            AppError::dependency(
-                "SKARBIEC_RESPONSE_INVALID",
-                "Skarbiec returned invalid metadata JSON",
-                false,
-            )
-        })?;
+        let values: Vec<SkarbiecItemMetadata> =
+            serde_json::from_slice(&output.stdout).map_err(|error| {
+                AppError::dependency(
+                    "SKARBIEC_RESPONSE_INVALID",
+                    format!(
+                        "decode {} list metadata JSON: {error}",
+                        self.binary.display()
+                    ),
+                    false,
+                )
+            })?;
         let mut items = values
             .into_iter()
-            .filter_map(|value| {
-                let object = value.as_object()?;
-                let id = object.get("id")?.as_str()?.to_string();
-                let tags = object
-                    .get("tags")
-                    .and_then(Value::as_array)
-                    .map(|values| {
-                        values
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_string)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                Some(SkarbiecItemMetadata {
-                    id,
-                    kind: object
-                        .get("kind")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    state: object
-                        .get("state")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    tags,
-                    versions: object.get("versions").and_then(Value::as_u64),
-                    updated_at: object
-                        .get("updated_at")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                })
-            })
             .filter(|item| matches!(item.kind.as_deref(), Some("login" | "bundle")))
             .collect::<Vec<_>>();
         items.sort_by(|left, right| left.id.cmp(&right.id));
