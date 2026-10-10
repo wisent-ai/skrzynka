@@ -104,6 +104,11 @@ identity. Unsolicited rows are ignored when the requested message is present.
 Search results must be strictly newer than the persisted UID cursor. When the
 cursor reaches the protocol's largest UID, a saturated search lower bound
 cannot cause that same message to be fetched or counted again.
+Each import transaction locks the stored mailbox cursor before comparing or
+writing messages. If another service instance has advanced it since this pass
+read the mailbox, `MAILBOX_SYNC_CURSOR_CHANGED` reports the expected and stored
+UIDs without changing that transaction's data. Sync again from the stored cursor;
+earlier committed messages remain available.
 
 Google access-token caching uses only a supplied integer `expires_in`. The
 deadline is measured from request start, so transport time cannot extend the

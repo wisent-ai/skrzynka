@@ -26,6 +26,25 @@ impl Database {
     ) -> Result<(Mailbox, usize, usize), AppError> {
         let connection = self.lock()?;
         let transaction = connection.transaction()?;
+        if !create_mailbox {
+            // The in-process operation lock cannot serialize another service
+            // instance. Own the persisted cursor before comparing or writing
+            // any message, so a stale pass cannot move it backwards.
+            let stored_uid = transaction.query_row(
+                "SELECT last_uid FROM mailboxes WHERE id=$1 FOR UPDATE",
+                [mailbox.id.to_string()],
+                |row| row.get::<_, i64>("last_uid"),
+            )?;
+            if stored_uid != i64::from(mailbox.last_uid) {
+                return Err(AppError::conflict(
+                    "MAILBOX_SYNC_CURSOR_CHANGED",
+                    format!(
+                        "mailbox {} cursor changed from expected UID {} to stored UID {}; no import data was changed; sync again from the stored cursor",
+                        mailbox.id, mailbox.last_uid, stored_uid
+                    ),
+                ));
+            }
+        }
         let mut unique_messages: HashMap<u32, &NewMessage> = HashMap::new();
         let mut unchanged = 0usize;
         for message in messages {
