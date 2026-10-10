@@ -161,7 +161,7 @@ impl AppState {
                         }
                     }
                     Err(error) => {
-                        tracing::error!(code = error.code, "mailboxes could not be listed")
+                        tracing::error!(code = error.code, message = %error.message, "mailboxes could not be listed")
                     }
                 }
                 tokio::time::sleep(IMAP_IDLE_REFRESH).await;
