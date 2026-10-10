@@ -25,16 +25,13 @@ impl SkarbiecResolver {
             &oauth_client.client_secret,
             &oauth_client.token_uri,
         ]);
-        if let Some(cached) = self
-            .token_cache
-            .lock()
-            .await
-            .get(credential_item_id)
-            .cloned()
         {
-            // Google's expires_in is the token's lifetime; it is reused until then, not a minute short.
-            if cached.expires_at > Utc::now() && cached.credential_fingerprint == fingerprint {
-                return Ok(cached.value);
+            let cache = self.token_cache.lock().await;
+            if let Some(cached) = cache.get(credential_item_id) {
+                // Google's stated lifetime and the current credentials both govern reuse.
+                if cached.expires_at > Utc::now() && cached.credential_fingerprint == fingerprint {
+                    return Ok(cached.value.clone());
+                }
             }
         }
         let requested_at = Utc::now();
@@ -200,10 +197,12 @@ impl SkarbiecResolver {
             .into_iter()
             .chain(account.private_key_id.as_deref()),
         );
-        if let Some(cached) = self.token_cache.lock().await.get(cache_key).cloned() {
-            // Google's expires_in is the token's lifetime; it is reused until then, not a minute short.
-            if cached.expires_at > Utc::now() && cached.credential_fingerprint == fingerprint {
-                return Ok(cached.value);
+        {
+            let cache = self.token_cache.lock().await;
+            if let Some(cached) = cache.get(cache_key) {
+                if cached.expires_at > Utc::now() && cached.credential_fingerprint == fingerprint {
+                    return Ok(cached.value.clone());
+                }
             }
         }
         let now = Utc::now().timestamp();
