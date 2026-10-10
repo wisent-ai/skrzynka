@@ -142,7 +142,8 @@ impl SkarbiecResolver {
             return Err(AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
                 format!(
-                    "Skarbiec rejected the item '{item_id}': {}",
+                    "Skarbiec rejected the item '{item_id}' ({}): {}",
+                    output.status,
                     String::from_utf8_lossy(&output.stderr).trim()
                 ),
                 false,
@@ -155,7 +156,8 @@ impl SkarbiecResolver {
         let output = self.output(&["get", item_id]).await?;
         if !output.status.success() {
             return Err(invalid_item(format!(
-                "Skarbiec item '{item_id}' could not be read: {}",
+                "Skarbiec item '{item_id}' could not be read ({}): {}",
+                output.status,
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
@@ -176,7 +178,8 @@ impl SkarbiecResolver {
             return Err(AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
                 format!(
-                    "Skarbiec refused to delete item '{item_id}': {}",
+                    "Skarbiec refused to delete item '{item_id}' ({}): {}",
+                    output.status,
                     String::from_utf8_lossy(&output.stderr).trim()
                 ),
                 false,
