@@ -126,7 +126,10 @@ pub fn wait_for_new_mail(
         .map_err(|error| {
             dependency_error(
                 "IMAP_IDLE_FAILED",
-                format!("IMAP IDLE on INBOX ended: {error:?}"),
+                format!(
+                    "IMAP IDLE on INBOX for {} at {}:{} after UID {} ended: {error:?}",
+                    mailbox.email, mailbox.imap_host, mailbox.imap_port, mailbox.last_uid
+                ),
                 true,
             )
         })?;
