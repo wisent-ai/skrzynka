@@ -142,10 +142,13 @@ fn open_inbox(
         .mode(imap::ConnectionMode::Tls)
         .tls_kind(imap::TlsKind::Native)
         .connect()
-        .map_err(|_| {
+        .map_err(|error| {
             dependency_error(
                 "IMAP_UNAVAILABLE",
-                "IMAP server could not be reached over TLS",
+                format!(
+                    "IMAP TLS connect to {}:{} failed: {error:?}",
+                    mailbox.imap_host, mailbox.imap_port
+                ),
                 true,
             )
         })?;
@@ -170,18 +173,30 @@ fn open_inbox(
                     access_token,
                 },
             )
-            .map_err(|_| {
+            .map_err(|(error, _)| {
+                let detail = format!("{error:?}");
+                let detail = if access_token.is_empty() {
+                    detail
+                } else {
+                    detail.replace(access_token, "[redacted]")
+                };
                 dependency_error(
                     "IMAP_AUTHENTICATION_FAILED",
-                    "Google refused the saved Gmail authorization; reconnect the profile",
-                    false,
+                    format!(
+                        "IMAP XOAUTH2 at {}:{} failed: {detail}",
+                        mailbox.imap_host, mailbox.imap_port
+                    ),
+                    matches!(&error, imap::Error::Io(_) | imap::Error::ConnectionLost),
                 )
             })?,
     };
-    session.select("INBOX").map_err(|_| {
+    session.select("INBOX").map_err(|error| {
         dependency_error(
             "IMAP_INBOX_UNAVAILABLE",
-            "the provider did not make INBOX available",
+            format!(
+                "IMAP SELECT INBOX at {}:{} failed: {error:?}",
+                mailbox.imap_host, mailbox.imap_port
+            ),
             true,
         )
     })?;
@@ -206,7 +221,16 @@ pub fn fetch_messages(
     let query = format!("UID {first_uid}:*");
     let mut uids = session
         .uid_search(query)
-        .map_err(|_| dependency_error("IMAP_SEARCH_FAILED", "IMAP UID search failed", true))?
+        .map_err(|error| {
+            dependency_error(
+                "IMAP_SEARCH_FAILED",
+                format!(
+                    "IMAP UID search from {first_uid} at {}:{} failed: {error:?}",
+                    mailbox.imap_host, mailbox.imap_port
+                ),
+                true,
+            )
+        })?
         .into_iter()
         .filter(|uid| *uid >= first_uid)
         .collect::<Vec<_>>();
@@ -220,10 +244,13 @@ pub fn fetch_messages(
     for requested_uid in uids {
         let fetches = session
             .uid_fetch(requested_uid.to_string(), "(UID BODY.PEEK[])")
-            .map_err(|_| {
+            .map_err(|error| {
                 dependency_error(
                     "IMAP_FETCH_FAILED",
-                    format!("IMAP fetch failed at UID {requested_uid}"),
+                    format!(
+                        "IMAP fetch at UID {requested_uid} on {}:{} failed: {error:?}",
+                        mailbox.imap_host, mailbox.imap_port
+                    ),
                     true,
                 )
             })?;

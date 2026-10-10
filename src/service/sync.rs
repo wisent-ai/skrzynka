@@ -58,7 +58,11 @@ impl AppState {
             })
         })
         .await
-        .map_err(|_| AppError::internal("mailbox synchronization task stopped unexpectedly"))?;
+        .map_err(|error| {
+            AppError::internal(format!(
+                "mailbox {id} synchronization task stopped: {error}"
+            ))
+        })?;
         if let Err(error) = &result {
             let _ = self
                 .database
@@ -120,7 +124,9 @@ impl AppState {
                 mail::wait_for_new_mail(&mailbox, &credentials)
             })
             .await
-            .map_err(|_| AppError::internal("mailbox IDLE task stopped unexpectedly"))
+            .map_err(|error| {
+                AppError::internal(format!("mailbox {id} IMAP IDLE task stopped: {error}"))
+            })
             .and_then(|result| result);
             if let Err(error) = waited {
                 let _ = self

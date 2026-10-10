@@ -83,6 +83,13 @@ rounds are spaced by the IDLE refresh boundary RFC 2177 states (29 minutes),
 not by a number Skrzynka chose. `skrzynka sync` and `POST /mailboxes/:id/sync`
 read a mailbox now.
 
+IMAP connection, XOAUTH2, INBOX selection, UID search and fetch failures retain
+the failed operation, configured host/port and the provider or transport cause.
+Fetch errors also identify the UID. XOAUTH2 diagnostics redact the supplied
+access token and distinguish transport failures from authorization refusals.
+CLI, HTTP and Desktop receive the same service error; worker-task failures name
+the mailbox and retain the task failure rather than claiming a provider refusal.
+
 In another shell, declare a mailbox whose complete profile is stored in a
 Skarbiec `bundle`:
 
