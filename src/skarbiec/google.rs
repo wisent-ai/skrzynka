@@ -1,13 +1,13 @@
 //! Google OAuth clients, service accounts and the access tokens minted from them.
 
 use super::{
-    invalid_item, optional_text, required_text, CachedAccessToken, GoogleOAuthClient,
-    GoogleServiceAccount, SkarbiecResolver, GMAIL_DELEGATION_SCOPE, GOOGLE_ADMIN_DELEGATION_URL,
-    GOOGLE_OAUTH_CLIENT_ITEM_ID, GOOGLE_SERVICE_ACCOUNT_ITEM_ID, GOOGLE_TOKEN_URI,
+    invalid_item, CachedAccessToken, SkarbiecResolver, GMAIL_DELEGATION_SCOPE,
+    GOOGLE_ADMIN_DELEGATION_URL,
 };
 use crate::error::AppError;
 use chrono::Utc;
 use serde_json::{json, Value};
+mod credentials;
 mod token_response;
 use token_response::{credential_fingerprint, refresh_refusal, token_expiry};
 
@@ -90,88 +90,6 @@ impl SkarbiecResolver {
             );
         }
         Ok(access_token)
-    }
-
-    pub(crate) async fn google_oauth_client(&self) -> Result<GoogleOAuthClient, AppError> {
-        let payload = self.get_item(GOOGLE_OAUTH_CLIENT_ITEM_ID).await?;
-        let wrapped = payload
-            .pointer("/fields/value")
-            .ok_or_else(|| invalid_item("Google OAuth client item has no fields.value"))?;
-        let raw = wrapped
-            .get("value")
-            .and_then(Value::as_str)
-            .or_else(|| wrapped.as_str())
-            .ok_or_else(|| invalid_item("Google OAuth client value is not text"))?;
-        let document: Value = serde_json::from_str(raw).map_err(|error| {
-            invalid_item(&format!(
-                "Google OAuth client value is invalid JSON: {error}"
-            ))
-        })?;
-        let profile = document
-            .get("installed")
-            .and_then(Value::as_object)
-            .ok_or_else(|| {
-                invalid_item("Google OAuth client is not a desktop application client")
-            })?;
-        let auth_uri = optional_text(profile.get("auth_uri"))
-            .unwrap_or_else(|| "https://accounts.google.com/o/oauth2/auth".to_string());
-        let token_uri = optional_text(profile.get("token_uri"))
-            .unwrap_or_else(|| "https://oauth2.googleapis.com/token".to_string());
-        if auth_uri != "https://accounts.google.com/o/oauth2/auth"
-            || token_uri != "https://oauth2.googleapis.com/token"
-        {
-            return Err(invalid_item(
-                "Google OAuth client endpoints are not canonical",
-            ));
-        }
-        Ok(GoogleOAuthClient {
-            client_id: required_text(profile.get("client_id"), "client_id")?,
-            client_secret: required_text(profile.get("client_secret"), "client_secret")?,
-            auth_uri,
-            token_uri,
-        })
-    }
-
-    pub(crate) async fn google_service_account(&self) -> Result<GoogleServiceAccount, AppError> {
-        let payload = self.get_item(GOOGLE_SERVICE_ACCOUNT_ITEM_ID).await?;
-        let wrapped = payload
-            .pointer("/fields/value")
-            .ok_or_else(|| invalid_item("Google service account item has no fields.value"))?;
-        let raw = wrapped
-            .get("value")
-            .and_then(Value::as_str)
-            .or_else(|| wrapped.as_str())
-            .ok_or_else(|| invalid_item("Google service account value is not text"))?;
-        let document: Value = serde_json::from_str(raw).map_err(|error| {
-            invalid_item(&format!(
-                "Google service account value is invalid JSON: {error}"
-            ))
-        })?;
-        if document.get("type").and_then(Value::as_str) != Some("service_account") {
-            return Err(invalid_item(
-                "Google service account JSON is not a service_account key",
-            ));
-        }
-        let token_uri = document
-            .get("token_uri")
-            .and_then(Value::as_str)
-            .unwrap_or(GOOGLE_TOKEN_URI)
-            .to_string();
-        if token_uri != GOOGLE_TOKEN_URI {
-            return Err(invalid_item(
-                "Google service account token endpoint is not canonical",
-            ));
-        }
-        let fields = document
-            .as_object()
-            .ok_or_else(|| invalid_item("Google service account JSON is not an object"))?;
-        Ok(GoogleServiceAccount {
-            client_email: required_text(fields.get("client_email"), "client_email")?,
-            client_id: required_text(fields.get("client_id"), "client_id")?,
-            private_key: required_text(fields.get("private_key"), "private_key")?,
-            private_key_id: optional_text(fields.get("private_key_id")),
-            token_uri,
-        })
     }
 
     /// Mint a delegated access token for `user_email` through the RFC 7523
