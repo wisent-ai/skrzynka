@@ -26,8 +26,14 @@ impl CredentialSource {
         items: &Result<Vec<super::SkarbiecItemMetadata>, crate::error::AppError>,
     ) {
         match items {
-            Ok(items) => self.item_held = Some(items.iter().any(|item| item.id == item_id)),
-            Err(error) => self.item_error = Some(format!("{}: {}", error.code, error.message)),
+            Ok(items) => {
+                self.item_error = None;
+                self.item_held = Some(items.iter().any(|item| item.matches_coordinate(item_id)));
+            }
+            Err(error) => {
+                self.item_held = None;
+                self.item_error = Some(format!("{}: {}", error.code, error.message));
+            }
         }
     }
 

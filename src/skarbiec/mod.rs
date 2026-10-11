@@ -153,13 +153,9 @@ pub(super) fn reference_names(
     if reference == coordinate {
         return true;
     }
-    let Some(role) = coordinate.strip_prefix("role:") else {
-        return false;
-    };
-    let tag = format!("stado:role:{role}");
     items
         .iter()
-        .any(|item| item.id == reference && item.tags.iter().any(|carried| carried == &tag))
+        .any(|item| item.id == reference && item.matches_coordinate(coordinate))
 }
 
 pub(super) fn validate_item_id(item_id: &str) -> Result<(), AppError> {

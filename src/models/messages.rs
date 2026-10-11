@@ -183,3 +183,16 @@ pub struct SkarbiecItemMetadata {
     pub versions: Option<u64>,
     pub updated_at: Option<String>,
 }
+
+impl SkarbiecItemMetadata {
+    pub(crate) fn matches_coordinate(&self, coordinate: &str) -> bool {
+        if self.id == coordinate {
+            return true;
+        }
+        coordinate.strip_prefix("role:").is_some_and(|role| {
+            self.tags
+                .iter()
+                .any(|tag| tag.strip_prefix("stado:role:") == Some(role))
+        })
+    }
+}

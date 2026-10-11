@@ -236,7 +236,7 @@ impl AppState {
         let mut mailboxes = self.database.list_mailboxes(organization_id)?;
         if !mailboxes.is_empty() {
             let source = self.resolver.credential_source().await;
-            let items = self.resolver.list_items().await;
+            let items = self.resolver.list_inventory().await;
             for mailbox in &mut mailboxes {
                 mailbox.recovery_command =
                     mailbox.recovery_command(self.resolver.status_executable());
@@ -252,7 +252,10 @@ impl AppState {
         let mut mailbox = self.database.get_mailbox(organization_id, id)?;
         mailbox.recovery_command = mailbox.recovery_command(self.resolver.status_executable());
         let mut source = self.resolver.credential_source().await;
-        source.observe_item(&mailbox.skarbiec_item_id, &self.resolver.list_items().await);
+        source.observe_item(
+            &mailbox.skarbiec_item_id,
+            &self.resolver.list_inventory().await,
+        );
         mailbox.credential_source = Some(source);
         Ok(mailbox)
     }

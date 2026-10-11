@@ -63,8 +63,10 @@ impl AppState {
         ];
         let mut credential_source = self.resolver.credential_source().await;
         if let Some(mailbox) = &mailbox {
-            credential_source
-                .observe_item(&mailbox.skarbiec_item_id, &self.resolver.list_items().await);
+            credential_source.observe_item(
+                &mailbox.skarbiec_item_id,
+                &self.resolver.list_inventory().await,
+            );
         }
         Ok(GmailConnectionReadiness {
             account,

@@ -12,6 +12,14 @@ use std::{collections::HashMap, str::FromStr};
 
 impl SkarbiecResolver {
     pub async fn list_items(&self) -> Result<Vec<SkarbiecItemMetadata>, AppError> {
+        let mut items = self.list_inventory().await?;
+        items.retain(|item| matches!(item.kind.as_deref(), Some("login" | "bundle")));
+        items.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(items)
+    }
+
+    /// Complete non-secret metadata, including kinds unsuitable for mail accounts.
+    pub(crate) async fn list_inventory(&self) -> Result<Vec<SkarbiecItemMetadata>, AppError> {
         let output = self.output(&["list"]).await?;
         if !output.status.success() {
             return Err(AppError::dependency(
@@ -36,12 +44,7 @@ impl SkarbiecResolver {
                     false,
                 )
             })?;
-        let mut items = values
-            .into_iter()
-            .filter(|item| matches!(item.kind.as_deref(), Some("login" | "bundle")))
-            .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.id.cmp(&right.id));
-        Ok(items)
+        Ok(values)
     }
 
     pub async fn list_google_profiles(&self) -> Result<Vec<GmailProfile>, AppError> {
