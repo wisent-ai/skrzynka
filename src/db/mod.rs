@@ -50,25 +50,29 @@ impl Database {
         };
         {
             let session = database.lock()?;
-            session.execute_batch(SCHEMA)?;
-            let version = session
-                .query_row(
+            let has_metadata = session.query_row(
+                "SELECT to_regclass('schema_meta') IS NOT NULL AS present",
+                params![],
+                |row| row.get::<_, bool>("present"),
+            )?;
+            if has_metadata {
+                let version = session.query_row(
                     "SELECT value FROM schema_meta WHERE key='schema_version'",
                     params![],
-                    |row| row.get::<_, i64>(0),
-                )
-                .optional()?
-                .unwrap_or_default();
-            if version > i64::from(SCHEMA_VERSION) {
-                return Err(AppError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "DATABASE_SCHEMA_UNSUPPORTED",
-                    format!(
-                        "database schema {version} is not supported by this build (expected at most {SCHEMA_VERSION})"
-                    ),
-                    false,
-                ));
+                    |row| row.get::<_, i64>("value"),
+                )?;
+                if version > i64::from(SCHEMA_VERSION) {
+                    return Err(AppError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "DATABASE_SCHEMA_UNSUPPORTED",
+                        format!(
+                            "database schema {version} is not supported by this build (expected at most {SCHEMA_VERSION})"
+                        ),
+                        false,
+                    ));
+                }
             }
+            session.execute_batch(SCHEMA)?;
             session.execute(
                 "INSERT INTO schema_meta (key, value) VALUES ('schema_version', $1)
                  ON CONFLICT (key) DO UPDATE SET value = excluded.value",
