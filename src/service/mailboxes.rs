@@ -19,6 +19,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 mod profile;
+mod reads;
 use profile::{apply_config, endpoint_conflict, mailbox_matches_config};
 
 impl AppState {
@@ -229,35 +230,6 @@ impl AppState {
             .await?;
         self.reconcile_mailboxes(Some(organization_id)).await?;
         self.get_mailbox(organization_id, id).await
-    }
-
-    pub async fn list_mailboxes(&self, organization_id: &str) -> Result<Vec<Mailbox>, AppError> {
-        self.reconcile_mailboxes(Some(organization_id)).await?;
-        let mut mailboxes = self.database.list_mailboxes(organization_id)?;
-        if !mailboxes.is_empty() {
-            let source = self.resolver.credential_source().await;
-            let items = self.resolver.list_inventory().await;
-            for mailbox in &mut mailboxes {
-                mailbox.recovery_command =
-                    mailbox.recovery_command(self.resolver.status_executable());
-                let mut observed = source.clone();
-                observed.observe_item(&mailbox.skarbiec_item_id, &items);
-                mailbox.credential_source = Some(observed);
-            }
-        }
-        Ok(mailboxes)
-    }
-
-    pub async fn get_mailbox(&self, organization_id: &str, id: Uuid) -> Result<Mailbox, AppError> {
-        let mut mailbox = self.database.get_mailbox(organization_id, id)?;
-        mailbox.recovery_command = mailbox.recovery_command(self.resolver.status_executable());
-        let mut source = self.resolver.credential_source().await;
-        source.observe_item(
-            &mailbox.skarbiec_item_id,
-            &self.resolver.list_inventory().await,
-        );
-        mailbox.credential_source = Some(source);
-        Ok(mailbox)
     }
 
     /// Delete one mailbox's local mail. Only a mailbox Skarbiec no longer
