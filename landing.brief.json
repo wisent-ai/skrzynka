@@ -4,6 +4,11 @@
   "audience": "People and local tools that receive mail from multiple IMAP mailboxes and must reply through the mailbox that received each message",
   "problem": "Operating multiple mailboxes usually fragments message state and encourages copying provider credentials into each client or automation",
   "promise": "One self-hosted local inbox that preserves mailbox identity on every message and reply while keeping resolved credentials in Skarbiec",
+  "hero": {
+    "headline": "One local inbox for multiple IMAP mailboxes",
+    "lede": "Skarbiec mailbox credentials never leave your machine; Skrzynka preserves the originating identity on every message and reply.",
+    "decidedBy": "adopted from plan 3b7ea97a1dcb42b8"
+  },
   "primaryAction": {
     "label": "Read the documentation",
     "kind": "url",
