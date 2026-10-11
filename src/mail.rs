@@ -233,7 +233,18 @@ fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, AppError> {
     let subject = headers
         .get_first_value("Subject")
         .unwrap_or_else(|| "(no subject)".to_string());
-    let body_text = extract_text(&parsed).unwrap_or_default().trim().to_string();
+    let text = extract_text(&parsed).map_err(|error| {
+        dependency_error(
+            "MESSAGE_BODY_UNDECODABLE",
+            format!("provider message {uid} has a text part that cannot be decoded: {error}"),
+            false,
+        )
+    })?;
+    // A message with no text/plain part (HTML only) has no text body.
+    let body_text = match text {
+        Some(text) => text.trim().to_string(),
+        None => String::new(),
+    };
     let snippet = body_text.split_whitespace().collect::<Vec<_>>().join(" ");
     let sent_at = headers
         .get_first_value("Date")
@@ -255,14 +266,24 @@ fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, AppError> {
     })
 }
 
-fn extract_text(parsed: &ParsedMail<'_>) -> Option<String> {
+/// The first text/plain part's decoded body, `None` when the message has no
+/// such part, or the decoding failure. A part whose charset or transfer
+/// encoding failed used to read as "no text part", so the message was stored
+/// with an empty body as if it had none; it is now rejected and counted under
+/// its own reason in the sync summary.
+fn extract_text(parsed: &ParsedMail<'_>) -> Result<Option<String>, mailparse::MailParseError> {
     if parsed.subparts.is_empty() {
         if parsed.ctype.mimetype.eq_ignore_ascii_case("text/plain") {
-            return parsed.get_body().ok();
+            return parsed.get_body().map(Some);
         }
-        return None;
+        return Ok(None);
     }
-    parsed.subparts.iter().find_map(extract_text)
+    for part in &parsed.subparts {
+        if let Some(text) = extract_text(part)? {
+            return Ok(Some(text));
+        }
+    }
+    Ok(None)
 }
 
 fn dependency_error(code: &'static str, message: impl Into<String>, retryable: bool) -> AppError {
