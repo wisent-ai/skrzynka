@@ -229,6 +229,16 @@ target/debug/skrzynka sync
 target/debug/skrzynka message list
 ```
 
+To read the mail one address received from one sender, such as a sign-up
+confirmation a provider sent to a generated address, narrow the listing:
+`skrzynka message list --recipient ADDRESS --sender TEXT` keeps the messages
+whose To header carries the address whole (without case) and whose From header
+contains the text; `--limit` and `--offset` then page the matches, a blank
+filter is refused with `MESSAGE_FILTER_INVALID`, and nothing matching is `[]`.
+The same filters are `GET /v1/messages?recipient=&sender=` on the API and the
+Inbox filter bar in Skrzynka Desktop; `docs/messages/filters.md` says what
+matches.
+
 When the Gmail login address differs from the address recipients know, the
 Skarbiec item says so itself: `username` is the login and `email` is the
 public address used as `From`.
