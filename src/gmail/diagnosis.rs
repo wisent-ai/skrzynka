@@ -62,19 +62,26 @@ pub fn redirect_not_registered(client_id: &str, redirect_uri: &str) -> AppError 
 /// refusal that needs an app password names this one command rather than asking
 /// somebody to make one by hand.
 pub fn app_password_action(organization: &str, account: &str) -> String {
-    format!("weles app-password --provider google --login-role <Skarbiec role the Google login of {account} plays> --organization {organization}")
+    format!(
+        "weles app-password --provider google --login-role <Skarbiec role the Google login of {account} plays> --organization {} --account {}",
+        shell_quoted(organization),
+        shell_quoted(account)
+    )
 }
 
-/// The same command for a mailbox whose bound Skarbiec Google login is known:
-/// Weles signs exactly that login in instead of a role the operator has to
-/// look up, and `skrzynka account app-password` stores the result only after
-/// a real IMAP login with it succeeds, so a login that is not this mailbox's
-/// account is refused there rather than bound.
-pub fn app_password_action_for_login(organization: &str, login_item: &str) -> String {
+/// Recovery binds both the selected login and the mailbox account. Weles
+/// compares the account before opening the provider session; a different
+/// login cannot silently create another mailbox.
+pub fn app_password_action_for_login(
+    organization: &str,
+    login_item: &str,
+    account: &str,
+) -> String {
     format!(
-        "weles app-password --provider google --login-item {} --organization {}",
+        "weles app-password --provider google --login-item {} --organization {} --account {}",
         shell_quoted(login_item),
-        shell_quoted(organization)
+        shell_quoted(organization),
+        shell_quoted(account)
     )
 }
 
@@ -100,7 +107,7 @@ pub fn google_imap_password_rejected(
         "GMAIL_IMAP_PASSWORD_REJECTED",
         format!(
             "Google refused IMAP authentication for mailbox {mailbox_email} using the password credential associated with Skarbiec item '{skarbiec_item_id}'. Create an app-specific password and store it here with `{}`. Run `skrzynka --organization {organization} account connection --provider gmail --email {mailbox_email} --bind <loopback-address:port>` with the callback address intended for OAuth to measure which connection paths this account can actually use.",
-            app_password_action_for_login(organization, skarbiec_item_id)
+            app_password_action_for_login(organization, skarbiec_item_id, mailbox_email)
         ),
         false,
     )

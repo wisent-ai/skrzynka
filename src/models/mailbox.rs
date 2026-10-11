@@ -20,6 +20,7 @@ impl Mailbox {
             "GMAIL_IMAP_PASSWORD_REJECTED" => Some(crate::gmail::app_password_action_for_login(
                 &self.organization_id,
                 &self.skarbiec_item_id,
+                &self.email,
             )),
             _ => None,
         }
