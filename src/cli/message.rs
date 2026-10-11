@@ -17,9 +17,18 @@ pub(super) async fn run_message(
     match command {
         MessageCommand::List {
             mailbox,
+            recipient,
+            sender,
             limit,
             offset,
-        } => print_json(&state.list_messages(organization, mailbox, limit, offset)?),
+        } => print_json(&state.list_messages(
+            organization,
+            mailbox,
+            recipient.as_deref(),
+            sender.as_deref(),
+            limit,
+            Some(offset),
+        )?),
         MessageCommand::Show { id } => print_json(&state.get_message(organization, id)?),
         MessageCommand::Reply {
             id,

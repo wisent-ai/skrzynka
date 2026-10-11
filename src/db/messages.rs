@@ -203,12 +203,14 @@ impl Database {
         Ok((self.get_mailbox_internal(mailbox.id)?, imported, unchanged))
     }
 
+    /// Messages newest first; `offset` None reads from the first one, which
+    /// `OFFSET NULL` means.
     pub fn list_messages(
         &self,
         organization_id: &str,
         mailbox_id: Option<Uuid>,
         limit: Option<u32>,
-        offset: u32,
+        offset: Option<u32>,
     ) -> Result<Vec<Message>, AppError> {
         let connection = self.lock()?;
         let sql = if mailbox_id.is_some() {
@@ -237,13 +239,13 @@ impl Database {
                     mailbox_id.to_string(),
                     organization_id,
                     page_limit(limit),
-                    i64::from(offset)
+                    offset.map(i64::from)
                 ],
                 message_from_row,
             )?
         } else {
             statement.query_map(
-                params![organization_id, page_limit(limit), i64::from(offset)],
+                params![organization_id, page_limit(limit), offset.map(i64::from)],
                 message_from_row,
             )?
         };

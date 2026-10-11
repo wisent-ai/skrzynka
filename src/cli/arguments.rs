@@ -178,6 +178,12 @@ pub(super) enum MessageCommand {
         /// Only this mailbox's messages.
         #[arg(long)]
         mailbox: Option<Uuid>,
+        /// Only messages whose To header names this address whole.
+        #[arg(long)]
+        recipient: Option<String>,
+        /// Only messages whose From header contains this text.
+        #[arg(long)]
+        sender: Option<String>,
         /// Messages per page; without it, every message from --offset on.
         #[arg(long)]
         limit: Option<u32>,

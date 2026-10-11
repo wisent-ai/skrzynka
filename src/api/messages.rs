@@ -17,6 +17,10 @@ use serde_json::{json, Value};
 #[derive(Deserialize)]
 pub(super) struct MessageQuery {
     mailbox_id: Option<String>,
+    /// Keep the messages whose To header names this address whole.
+    recipient: Option<String>,
+    /// Keep the messages whose From header contains this text.
+    sender: Option<String>,
     limit: Option<u32>,
     offset: Option<u32>,
 }
@@ -30,8 +34,10 @@ pub(super) async fn list_messages(
     Ok(Json(json!(state.list_messages(
         &auth.organization_id,
         mailbox_id,
+        query.recipient.as_deref(),
+        query.sender.as_deref(),
         query.limit,
-        query.offset.unwrap_or(0),
+        query.offset,
     )?)))
 }
 

@@ -11,17 +11,50 @@ use uuid::Uuid;
 impl AppState {
     /// Stored messages, newest first: every one from `offset`, or a page of
     /// `limit` when the caller names one. Zero is refused, never read as a
-    /// different page size.
+    /// different page size. `recipient` keeps the messages whose To header
+    /// names that address whole (case aside): a longer address that merely
+    /// ends in it does not match. `sender` keeps those whose From header
+    /// contains it. An empty filter is refused rather than read as no filter.
     pub fn list_messages(
         &self,
         organization_id: &str,
         mailbox_id: Option<Uuid>,
+        recipient: Option<&str>,
+        sender: Option<&str>,
         limit: Option<u32>,
-        offset: u32,
+        offset: Option<u32>,
     ) -> Result<Vec<Message>, AppError> {
         page_size(limit)?;
-        self.database
-            .list_messages(organization_id, mailbox_id, limit, offset)
+        let recipient = filter_value(recipient, "recipient")?;
+        let sender = filter_value(sender, "sender")?;
+        if recipient.is_none() && sender.is_none() {
+            return self
+                .database
+                .list_messages(organization_id, mailbox_id, limit, offset);
+        }
+        // The filters read the stored headers, so the page is cut after them:
+        // every stored message is read, from the first one.
+        let matching: Vec<Message> = self
+            .database
+            .list_messages(organization_id, mailbox_id, None, None)?
+            .into_iter()
+            .filter(|message| match &recipient {
+                Some(address) => addressed_to(&message.recipients, address),
+                None => true,
+            })
+            .filter(|message| match &sender {
+                Some(part) => message.sender.to_lowercase().contains(part.as_str()),
+                None => true,
+            })
+            .collect();
+        let after_offset: Vec<Message> = match offset {
+            Some(offset) => matching.into_iter().skip(offset as usize).collect(),
+            None => matching,
+        };
+        Ok(match limit {
+            Some(limit) => after_offset.into_iter().take(limit as usize).collect(),
+            None => after_offset,
+        })
     }
 
     pub fn get_message(&self, organization_id: &str, id: Uuid) -> Result<Message, AppError> {
@@ -145,4 +178,30 @@ pub(super) fn page_size(limit: Option<u32>) -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+/// A listing filter as given, lowercased, or refused when it is blank.
+fn filter_value(value: Option<&str>, name: &str) -> Result<Option<String>, AppError> {
+    match value.map(str::trim) {
+        None => Ok(None),
+        Some("") => Err(AppError::invalid(
+            "MESSAGE_FILTER_INVALID",
+            &format!("the {name} filter is empty; name an address or leave the filter out"),
+        )),
+        Some(value) => Ok(Some(value.to_lowercase())),
+    }
+}
+
+/// Whether the To header names `address` whole: each comma-separated entry,
+/// a display name with the address in angle brackets or a bare address,
+/// compared without case.
+fn addressed_to(header: &str, address: &str) -> bool {
+    header.split(',').any(|entry| {
+        let entry = entry.trim();
+        let bare = match (entry.rfind('<'), entry.rfind('>')) {
+            (Some(open), Some(close)) if open < close => entry[open..close].trim_start_matches('<'),
+            _ => entry,
+        };
+        bare.trim().eq_ignore_ascii_case(address)
+    })
 }
