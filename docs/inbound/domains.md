@@ -9,12 +9,13 @@ sender, as it answers a mailbox's mail. Skrzynka holds no provider key.
 
 ## Setup
 
-1. Skrzynka's wisent-integrations grant is a Skarbiec item playing the role
-   `skrzynka-integration-api` (tag `stado:role:skrzynka-integration-api`) with
-   two fields: `token`, Skrzynka's integration bearer, and `url`, the
-   wisent-integrations address. On the wisent-integrations side, the client
-   policy entry for that bearer allows exactly
-   `content/resend.receiving.list` and `content/resend.receiving.get`.
+1. Skrzynka's wisent-integrations grant is the Skarbiec item
+   `skrzynka-integration-api`, tagged `stado:role:skrzynka-integration-api`
+   so Skrzynka asks for it by its role, with two fields: `token`, Skrzynka's
+   integration bearer, and `url`, the wisent-integrations address. On the
+   wisent-integrations side, the client policy entry for that item allows
+   exactly `content/resend.receiving.list` and `content/resend.receiving.get`
+   (wisent-integrations `docs/actions.md`, Skrzynka inbound domains).
 2. Declare the domain for the organization:
 
 ```bash
