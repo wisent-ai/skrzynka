@@ -13,7 +13,9 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 mod incoming;
-pub use incoming::{fetch_messages, verify_gmail_app_password, wait_for_new_mail, GMAIL_IMAP_HOST};
+mod password;
+pub use incoming::{fetch_messages, wait_for_new_mail, GMAIL_IMAP_HOST};
+pub use password::verify_gmail_app_password;
 
 pub fn send_reply(
     mailbox: &Mailbox,
