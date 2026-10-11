@@ -12,17 +12,16 @@ impl Mailbox {
         match code {
             "SKARBIEC_ITEM_INVALID" | "SKARBIEC_UNAVAILABLE" | "SKARBIEC_RESPONSE_INVALID" => {
                 let binary = skarbiec?.display().to_string();
-                Some(format!("{} status", quoted(&binary)))
+                Some(format!("{} status", crate::gmail::shell_quoted(&binary)))
             }
-            "GMAIL_IMAP_PASSWORD_REJECTED" => Some(format!(
-                "skrzynka --organization {} account app-password --provider gmail --email {} --mailbox {}",
-                quoted(&self.organization_id), quoted(&self.email), self.id
+            // Google refused the bound login's password for IMAP: Weles signs
+            // that same login in and mints the app password, instead of an
+            // operator pasting one on stdin.
+            "GMAIL_IMAP_PASSWORD_REJECTED" => Some(crate::gmail::app_password_action_for_login(
+                &self.organization_id,
+                &self.skarbiec_item_id,
             )),
             _ => None,
         }
     }
-}
-
-fn quoted(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
