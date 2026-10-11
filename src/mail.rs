@@ -133,10 +133,10 @@ fn deliver(
         SmtpSecurity::Starttls => SmtpTransport::starttls_relay(&mailbox.smtp_host),
         SmtpSecurity::Tls => SmtpTransport::relay(&mailbox.smtp_host),
     }
-    .map_err(|_| {
+    .map_err(|error| {
         dependency_error(
             "SMTP_TLS_FAILED",
-            "SMTP TLS configuration was rejected",
+            format!("SMTP TLS configuration was rejected: {error}"),
             false,
         )
     })?
@@ -211,10 +211,10 @@ fn parse_recipient(value: &str) -> Result<LettreMailbox, AppError> {
 }
 
 fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, AppError> {
-    let parsed = mailparse::parse_mail(bytes).map_err(|_| {
+    let parsed = mailparse::parse_mail(bytes).map_err(|error| {
         dependency_error(
             "MESSAGE_MALFORMED",
-            "provider message could not be parsed",
+            format!("provider message {uid} could not be parsed: {error}"),
             false,
         )
     })?;
