@@ -108,7 +108,11 @@ impl AppState {
                      '{item}'. {}",
                     refusal.evidence
                 ),
-                action: connect_action(organization_id, Some(account)),
+                action: crate::gmail::app_password_action_for_login(
+                    organization_id,
+                    &item,
+                    account,
+                ),
                 observed,
             },
             Err(error) => GmailConnectionPath {
