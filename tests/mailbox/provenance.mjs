@@ -64,6 +64,13 @@ try {
   const before = mailbox(vaultBinary);
   assert.equal(before.organization_id, values.organization);
   assert.equal(before.id, values.mailbox, 'Use the actual mailbox UUID');
+  const inventory = JSON.parse(successful(vaultBinary, ['list']));
+  assert.ok(Array.isArray(inventory), 'Real vault inventory must be an array');
+  const coordinate = before.skarbiec_item_id;
+  const held = inventory.some((item) => item.id === coordinate ||
+    (coordinate.startsWith('role:') && item.tags?.includes(`stado:${coordinate}`)));
+  assert.ok(held, 'The declared mailbox fixture must name an item held by the actual vault');
+  report.inventory = inventory;
   assert.equal(before.credential_source.error, null);
   assert.equal(before.credential_source.vault, status.vault);
   assert.equal(before.credential_source.route, status.source.route);
