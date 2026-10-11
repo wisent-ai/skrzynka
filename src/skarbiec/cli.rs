@@ -30,6 +30,8 @@ impl SkarbiecResolver {
             route: None,
             endpoint: None,
             error: None,
+            item_held: None,
+            item_error: None,
         };
         if let Some(path) = &self.local {
             source.vault = Some(path.display().to_string());
@@ -178,8 +180,9 @@ impl SkarbiecResolver {
     pub(crate) async fn get_item(&self, item_id: &str) -> Result<Value, AppError> {
         let output = self.output(&["get", item_id]).await?;
         if !output.status.success() {
+            let vault = self.credential_source().await.describe();
             return Err(invalid_item(format!(
-                "Skarbiec item '{item_id}' could not be read ({}): {}",
+                "Skarbiec item '{item_id}' could not be read from {vault} ({}): {}",
                 output.status,
                 String::from_utf8_lossy(&output.stderr).trim()
             )));

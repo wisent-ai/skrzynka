@@ -51,11 +51,15 @@ pub struct GmailOAuthStatusError {
 ///
 /// The counted verdicts are the point: `usable_paths` of zero says reception
 /// cannot be connected today, whatever the vault happens to contain.
+/// `credential_source` names the vault the receiving item was looked for in,
+/// so a refusal for an item that vault does not hold names both the item and
+/// the vault, not only the item.
 #[derive(Serialize)]
 pub struct GmailConnectionReadiness {
     pub account: Option<String>,
     pub mailbox_id: Option<Uuid>,
     pub receiving_skarbiec_item_id: Option<String>,
+    pub credential_source: crate::models::CredentialSource,
     pub usable_paths: usize,
     pub paths: Vec<GmailConnectionPath>,
 }

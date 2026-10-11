@@ -61,12 +61,18 @@ impl AppState {
             self.delegation_path(organization_id, account.as_deref())
                 .await,
         ];
+        let mut credential_source = self.resolver.credential_source().await;
+        if let Some(mailbox) = &mailbox {
+            credential_source
+                .observe_item(&mailbox.skarbiec_item_id, &self.resolver.list_items().await);
+        }
         Ok(GmailConnectionReadiness {
             account,
             mailbox_id: mailbox.as_ref().map(|mailbox| mailbox.id),
             receiving_skarbiec_item_id: mailbox
                 .as_ref()
                 .map(|mailbox| mailbox.skarbiec_item_id.clone()),
+            credential_source,
             usable_paths: paths.iter().filter(|path| path.verdict == USABLE).count(),
             paths,
         })
