@@ -60,11 +60,16 @@ pub(super) enum Command {
         #[command(subcommand)]
         command: MessageCommand,
     },
-    /// Import every message each mailbox's INBOX holds past its cursor, one message per commit.
+    /// Import every message each mailbox's INBOX holds past its cursor, one
+    /// message per commit; with --inbound-domain, read that domain's receiving
+    /// feed and store every message not stored yet.
     Sync {
         /// Import only this mailbox.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "inbound_domain")]
         mailbox: Option<Uuid>,
+        /// Read only this inbound domain, as `mailbox list --inbound` prints its ID.
+        #[arg(long)]
+        inbound_domain: Option<Uuid>,
     },
 }
 
@@ -140,24 +145,35 @@ pub(super) enum AccountCommand {
 /// the tag; they keep no list of their own.
 #[derive(Subcommand)]
 pub(super) enum MailboxCommand {
-    /// Tag a Skarbiec item skrzynka:mailbox and import every message its INBOX holds.
+    /// Tag a Skarbiec item skrzynka:mailbox and import every message its INBOX
+    /// holds; or, with --inbound-domain, declare a domain whose every address
+    /// receives mail at a receiving provider, read through wisent-integrations.
     Declare(DeclareMailboxArgs),
     /// Remove the skrzynka:mailbox tag; the mailbox keeps its mail and stops being read.
     Undeclare {
         /// Mailbox ID, as `skrzynka mailbox list` prints it.
         id: Uuid,
     },
-    /// Every mailbox Skarbiec declares, after reading the vault.
-    List,
+    /// Every mailbox Skarbiec declares, after reading the vault; with
+    /// --inbound, every declared inbound domain and its last read instead.
+    List {
+        /// List the inbound domains instead of the mailboxes.
+        #[arg(long)]
+        inbound: bool,
+    },
     /// One mailbox's state as Skrzynka holds it.
     Show {
         /// Mailbox ID, as `skrzynka mailbox list` prints it.
         id: Uuid,
     },
-    /// Delete the local mail of a mailbox Skarbiec no longer declares.
+    /// Delete the local mail of a mailbox Skarbiec no longer declares, or, with
+    /// --inbound, an inbound domain and every message received for it.
     Remove {
-        /// Mailbox ID, as `skrzynka mailbox list` prints it.
+        /// Mailbox ID, or inbound domain ID with --inbound, as `mailbox list` prints it.
         id: Uuid,
+        /// The ID names an inbound domain.
+        #[arg(long)]
+        inbound: bool,
         /// Required: the local mail is deleted and cannot be restored.
         #[arg(long)]
         confirm: bool,
@@ -165,10 +181,16 @@ pub(super) enum MailboxCommand {
 }
 
 #[derive(Args)]
+#[group(required = true, multiple = false)]
 pub(super) struct DeclareMailboxArgs {
     /// Skarbiec item that holds the mailbox's credentials.
     #[arg(long)]
-    pub(super) skarbiec_item: String,
+    pub(super) skarbiec_item: Option<String>,
+    /// A mail domain, as it follows the @ of its addresses, whose mail Skrzynka
+    /// reads through wisent-integrations with the Skarbiec item playing role
+    /// skrzynka-integration-api (fields token and url).
+    #[arg(long)]
+    pub(super) inbound_domain: Option<String>,
 }
 
 #[derive(Subcommand)]

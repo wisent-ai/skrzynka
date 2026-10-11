@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
+mod inbound;
 mod mailboxes;
 mod messages;
 mod outbound;
@@ -21,6 +22,8 @@ pub const SCHEMA_VERSION: u32 = 5;
 /// The database's name in Stado.
 pub const DATABASE_NAME: &str = "skrzynka";
 const SCHEMA: &str = include_str!("sql/schema.sql");
+/// The inbound-domain tables, kept in their own file; created beside the rest.
+const INBOUND_SCHEMA: &str = include_str!("sql/inbound.sql");
 
 #[derive(Debug, Clone)]
 pub struct MailboxConfig {
@@ -73,6 +76,7 @@ impl Database {
                 }
             }
             session.execute_batch(SCHEMA)?;
+            session.execute_batch(INBOUND_SCHEMA)?;
             session.execute(
                 "INSERT INTO schema_meta (key, value) VALUES ('schema_version', $1)
                  ON CONFLICT (key) DO UPDATE SET value = excluded.value",

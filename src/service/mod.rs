@@ -15,6 +15,8 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 mod gmail;
+mod inbound;
+pub use inbound::InboundSyncSummary;
 mod mailboxes;
 mod messages;
 mod outbound;

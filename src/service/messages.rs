@@ -181,7 +181,7 @@ pub(super) fn page_size(limit: Option<u32>) -> Result<(), AppError> {
 }
 
 /// A listing filter as given, lowercased, or refused when it is blank.
-fn filter_value(value: Option<&str>, name: &str) -> Result<Option<String>, AppError> {
+pub(super) fn filter_value(value: Option<&str>, name: &str) -> Result<Option<String>, AppError> {
     match value.map(str::trim) {
         None => Ok(None),
         Some("") => Err(AppError::invalid(
@@ -195,7 +195,7 @@ fn filter_value(value: Option<&str>, name: &str) -> Result<Option<String>, AppEr
 /// Whether the To header names `address` whole: each comma-separated entry,
 /// a display name with the address in angle brackets or a bare address,
 /// compared without case.
-fn addressed_to(header: &str, address: &str) -> bool {
+pub(super) fn addressed_to(header: &str, address: &str) -> bool {
     header.split(',').any(|entry| {
         let entry = entry.trim();
         let bare = match (entry.rfind('<'), entry.rfind('>')) {

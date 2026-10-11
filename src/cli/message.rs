@@ -15,6 +15,25 @@ pub(super) async fn run_message(
     command: MessageCommand,
 ) -> Result<(), AppError> {
     match command {
+        // An address of a declared inbound domain is read from the receiving
+        // feed (`skrzynka mailbox declare --inbound-domain`): the feed is read
+        // first, then that address's stored mail is listed.
+        MessageCommand::List {
+            mailbox: None,
+            recipient: Some(recipient),
+            sender,
+            limit,
+            offset,
+        } if state.is_inbound_recipient(organization, &recipient)? => {
+            let received = state
+                .read_inbound(organization, Some(&recipient), sender.as_deref(), None)
+                .await?;
+            let page = received.into_iter().skip(offset as usize);
+            print_json(&match limit {
+                Some(limit) => page.take(limit as usize).collect::<Vec<_>>(),
+                None => page.collect::<Vec<_>>(),
+            })
+        }
         MessageCommand::List {
             mailbox,
             recipient,

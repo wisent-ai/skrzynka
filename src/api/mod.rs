@@ -17,6 +17,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 mod gmail;
+mod inbound;
 mod mailboxes;
 mod messages;
 
@@ -24,6 +25,10 @@ use gmail::{
     connect_gmail_app_password, connect_gmail_delegated, disconnect_gmail,
     gmail_connection_readiness_handler, gmail_oauth_callback, gmail_oauth_status,
     start_gmail_oauth,
+};
+use inbound::{
+    declare_inbound_domain, list_inbound_domains, read_inbound, remove_inbound_domain,
+    sync_inbound_domain,
 };
 use mailboxes::{
     declare_mailbox, delete_mailbox, get_mailbox, list_mailboxes, sync_all, sync_mailbox,
@@ -66,6 +71,16 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/v1/outbound", get(list_outbound))
         .route("/v1/outbound/:id", get(get_outbound))
+        .route(
+            "/v1/inbound/domains",
+            get(list_inbound_domains).post(declare_inbound_domain),
+        )
+        .route(
+            "/v1/inbound/domains/:id",
+            axum::routing::delete(remove_inbound_domain),
+        )
+        .route("/v1/inbound/domains/:id/sync", post(sync_inbound_domain))
+        .route("/v1/inbound/messages", get(read_inbound))
         .route_layer(middleware::from_fn_with_state(
             state.auth_verifier.clone(),
             require_auth,

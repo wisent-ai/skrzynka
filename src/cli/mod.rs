@@ -107,11 +107,15 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
             }
         },
         Command::Message { command } => run_message(state(None)?, organization, command).await,
-        Command::Sync { mailbox } => {
+        Command::Sync {
+            mailbox,
+            inbound_domain,
+        } => {
             let state = state(None)?;
-            match mailbox {
-                Some(id) => print_json(&state.sync_mailbox(organization, id).await?),
-                None => print_json(&state.sync_all(organization).await?),
+            match (mailbox, inbound_domain) {
+                (_, Some(id)) => print_json(&state.sync_inbound_domain(organization, id).await?),
+                (Some(id), None) => print_json(&state.sync_mailbox(organization, id).await?),
+                (None, None) => print_json(&state.sync_all(organization).await?),
             }
         }
         Command::Version => unreachable!(),

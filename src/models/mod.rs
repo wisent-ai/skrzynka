@@ -5,6 +5,8 @@ use uuid::Uuid;
 mod credential_source;
 mod mailbox;
 pub use credential_source::CredentialSource;
+mod inbound;
+pub use inbound::{InboundDomain, InboundMessage};
 
 /// How long a mailbox's host names may be (RFC 1035). A mailbox is read when its
 /// provider reports new mail (IMAP IDLE); no polling interval exists.
