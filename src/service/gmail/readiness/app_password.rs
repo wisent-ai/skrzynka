@@ -111,13 +111,13 @@ impl AppState {
                 action: connect_action(organization_id, Some(account)),
                 observed,
             },
-            Err(_) => GmailConnectionPath {
+            Err(error) => GmailConnectionPath {
                 path: APP_PASSWORD,
                 verdict: UNPROVEN,
                 code: None,
-                detail:
-                    "Gmail credential verification stopped unexpectedly before Google answered."
-                        .to_string(),
+                detail: format!(
+                    "Gmail credential verification for {account} using Skarbiec item '{item}' stopped before Google answered: {error}"
+                ),
                 action: connect_action(organization_id, Some(account)),
                 observed,
             },
