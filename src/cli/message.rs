@@ -71,14 +71,37 @@ pub(super) async fn run_message(
 }
 
 pub(super) fn read_body_file(path: &Path, code: &'static str) -> Result<String, AppError> {
-    let metadata = std::fs::metadata(path)
-        .map_err(|_| AppError::invalid(code, "message body file could not be read"))?;
+    let metadata = std::fs::metadata(path).map_err(|error| {
+        AppError::invalid(
+            code,
+            format!(
+                "message body file {} could not be read: {error}",
+                path.display()
+            ),
+        )
+    })?;
     if !metadata.is_file() {
         return Err(AppError::invalid(
             code,
             "message body file must be a regular file",
         ));
     }
-    std::fs::read_to_string(path)
-        .map_err(|_| AppError::invalid(code, "message body file must contain valid UTF-8 text"))
+    // A permission or I/O failure is not a UTF-8 failure; only the decoding
+    // error is reported as one.
+    std::fs::read_to_string(path).map_err(|error| match error.kind() {
+        std::io::ErrorKind::InvalidData => AppError::invalid(
+            code,
+            format!(
+                "message body file {} must contain valid UTF-8 text",
+                path.display()
+            ),
+        ),
+        _ => AppError::invalid(
+            code,
+            format!(
+                "message body file {} could not be read: {error}",
+                path.display()
+            ),
+        ),
+    })
 }
