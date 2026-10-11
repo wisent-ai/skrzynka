@@ -48,25 +48,41 @@ impl GmailOAuthBroker {
             ])
             .send()
             .await
-            .map_err(|_| {
+            .map_err(|error| {
                 AppError::dependency(
                     "GMAIL_OAUTH_UNAVAILABLE",
-                    "Google token service is unavailable",
+                    format!("Google token service is unavailable: {error}"),
                     true,
                 )
             })?;
         let status = response.status();
-        let payload: Value = response.json().await.map_err(|_| {
+        let payload: Value = response.json().await.map_err(|error| {
             AppError::dependency(
                 "GMAIL_OAUTH_RESPONSE_INVALID",
-                "Google token service returned invalid JSON",
+                format!("Google token service answered {status} with invalid JSON: {error}"),
                 false,
             )
         })?;
         if !status.is_success() {
+            // Google's own error and description (invalid_grant,
+            // redirect_uri_mismatch, …) are what the operator acts on.
             return Err(AppError::dependency(
                 "GMAIL_OAUTH_REJECTED",
-                "Google rejected Gmail authorization",
+                format!(
+                    "Google rejected Gmail authorization with {status}: {} {}",
+                    payload
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|text| !text.is_empty())
+                        .map_or_else(|| "no error code".to_string(), str::to_string),
+                    payload
+                        .get("error_description")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|text| !text.is_empty())
+                        .map_or_else(String::new, |text| format!("({text})")),
+                ),
                 false,
             ));
         }
@@ -100,25 +116,27 @@ impl GmailOAuthBroker {
             .bearer_auth(access_token)
             .send()
             .await
-            .map_err(|_| {
+            .map_err(|error| {
                 AppError::dependency(
                     "GMAIL_IDENTITY_UNAVAILABLE",
-                    "Google identity service is unavailable",
+                    format!("Google identity service is unavailable: {error}"),
                     true,
                 )
             })?;
         let userinfo_status = userinfo_response.status();
-        let userinfo: Value = userinfo_response.json().await.map_err(|_| {
+        let userinfo: Value = userinfo_response.json().await.map_err(|error| {
             AppError::dependency(
                 "GMAIL_OAUTH_RESPONSE_INVALID",
-                "Google identity service returned invalid JSON",
+                format!(
+                    "Google identity service answered {userinfo_status} with invalid JSON: {error}"
+                ),
                 false,
             )
         })?;
         if !userinfo_status.is_success() {
             return Err(AppError::dependency(
                 "GMAIL_IDENTITY_UNAVAILABLE",
-                "Google rejected the identity lookup",
+                format!("Google rejected the identity lookup with {userinfo_status}"),
                 false,
             ));
         }

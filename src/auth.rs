@@ -125,21 +125,35 @@ impl AuthVerifier {
             }))
             .send()
             .await
-            .map_err(|_| identity_unavailable())?;
+            .map_err(|error| {
+                // The caller sees only "unavailable"; the operator's log keeps why.
+                tracing::warn!(%error, "central identity request failed");
+                identity_unavailable()
+            })?;
 
         match response.status() {
             StatusCode::UNAUTHORIZED => return Err(unauthorized()),
             StatusCode::FORBIDDEN => return Err(forbidden()),
-            status if !status.is_success() => return Err(identity_unavailable()),
+            status if !status.is_success() => {
+                tracing::warn!(%status, "central identity refused the authorization request");
+                return Err(identity_unavailable());
+            }
             _ => {}
         }
 
         let mut authorizations: Vec<AuthorizationResponse> =
-            response.json().await.map_err(|_| identity_unavailable())?;
+            response.json().await.map_err(|error| {
+                tracing::warn!(%error, "central identity answered with an unreadable authorization");
+                identity_unavailable()
+            })?;
         if authorizations.len() != 1 {
             return if authorizations.is_empty() {
                 Err(forbidden())
             } else {
+                tracing::warn!(
+                    rows = authorizations.len(),
+                    "central identity answered more than one authorization"
+                );
                 Err(identity_unavailable())
             };
         }

@@ -129,14 +129,19 @@ async fn serve(
     state.clone().start_watching();
     let listener = tokio::net::TcpListener::bind(args.bind)
         .await
-        .map_err(|_| AppError::internal("loopback API address could not be bound"))?;
+        .map_err(|error| {
+            AppError::internal(format!(
+                "loopback API address {} could not be bound: {error}",
+                args.bind
+            ))
+        })?;
     tracing::info!(address = %args.bind, "Skrzynka API ready");
     axum::serve(listener, crate::api::router(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
-        .map_err(|_| AppError::internal("loopback API stopped unexpectedly"))
+        .map_err(|error| AppError::internal(format!("loopback API stopped unexpectedly: {error}")))
 }
 
 /// The callback base URL for a loopback socket, refusing any other address:
