@@ -58,6 +58,23 @@ impl AppError {
             false,
         )
     }
+
+    /// This error, plus the failure of recording it when that write was
+    /// refused too. A send that failed and whose `failed` status could not be
+    /// stored still reads as `state`; dropping the write's error left the
+    /// caller with the send's refusal and a record that says otherwise.
+    pub fn with_unrecorded<T>(self, recorded: Result<T, AppError>, state: &str) -> Self {
+        match recorded {
+            Ok(_) => self,
+            Err(write) => Self {
+                message: format!(
+                    "{}; recording that failure was refused too ({write}), so the record still reads {state}",
+                    self.message
+                ),
+                ..self
+            },
+        }
+    }
 }
 
 impl fmt::Display for AppError {

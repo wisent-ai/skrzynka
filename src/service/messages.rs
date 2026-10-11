@@ -66,14 +66,14 @@ impl AppState {
         {
             Ok(credentials) => credentials,
             Err(error) => {
-                let _ = self.database.update_reply(
+                let recorded = self.database.update_reply(
                     attempt.id,
                     DeliveryStatus::Failed,
                     None,
                     Some(error.code),
                     Some(&error.message),
                 );
-                return Err(error);
+                return Err(error.with_unrecorded(recorded, "sending"));
             }
         };
         let body = request.body.trim_end().to_string();
@@ -97,21 +97,23 @@ impl AppState {
                 Some(&error.message),
             ),
             Ok(Err(error)) => {
-                let _ = self.database.update_reply(
+                let recorded = self.database.update_reply(
                     attempt.id,
                     DeliveryStatus::Failed,
                     None,
                     Some(error.code),
                     Some(&error.message),
                 );
-                Err(error)
+                Err(error.with_unrecorded(recorded, "sending"))
             }
-            Err(_) => self.database.update_reply(
+            Err(stopped) => self.database.update_reply(
                 attempt.id,
                 DeliveryStatus::Uncertain,
                 None,
                 Some("REPLY_UNCERTAIN"),
-                Some("send task stopped before terminal SMTP evidence was recorded"),
+                Some(&format!(
+                    "send task stopped before terminal SMTP evidence was recorded: {stopped}"
+                )),
             ),
         }
     }

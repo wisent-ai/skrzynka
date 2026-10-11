@@ -111,14 +111,14 @@ impl AppState {
         {
             Ok(credentials) => credentials,
             Err(error) => {
-                let _ = self.database.update_outbound(
+                let recorded = self.database.update_outbound(
                     outbound.id,
                     DeliveryStatus::Failed,
                     None,
                     Some(error.code),
                     Some(&error.message),
                 );
-                return Err(error);
+                return Err(error.with_unrecorded(recorded, "sending"));
             }
         };
         let pending = outbound.clone();
@@ -142,21 +142,23 @@ impl AppState {
                 Some(&error.message),
             ),
             Ok(Err(error)) => {
-                let _ = self.database.update_outbound(
+                let recorded = self.database.update_outbound(
                     outbound.id,
                     DeliveryStatus::Failed,
                     None,
                     Some(error.code),
                     Some(&error.message),
                 );
-                Err(error)
+                Err(error.with_unrecorded(recorded, "sending"))
             }
-            Err(_) => self.database.update_outbound(
+            Err(stopped) => self.database.update_outbound(
                 outbound.id,
                 DeliveryStatus::Uncertain,
                 None,
                 Some("OUTBOUND_UNCERTAIN"),
-                Some("send task stopped before terminal SMTP evidence was recorded"),
+                Some(&format!(
+                    "send task stopped before terminal SMTP evidence was recorded: {stopped}"
+                )),
             ),
         }
     }
