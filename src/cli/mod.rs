@@ -165,17 +165,19 @@ pub(super) fn loopback_callback(bind: SocketAddr) -> Result<String, AppError> {
 /// Prints one result: pretty JSON for machines, or with `--text` one
 /// `path: value` line per field for people, from the same value (cli.md rule 13).
 pub(super) fn print_json(value: &impl serde::Serialize) -> Result<(), AppError> {
-    let value = serde_json::to_value(value)
-        .map_err(|_| AppError::internal("result could not be encoded as JSON"))?;
-    if TEXT.get().copied().unwrap_or(false) {
+    let value = serde_json::to_value(value).map_err(|cause| {
+        AppError::internal(format!("result could not be encoded as JSON: {cause}"))
+    })?;
+    if TEXT.get().copied().ok_or_else(|| {
+        AppError::internal("a result was printed before the command chose JSON or --text")
+    })? {
         let mut lines = String::new();
         flatten("", &value, &mut lines);
         print!("{lines}");
         return Ok(());
     }
-    let output = serde_json::to_string_pretty(&value)
-        .map_err(|_| AppError::internal("result could not be encoded as JSON"))?;
-    println!("{output}");
+    // A JSON value always renders; its pretty form is the machine output.
+    println!("{value:#}");
     Ok(())
 }
 
