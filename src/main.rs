@@ -25,14 +25,14 @@ async fn main() {
     if let Err(error) = cli::run(cli::Cli::parse()).await {
         eprintln!(
             "{}",
-            serde_json::to_string(&json!({
+            // A json! value always renders, so the error is never replaced.
+            json!({
                 "error": {
                     "code": error.code,
                     "message": error.message,
                     "retryable": error.retryable,
                 }
-            }))
-            .unwrap_or_else(|_| "{\"error\":{\"code\":\"INTERNAL_ERROR\"}}".to_string())
+            })
         );
         // cli.md rule 10: 69 (EX_UNAVAILABLE) when the same command may succeed
         // later unchanged, 2 for an invocation that names no organization.
