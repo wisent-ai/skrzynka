@@ -24,10 +24,13 @@ pub fn send_reply(
     body: &str,
 ) -> Result<String, AppError> {
     validate_body(body, "REPLY_BODY_INVALID")?;
-    let from_address = mailbox.email.parse().map_err(|_| {
+    let from_address = mailbox.email.parse().map_err(|cause| {
         AppError::invalid(
             "MAILBOX_PROFILE_INVALID",
-            "mailbox sending address is invalid",
+            format!(
+                "mailbox sending address {:?} is invalid: {cause}",
+                mailbox.email
+            ),
         )
     })?;
     let from = LettreMailbox::new(Some(mailbox.display_name.clone()), from_address);
@@ -35,10 +38,10 @@ pub fn send_reply(
         .reply_to
         .as_deref()
         .unwrap_or(inbound.sender.as_str());
-    let to = LettreMailbox::from_str(target).map_err(|_| {
+    let to = LettreMailbox::from_str(target).map_err(|cause| {
         AppError::invalid(
             "MESSAGE_REPLY_TARGET_INVALID",
-            "message has no valid Reply-To or From address",
+            format!("the message's Reply-To or From address {target:?} is not valid: {cause}"),
         )
     })?;
     let subject = if inbound.subject.to_ascii_lowercase().starts_with("re:") {
@@ -62,10 +65,10 @@ pub fn send_reply(
             .unwrap_or_else(|| message_id.to_string());
         builder = builder.references(references);
     }
-    let outgoing = builder.body(body.to_string()).map_err(|_| {
+    let outgoing = builder.body(body.to_string()).map_err(|cause| {
         AppError::invalid(
             "REPLY_MESSAGE_INVALID",
-            "reply could not be encoded as an email message",
+            format!("reply could not be encoded as an email message: {cause}"),
         )
     })?;
     deliver(mailbox, credentials, &outgoing)?;
@@ -88,10 +91,13 @@ pub fn send_outbound(
             "outbound message must name at least one recipient",
         ));
     }
-    let from_address = mailbox.email.parse().map_err(|_| {
+    let from_address = mailbox.email.parse().map_err(|cause| {
         AppError::invalid(
             "MAILBOX_PROFILE_INVALID",
-            "mailbox sending address is invalid",
+            format!(
+                "mailbox sending address {:?} is invalid: {cause}",
+                mailbox.email
+            ),
         )
     })?;
     let provider_message_id = format!("<{}@skrzynka.local>", Uuid::new_v4());
@@ -114,10 +120,10 @@ pub fn send_outbound(
     {
         builder = builder.cc(parse_recipient(recipient)?);
     }
-    let outgoing = builder.body(outbound.body.clone()).map_err(|_| {
+    let outgoing = builder.body(outbound.body.clone()).map_err(|cause| {
         AppError::invalid(
             "OUTBOUND_MESSAGE_INVALID",
-            "outbound message could not be encoded as an email message",
+            format!("outbound message could not be encoded as an email message: {cause}"),
         )
     })?;
     deliver(mailbox, credentials, &outgoing)?;
@@ -204,10 +210,10 @@ fn split_addresses(value: &str) -> Vec<&str> {
 }
 
 fn parse_recipient(value: &str) -> Result<LettreMailbox, AppError> {
-    LettreMailbox::from_str(value).map_err(|_| {
+    LettreMailbox::from_str(value).map_err(|cause| {
         AppError::invalid(
             "OUTBOUND_RECIPIENT_INVALID",
-            "outbound recipient is not a valid email address",
+            format!("outbound recipient {value:?} is not a valid email address: {cause}"),
         )
     })
 }
