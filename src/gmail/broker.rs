@@ -18,8 +18,11 @@ use uuid::Uuid;
 
 impl GmailOAuthBroker {
     pub fn new(resolver: SkarbiecResolver, callback_base_url: &str) -> Result<Self, AppError> {
-        let mut callback_url = Url::parse(callback_base_url)
-            .map_err(|_| AppError::internal("Gmail OAuth callback base URL is invalid"))?;
+        let mut callback_url = Url::parse(callback_base_url).map_err(|cause| {
+            AppError::internal(format!(
+                "Gmail OAuth callback base URL {callback_base_url:?} is invalid: {cause}"
+            ))
+        })?;
         if callback_url.scheme() != "http"
             || !callback_url
                 .host_str()
@@ -244,10 +247,13 @@ fn authorization_url(
     state: &str,
     login_hint: Option<&str>,
 ) -> Result<Url, AppError> {
-    let mut authorization_url = Url::parse(&oauth_client.auth_uri).map_err(|_| {
+    let mut authorization_url = Url::parse(&oauth_client.auth_uri).map_err(|cause| {
         AppError::dependency(
             "GMAIL_OAUTH_CLIENT_INVALID",
-            "Google OAuth client has an invalid authorization endpoint",
+            format!(
+                "Google OAuth client has an invalid authorization endpoint {:?}: {cause}",
+                oauth_client.auth_uri
+            ),
             false,
         )
     })?;

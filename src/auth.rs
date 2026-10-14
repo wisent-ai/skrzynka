@@ -90,11 +90,15 @@ impl AuthVerifier {
         let base_url = configured("SUPABASE_URL")?;
         let anon_key = configured("SUPABASE_ANON_KEY")?;
         let base_url = Url::parse(base_url.trim())
-            .map_err(|_| AppError::internal("central identity URL is invalid"))?;
-        if base_url.scheme() != "https" || anon_key.trim().is_empty() {
-            return Err(AppError::internal(
-                "central identity configuration is incomplete",
-            ));
+            .map_err(|cause| AppError::internal(format!("SUPABASE_URL is not a URL: {cause}")))?;
+        if base_url.scheme() != "https" {
+            return Err(AppError::internal(format!(
+                "SUPABASE_URL must be https, got {}",
+                base_url.scheme()
+            )));
+        }
+        if anon_key.trim().is_empty() {
+            return Err(AppError::internal("SUPABASE_ANON_KEY is empty"));
         }
         Ok(Self {
             client: Client::new(),
@@ -113,7 +117,12 @@ impl AuthVerifier {
         let authorization_url = self
             .base_url
             .join("rest/v1/rpc/authorize_organization")
-            .map_err(|_| AppError::internal("central identity URL could not be composed"))?;
+            .map_err(|cause| {
+                AppError::internal(format!(
+                    "central identity URL {} could not be composed: {cause}",
+                    self.base_url
+                ))
+            })?;
         let response = self
             .client
             .post(authorization_url)
