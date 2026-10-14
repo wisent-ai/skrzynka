@@ -192,7 +192,9 @@ impl AppState {
             Ok::<_, AppError>((mailbox, imported, unchanged, fetched))
         })
         .await
-        .map_err(|_| AppError::internal("mailbox import task stopped unexpectedly"))??;
+        .map_err(|cause| {
+            AppError::internal(format!("mailbox import task stopped unexpectedly: {cause}"))
+        })??;
         if imported + unchanged > 0 {
             if let Err(error) = crate::onboarding::record_mailbox_import_completed() {
                 tracing::warn!(%error, "mailbox import persisted but first-use evidence could not be recorded");

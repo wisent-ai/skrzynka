@@ -118,6 +118,10 @@ async fn verify_gmail_app_password(
     let password = password.to_string();
     tokio::task::spawn_blocking(move || mail::verify_gmail_app_password(&owned_email, &password))
         .await
-        .map_err(|_| AppError::internal("Gmail credential verification stopped unexpectedly"))?
+        .map_err(|cause| {
+            AppError::internal(format!(
+                "Gmail credential verification stopped unexpectedly: {cause}"
+            ))
+        })?
         .map_err(|refusal| refusal.into_error(organization_id, email, skarbiec_item_id))
 }

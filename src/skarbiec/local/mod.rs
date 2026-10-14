@@ -44,8 +44,9 @@ fn unavailable(path: &Path, detail: impl std::fmt::Display) -> AppError {
 }
 
 fn encoded(value: &impl serde::Serialize) -> Result<Vec<u8>, AppError> {
-    serde_json::to_vec(value)
-        .map_err(|_| AppError::internal("local credentials could not be encoded"))
+    serde_json::to_vec(value).map_err(|cause| {
+        AppError::internal(format!("local credentials could not be encoded: {cause}"))
+    })
 }
 
 /// Every item in the file; an absent file holds none.
@@ -74,8 +75,9 @@ fn read(path: &Path) -> Result<Map<String, Value>, AppError> {
 }
 
 fn write(path: &Path, items: &Map<String, Value>) -> Result<(), AppError> {
-    let text = serde_json::to_string_pretty(items)
-        .map_err(|_| AppError::internal("local credentials could not be encoded"))?;
+    let text = serde_json::to_string_pretty(items).map_err(|cause| {
+        AppError::internal(format!("local credentials could not be encoded: {cause}"))
+    })?;
     let staged = path.with_extension("tmp");
     std::fs::write(&staged, text).map_err(|error| unavailable(path, error))?;
     std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o600))

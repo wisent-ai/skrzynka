@@ -92,16 +92,22 @@ pub(super) async fn authorize_gmail(
 
 pub(super) fn read_gmail_app_password() -> Result<String, AppError> {
     let mut input = Vec::new();
-    io::stdin().lock().read_to_end(&mut input).map_err(|_| {
+    io::stdin()
+        .lock()
+        .read_to_end(&mut input)
+        .map_err(|cause| {
+            AppError::invalid(
+                "GMAIL_APP_PASSWORD_INPUT_INVALID",
+                format!("Google app-specific password could not be read from stdin: {cause}"),
+            )
+        })?;
+    let input = String::from_utf8(input).map_err(|cause| {
         AppError::invalid(
             "GMAIL_APP_PASSWORD_INPUT_INVALID",
-            "Google app-specific password could not be read from stdin",
-        )
-    })?;
-    let input = String::from_utf8(input).map_err(|_| {
-        AppError::invalid(
-            "GMAIL_APP_PASSWORD_INPUT_INVALID",
-            "Google app-specific password supplied through stdin must be valid UTF-8",
+            format!(
+                "Google app-specific password supplied through stdin must be valid UTF-8: {}",
+                cause.utf8_error()
+            ),
         )
     })?;
     let password = input
