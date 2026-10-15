@@ -12,11 +12,13 @@ use uuid::Uuid;
 
 const ORGANIZATION_HEADER: &str = "x-wisent-organization-id";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An organization role, declared from least to most privileged so the
+/// derived order is the privilege order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OrganizationRole {
-    Owner,
-    Admin,
     Member,
+    Admin,
+    Owner,
 }
 
 impl OrganizationRole {
@@ -30,15 +32,7 @@ impl OrganizationRole {
     }
 
     fn permits(self, required: Self) -> bool {
-        self.rank() >= required.rank()
-    }
-
-    fn rank(self) -> u8 {
-        match self {
-            Self::Member => 0,
-            Self::Admin => 1,
-            Self::Owner => 2,
-        }
+        self >= required
     }
 }
 
@@ -77,15 +71,14 @@ impl AuthVerifier {
     pub fn from_environment() -> Result<Self, AppError> {
         // The identity authority is configuration: Stado's service catalog sets
         // SUPABASE_URL and SUPABASE_ANON_KEY for the unit. Nothing is compiled in.
-        let configured = |name: &str| {
-            std::env::var(name)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| {
-                    AppError::internal(format!(
-                        "{name} is not set; the central identity authority has no address"
-                    ))
-                })
+        let configured = |name: &str| match std::env::var(name) {
+            Ok(value) if !value.trim().is_empty() => Ok(value),
+            Ok(_) | Err(std::env::VarError::NotPresent) => Err(AppError::internal(format!(
+                "{name} is not set; the central identity authority has no address"
+            ))),
+            Err(std::env::VarError::NotUnicode(raw)) => Err(AppError::internal(format!(
+                "{name} is not UTF-8 ({raw:?}); the identity authority cannot be read"
+            ))),
         };
         let base_url = configured("SUPABASE_URL")?;
         let anon_key = configured("SUPABASE_ANON_KEY")?;
@@ -123,22 +116,22 @@ impl AuthVerifier {
                     self.base_url
                 ))
             })?;
-        let response = self
-            .client
-            .post(authorization_url)
-            .header("apikey", &self.anon_key)
-            .bearer_auth(bearer)
-            .header(ORGANIZATION_HEADER, target_organization_id.to_string())
-            .json(&serde_json::json!({
-                "target_org_id": target_organization_id,
-            }))
-            .send()
-            .await
-            .map_err(|error| {
-                // The caller sees only "unavailable"; the operator's log keeps why.
-                tracing::warn!(%error, "central identity request failed");
-                identity_unavailable()
-            })?;
+        let response = stado_wait::request(
+            self.client
+                .post(authorization_url)
+                .header("apikey", &self.anon_key)
+                .bearer_auth(bearer)
+                .header(ORGANIZATION_HEADER, target_organization_id.to_string())
+                .json(&serde_json::json!({
+                    "target_org_id": target_organization_id,
+                })),
+        )
+        .await
+        .map_err(|error| {
+            // The caller sees only "unavailable"; the operator's log keeps why.
+            tracing::warn!(%error, "central identity request failed");
+            identity_unavailable()
+        })?;
 
         match response.status() {
             StatusCode::UNAUTHORIZED => return Err(unauthorized()),
@@ -150,25 +143,24 @@ impl AuthVerifier {
             _ => {}
         }
 
-        let mut authorizations: Vec<AuthorizationResponse> =
+        let authorizations: Vec<AuthorizationResponse> =
             response.json().await.map_err(|error| {
                 tracing::warn!(%error, "central identity answered with an unreadable authorization");
                 identity_unavailable()
             })?;
-        if authorizations.len() != 1 {
-            return if authorizations.is_empty() {
-                Err(forbidden())
-            } else {
+        let rows = authorizations.len();
+        let mut answered = authorizations.into_iter();
+        let authorization = match (answered.next(), answered.next()) {
+            (None, _) => return Err(forbidden()),
+            (Some(only), None) => only,
+            (Some(_), Some(_)) => {
                 tracing::warn!(
-                    rows = authorizations.len(),
+                    rows,
                     "central identity answered more than one authorization"
                 );
-                Err(identity_unavailable())
-            };
-        }
-        let authorization = authorizations
-            .pop()
-            .expect("authorization row count was checked");
+                return Err(identity_unavailable());
+            }
+        };
         if authorization.organization_id != target_organization_id {
             return Err(forbidden());
         }
@@ -221,7 +213,15 @@ fn single_header_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str
     if values.next().is_some() {
         return None;
     }
-    value.to_str().ok()
+    // The caller is answered with the generic refusal an auth failure gets;
+    // the cause is kept in the service log, as the identity failures are.
+    match value.to_str() {
+        Ok(text) => Some(text),
+        Err(error) => {
+            tracing::warn!(%error, header = name, "request header is not visible ASCII");
+            None
+        }
+    }
 }
 
 fn invalid_organization() -> AppError {
