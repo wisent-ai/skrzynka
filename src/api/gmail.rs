@@ -1,4 +1,4 @@
-//! Gmail routes: OAuth start, callback and status; delegated and app-password connection; disconnection.
+//! Gmail routes: OAuth start, callback, status and settled status; delegated and app-password connection; disconnection.
 
 use super::parse_uuid;
 use crate::{
@@ -106,20 +106,42 @@ pub(super) async fn connect_gmail_app_password(
     )))
 }
 
+/// The page Google's redirect lands on. A refused callback names the core's
+/// own code and sentence, the same refusal Skrzynka Desktop then reads from
+/// the flow.
 pub(super) async fn gmail_oauth_callback(
     State(state): State<AppState>,
     Query(callback): Query<GmailOAuthCallback>,
-) -> (StatusCode, Html<&'static str>) {
+) -> (StatusCode, Html<String>) {
     match state.complete_gmail_oauth_callback(callback).await {
         Ok(_) => (
             StatusCode::OK,
-            Html("<!doctype html><meta charset=utf-8><title>Gmail connected</title><p>Gmail is connected to Skrzynka. You can close this window and return to Skrzynka Desktop.</p>"),
+            Html(String::from("<!doctype html><meta charset=utf-8><title>Gmail connected</title><p>Gmail is connected to Skrzynka. You can close this window and return to Skrzynka Desktop.</p>")),
         ),
-        Err(_) => (
+        Err(error) => (
             StatusCode::BAD_REQUEST,
-            Html("<!doctype html><meta charset=utf-8><title>Gmail connection failed</title><p>Gmail could not be connected. Return to Skrzynka Desktop for the exact error.</p>"),
+            Html(format!(
+                "<!doctype html><meta charset=utf-8><title>Gmail connection failed</title><p>Gmail could not be connected: {}</p><p>Skrzynka Desktop shows the same refusal.</p>",
+                escape_html(&error.to_string())
+            )),
         ),
     }
+}
+
+/// Text placed inside the callback page's markup, with the characters HTML
+/// would read as markup written as references.
+fn escape_html(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 pub(super) async fn gmail_oauth_status(
@@ -130,6 +152,23 @@ pub(super) async fn gmail_oauth_status(
     Ok(Json(json!(
         state
             .gmail_oauth_status(&auth.organization_id, parse_uuid(&flow_id)?)
+            .await?
+    )))
+}
+
+/// The flow's status once Google's callback has completed or failed it. The
+/// answer waits for the callback, so a client reads the outcome once instead
+/// of asking again on a clock; a client that stops waiting closes the
+/// connection, which drops this wait. A flow the core no longer holds is the
+/// same not-found refusal the status read gives.
+pub(super) async fn gmail_oauth_settled(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(flow_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    Ok(Json(json!(
+        state
+            .gmail_oauth_settled(&auth.organization_id, parse_uuid(&flow_id)?)
             .await?
     )))
 }

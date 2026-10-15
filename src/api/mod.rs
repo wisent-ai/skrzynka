@@ -23,8 +23,8 @@ mod messages;
 
 use gmail::{
     connect_gmail_app_password, connect_gmail_delegated, disconnect_gmail,
-    gmail_connection_readiness_handler, gmail_oauth_callback, gmail_oauth_status,
-    start_gmail_oauth,
+    gmail_connection_readiness_handler, gmail_oauth_callback, gmail_oauth_settled,
+    gmail_oauth_status, start_gmail_oauth,
 };
 use inbound::{
     declare_inbound_domain, list_inbound_domains, read_inbound, remove_inbound_domain,
@@ -46,6 +46,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/gmail/profiles", get(list_gmail_profiles))
         .route("/v1/gmail/oauth/start", post(start_gmail_oauth))
         .route("/v1/gmail/oauth/:flow_id", get(gmail_oauth_status))
+        .route("/v1/gmail/oauth/:flow_id/settled", get(gmail_oauth_settled))
         .route(
             "/v1/gmail/connection",
             get(gmail_connection_readiness_handler),
