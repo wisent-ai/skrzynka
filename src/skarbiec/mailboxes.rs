@@ -7,14 +7,55 @@
 //! mail and sync state for those items; it keeps no list of its own.
 
 use super::{
-    invalid_item, optional_port, optional_text, profile_error, required_text, validate_hostname,
+    invalid_item, optional_text, port_field, profile_error, required_text, validate_hostname,
     validate_item_id, ResolvedCredentials, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID,
     GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
 };
 use crate::{db::MailboxConfig, error::AppError, models::SmtpSecurity};
-use lettre::Address;
+use lettre::{
+    transport::smtp::{SUBMISSIONS_PORT, SUBMISSION_PORT},
+    Address,
+};
 use serde_json::Value;
-use std::str::FromStr;
+use std::{path::Path, str::FromStr};
+
+/// The services database the operating system ships: the IANA port registry
+/// as `services(5)` lays it out.
+const SERVICES_DATABASE: &str = "/etc/services";
+
+/// The TCP port the services database assigns to `service`, so a mailbox that
+/// states no IMAP port is reached on the registered one rather than on a
+/// number written here.
+fn registered_tcp_port(service: &str) -> Result<u16, AppError> {
+    let path = Path::new(SERVICES_DATABASE);
+    let text = std::fs::read_to_string(path).map_err(|cause| {
+        profile_error(format!(
+            "the item states no port and {} could not be read for the {service} port: {cause}",
+            path.display()
+        ))
+    })?;
+    let entry = text
+        .lines()
+        .filter_map(|line| line.split('#').next())
+        .find_map(|line| {
+            let mut words = line.split_whitespace();
+            let name = words.next()?;
+            let port = words.next()?.strip_suffix("/tcp")?;
+            (name == service || words.any(|alias| alias == service)).then_some(port)
+        })
+        .ok_or_else(|| {
+            profile_error(format!(
+                "the item states no port and {} assigns no TCP port to {service}",
+                path.display()
+            ))
+        })?;
+    entry.parse::<u16>().map_err(|cause| {
+        profile_error(format!(
+            "{} assigns {service} the port '{entry}', which is no port: {cause}",
+            path.display()
+        ))
+    })
+}
 
 /// The Skarbiec tag that declares an item one of Skrzynka's mailboxes.
 pub const MAILBOX_TAG: &str = "skrzynka:mailbox";
@@ -152,17 +193,11 @@ impl SkarbiecResolver {
         Ok(ResolvedCredentials::Password { username, password })
     }
 
-    /// The mailbox profile an item declares. Every value comes from the item.
+    /// The mailbox profile an item declares. Every value comes from the item;
+    /// which items are mailboxes is the tag's to say, read by `list_items`.
     pub async fn resolve_mailbox_config(&self, item_id: &str) -> Result<MailboxConfig, AppError> {
         validate_item_id(item_id)?;
         let payload = self.get_item(item_id).await?;
-        let kind = payload
-            .get("kind")
-            .and_then(Value::as_str)
-            .ok_or_else(|| invalid_item("item has no canonical kind"))?;
-        if !matches!(kind, "login" | "bundle") {
-            return Err(invalid_item("item kind must be login or bundle"));
-        }
         let fields = payload
             .get("fields")
             .and_then(Value::as_object)
@@ -186,10 +221,15 @@ impl SkarbiecResolver {
         let email = optional_text(fields.get("email"))
             .or_else(|| username.contains('@').then_some(username.clone()))
             .ok_or_else(|| profile_error("Skarbiec item must supply the mailbox email"))?;
-        Address::from_str(&email).map_err(|_| profile_error("email is not a valid address"))?;
+        Address::from_str(&email).map_err(|cause| {
+            profile_error(format!("email '{email}' is not a valid address: {cause}"))
+        })?;
 
-        let display_name =
-            optional_text(fields.get("display_name")).unwrap_or_else(|| email.clone());
+        // A mailbox that states no display name is shown by its address.
+        let display_name = match optional_text(fields.get("display_name")) {
+            Some(name) => name,
+            None => email.clone(),
+        };
         let imap_host = optional_text(fields.get("imap_host"))
             .ok_or_else(|| profile_error("Skarbiec item must supply imap_host"))?;
         let smtp_host = optional_text(fields.get("smtp_host"))
@@ -199,31 +239,28 @@ impl SkarbiecResolver {
 
         let smtp_security = match fields.get("smtp_security") {
             None => SmtpSecurity::Starttls,
-            Some(value) => value
-                .as_str()
-                .and_then(|text| SmtpSecurity::from_str(text).ok())
-                .ok_or_else(|| {
-                    profile_error("Skarbiec item smtp_security must be starttls or tls")
-                })?,
-        };
-        let port = |name: &str, default: u16| -> Result<u16, AppError> {
-            match fields.get(name) {
-                None => Ok(default),
-                Some(value) => optional_port(Some(value))
-                    .filter(|port| *port != 0)
-                    .ok_or_else(|| {
-                        profile_error(format!("Skarbiec item {name} must be between 1 and 65535"))
-                    }),
+            Some(value) => {
+                let text = value.as_str().ok_or_else(|| {
+                    profile_error(format!(
+                        "Skarbiec item smtp_security must be text, not {value}"
+                    ))
+                })?;
+                SmtpSecurity::from_str(text).map_err(|cause| {
+                    profile_error(format!("Skarbiec item {cause}, not '{text}'"))
+                })?
             }
         };
-        let imap_port = port("imap_port", 993)?;
-        let smtp_port = port(
-            "smtp_port",
-            match smtp_security {
-                SmtpSecurity::Starttls => 587,
-                SmtpSecurity::Tls => 465,
+        let imap_port = match fields.get("imap_port") {
+            Some(value) => port_field(value, "imap_port")?,
+            None => registered_tcp_port("imaps")?,
+        };
+        let smtp_port = match fields.get("smtp_port") {
+            Some(value) => port_field(value, "smtp_port")?,
+            None => match smtp_security {
+                SmtpSecurity::Starttls => SUBMISSION_PORT,
+                SmtpSecurity::Tls => SUBMISSIONS_PORT,
             },
-        )?;
+        };
         let smtp_skarbiec_item_id = match fields.get("smtp_skarbiec_item_id") {
             None | Some(Value::Null) => None,
             Some(value) => Some(required_text(Some(value), "smtp_skarbiec_item_id")?),

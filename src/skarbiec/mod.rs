@@ -86,11 +86,28 @@ impl SkarbiecResolver {
         }
     }
 
+    /// Whether Skarbiec answers `skarbiec version`. A refusal carries the exit
+    /// status and what Skarbiec wrote, and a command that never ran carries
+    /// why, so a missing binary, a refusal and a crash are told apart.
+    pub async fn availability(&self) -> Result<(), AppError> {
+        let output = self.output(&["version"]).await?;
+        if output.status.success() {
+            return Ok(());
+        }
+        Err(AppError::dependency(
+            "SKARBIEC_UNAVAILABLE",
+            format!(
+                "skarbiec version exited with {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+            true,
+        ))
+    }
+
+    /// The status line's yes or no; [`Self::availability`] carries the cause.
     pub async fn is_available(&self) -> bool {
-        self.output(&["version"])
-            .await
-            .map(|output| output.status.success())
-            .unwrap_or(false)
+        self.availability().await.is_ok()
     }
 }
 
@@ -110,13 +127,31 @@ pub(super) fn optional_text(value: Option<&Value>) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(super) fn optional_port(value: Option<&Value>) -> Option<u16> {
-    value.and_then(|value| {
-        value
-            .as_u64()
-            .and_then(|number| u16::try_from(number).ok())
-            .or_else(|| value.as_str().and_then(|text| text.parse::<u16>().ok()))
-    })
+/// The port an item field states, as a JSON number or its decimal text. A
+/// value that is no port is refused with the value and why it is none.
+pub(super) fn port_field(value: &Value, name: &str) -> Result<u16, AppError> {
+    match value {
+        Value::Number(number) => {
+            let whole = number.as_u64().ok_or_else(|| {
+                profile_error(format!(
+                    "Skarbiec item {name} {number} is not a whole non-negative number"
+                ))
+            })?;
+            u16::try_from(whole).map_err(|cause| {
+                profile_error(format!(
+                    "Skarbiec item {name} {whole} is not a port: {cause}"
+                ))
+            })
+        }
+        Value::String(text) => text.trim().parse::<u16>().map_err(|cause| {
+            profile_error(format!(
+                "Skarbiec item {name} '{text}' is not a port: {cause}"
+            ))
+        }),
+        other => Err(profile_error(format!(
+            "Skarbiec item {name} must be a number or its decimal text, not {other}"
+        ))),
+    }
 }
 
 pub(super) fn looks_like_google_profile(item_id: &str, email: &str, payload: &Value) -> bool {
@@ -126,17 +161,30 @@ pub(super) fn looks_like_google_profile(item_id: &str, email: &str, payload: &Va
         .map(|(_, domain)| domain.to_ascii_lowercase());
     let context_mentions_google = payload
         .get("context")
-        .and_then(|value| serde_json::to_string(value).ok())
-        .is_some_and(|value| value.to_ascii_lowercase().contains("google"));
+        .is_some_and(|value| mentions(value, "google"));
     domain.as_deref() == Some("gmail.com")
         || id.contains("google")
         || id.contains("gmail")
         || context_mentions_google
 }
 
-pub(super) fn profile_preference(item_id: &str) -> u8 {
+/// Which of two logins with one address is offered: `gmail` in the id first,
+/// then `google`, compared in that order.
+pub(super) fn profile_preference(item_id: &str) -> (bool, bool) {
     let id = item_id.to_ascii_lowercase();
-    u8::from(id.contains("gmail")) * 2 + u8::from(id.contains("google"))
+    (id.contains("gmail"), id.contains("google"))
+}
+
+/// Whether any key or text anywhere in `value` contains `word`.
+fn mentions(value: &Value, word: &str) -> bool {
+    match value {
+        Value::String(text) => text.to_ascii_lowercase().contains(word),
+        Value::Array(items) => items.iter().any(|item| mentions(item, word)),
+        Value::Object(fields) => fields
+            .iter()
+            .any(|(key, item)| key.to_ascii_lowercase().contains(word) || mentions(item, word)),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
 }
 
 /// Whether a mailbox item's stored reference names `coordinate`: the role
