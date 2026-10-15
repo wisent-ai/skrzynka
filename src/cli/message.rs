@@ -7,7 +7,22 @@ use crate::{
     service::AppState,
 };
 use std::path::Path;
-use uuid::Uuid;
+
+/// The key a provider-facing send is claimed by. A key drawn per invocation
+/// would make a repeated command a second real message, so none is drawn:
+/// the caller states the key, and the same key on a repeated command returns
+/// the first attempt.
+fn required_key(key: Option<String>, command: &str) -> Result<String, AppError> {
+    match key {
+        Some(key) => Ok(key),
+        None => Err(AppError::invalid(
+            "IDEMPOTENCY_KEY_REQUIRED",
+            format!(
+                "{command} needs --idempotency-key: the same key on a repeated command returns the first attempt instead of sending again"
+            ),
+        )),
+    }
+}
 
 pub(super) async fn run_message(
     state: AppState,
@@ -54,9 +69,10 @@ pub(super) async fn run_message(
             body_file,
             idempotency_key,
         } => {
+            let idempotency_key = required_key(idempotency_key, "message reply")?;
             let body = read_body_file(&body_file, "REPLY_FILE_INVALID")?;
             let request = CreateReplyRequest {
-                idempotency_key: idempotency_key.unwrap_or_else(|| Uuid::new_v4().to_string()),
+                idempotency_key,
                 body,
             };
             print_json(&state.reply(organization, id, request).await?)
@@ -69,10 +85,11 @@ pub(super) async fn run_message(
             body_file,
             idempotency_key,
         } => {
+            let idempotency_key = required_key(idempotency_key, "message send")?;
             let mailbox = state.resolve_mailbox(organization, &mailbox)?;
             let body = read_body_file(&body_file, "OUTBOUND_FILE_INVALID")?;
             let request = CreateOutboundRequest {
-                idempotency_key: idempotency_key.unwrap_or_else(|| Uuid::new_v4().to_string()),
+                idempotency_key,
                 to,
                 cc,
                 subject,
