@@ -80,13 +80,26 @@ pub(super) async fn authorize_gmail(
         print_json(&status)?;
         return Ok(());
     }
-    let error = status.error.as_ref();
+    // A settled flow that is not completed either carries the error that
+    // ended it or says nothing; the latter is reported by the state it
+    // settled in, not by a sentence written here on its behalf.
+    let (message, retryable) = match status.error.as_ref() {
+        Some(error) => (
+            format!("{}: {}", error.code, error.message),
+            error.retryable,
+        ),
+        None => (
+            format!(
+                "the authorization flow settled as {} without stating an error",
+                status.status
+            ),
+            false,
+        ),
+    };
     Err(AppError::dependency(
         "GMAIL_OAUTH_FAILED",
-        error
-            .map(|error| format!("{}: {}", error.code, error.message))
-            .unwrap_or_else(|| "Gmail authorization failed".to_string()),
-        error.map(|error| error.retryable).unwrap_or(false),
+        message,
+        retryable,
     ))
 }
 
