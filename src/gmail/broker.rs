@@ -23,11 +23,16 @@ impl GmailOAuthBroker {
                 "Gmail OAuth callback base URL {callback_base_url:?} is invalid: {cause}"
             ))
         })?;
+        // host_str() spells an IPv6 host in brackets, which no IP parser
+        // reads, so [::1] was refused; a host that is no IP is not loopback.
+        let loopback = callback_url.host_str().is_some_and(|host| {
+            host.trim_start_matches('[')
+                .trim_end_matches(']')
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
+        });
         if callback_url.scheme() != "http"
-            || !callback_url
-                .host_str()
-                .and_then(|host| host.parse::<std::net::IpAddr>().ok())
-                .is_some_and(|address| address.is_loopback())
+            || !loopback
             || callback_url.username() != ""
             || callback_url.password().is_some()
             || callback_url.query().is_some()
@@ -149,14 +154,20 @@ impl GmailOAuthBroker {
         flow_id: Uuid,
         callback: GmailOAuthCallback,
     ) -> Result<GmailAuthorization, AppError> {
-        if callback.error.is_some() {
-            let message = callback
+        if let Some(code) = callback.error.as_deref() {
+            // RFC 6749's `error` is the answer; `error_description` is
+            // optional, so its absence is reported with the code Google sent.
+            let message = match callback
                 .error_description
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .unwrap_or("Google authorization was declined")
-                .to_string();
+            {
+                Some(description) => description.to_string(),
+                None => format!(
+                    "Google answered the authorization with error {code} and no description"
+                ),
+            };
             let error = AppError::invalid("GMAIL_OAUTH_REJECTED", message);
             self.fail(flow_id, &error).await;
             return Err(error);
