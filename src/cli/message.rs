@@ -43,7 +43,11 @@ pub(super) async fn run_message(
             let received = state
                 .read_inbound(organization, Some(&recipient), sender.as_deref(), None)
                 .await?;
-            let page = received.into_iter().skip(offset as usize);
+            let after_offset: Vec<_> = match offset {
+                Some(offset) => received.into_iter().skip(offset as usize).collect(),
+                None => received,
+            };
+            let page = after_offset.into_iter();
             print_json(&match limit {
                 Some(limit) => page.take(limit as usize).collect::<Vec<_>>(),
                 None => page.collect::<Vec<_>>(),
@@ -61,7 +65,7 @@ pub(super) async fn run_message(
             recipient.as_deref(),
             sender.as_deref(),
             limit,
-            Some(offset),
+            offset,
         )?),
         MessageCommand::Show { id } => print_json(&state.get_message(organization, id)?),
         MessageCommand::Reply {

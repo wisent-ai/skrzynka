@@ -92,7 +92,7 @@ pub(super) async fn list_outbound(
         &auth.organization_id,
         mailbox_id,
         query.limit,
-        query.offset.unwrap_or(0),
+        query.offset,
     )?)))
 }
 
@@ -106,7 +106,7 @@ pub(super) async fn list_mailbox_outbound(
         &auth.organization_id,
         Some(parse_uuid(&id)?),
         query.limit,
-        query.offset.unwrap_or(0),
+        query.offset,
     )?)))
 }
 

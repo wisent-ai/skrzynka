@@ -209,9 +209,9 @@ pub(super) enum MessageCommand {
         /// Messages per page; without it, every message from --offset on.
         #[arg(long)]
         limit: Option<u32>,
-        /// Messages to skip before the page.
-        #[arg(long, default_value_t = 0)]
-        offset: u32,
+        /// Messages to skip before the page; without it, none are skipped.
+        #[arg(long)]
+        offset: Option<u32>,
     },
     /// One imported message.
     Show {
@@ -259,8 +259,8 @@ pub(super) enum MessageCommand {
         /// Messages per page; without it, every message from --offset on.
         #[arg(long)]
         limit: Option<u32>,
-        /// Messages to skip before the page.
-        #[arg(long, default_value_t = 0)]
-        offset: u32,
+        /// Messages to skip before the page; without it, none are skipped.
+        #[arg(long)]
+        offset: Option<u32>,
     },
 }

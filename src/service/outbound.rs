@@ -18,7 +18,7 @@ impl AppState {
         organization_id: &str,
         mailbox_id: Option<Uuid>,
         limit: Option<u32>,
-        offset: u32,
+        offset: Option<u32>,
     ) -> Result<Vec<OutboundMessage>, AppError> {
         super::messages::page_size(limit)?;
         self.database
@@ -51,27 +51,30 @@ impl AppState {
         if let Ok(id) = Uuid::parse_str(selector) {
             return self.database.get_mailbox(organization_id, id);
         }
-        let mut matches = self
+        let matches = self
             .database
             .list_mailboxes(organization_id)?
             .into_iter()
             .filter(|mailbox| mailbox.email.eq_ignore_ascii_case(selector))
             .collect::<Vec<_>>();
-        if matches.len() > 1 {
-            let ids = matches
-                .iter()
-                .map(|mailbox| mailbox.id.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(AppError::conflict(
-                "MAILBOX_SELECTOR_AMBIGUOUS",
-                format!(
-                    "{selector} names {} mailboxes ({ids}); select one by id",
-                    matches.len()
-                ),
-            ));
+        match matches.as_slice() {
+            [] => Err(AppError::not_found("mailbox")),
+            [mailbox] => Ok(mailbox.clone()),
+            several => {
+                let ids = several
+                    .iter()
+                    .map(|mailbox| mailbox.id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Err(AppError::conflict(
+                    "MAILBOX_SELECTOR_AMBIGUOUS",
+                    format!(
+                        "{selector} names {} mailboxes ({ids}); select one by id",
+                        several.len()
+                    ),
+                ))
+            }
         }
-        matches.pop().ok_or_else(|| AppError::not_found("mailbox"))
     }
 
     /// Originate mail from one mailbox. The row is claimed by its idempotency

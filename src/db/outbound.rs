@@ -1,7 +1,7 @@
 //! Outbound message rows: begin, update, read and interrupted-send recovery.
 
 use super::sql::{self, params, OptionalExtension, Row};
-use super::{is_unique_constraint, parse_enum, parse_uuid, Database};
+use super::{is_unique_constraint, parse_uuid, Database};
 use crate::{
     error::AppError,
     models::{DeliveryStatus, OutboundMessage},
@@ -125,12 +125,14 @@ impl Database {
             .ok_or_else(|| AppError::not_found("outbound message"))
     }
 
+    /// Outbound messages newest first; `offset` None reads from the first
+    /// one, which `OFFSET NULL` means, as for stored messages.
     pub fn list_outbound(
         &self,
         organization_id: &str,
         mailbox_id: Option<Uuid>,
         limit: Option<u32>,
-        offset: u32,
+        offset: Option<u32>,
     ) -> Result<Vec<OutboundMessage>, AppError> {
         let connection = self.lock()?;
         let sql = if mailbox_id.is_some() {
@@ -167,7 +169,7 @@ impl Database {
                     mailbox_id.to_string(),
                     organization_id,
                     super::messages::page_limit(limit),
-                    i64::from(offset)
+                    offset.map(i64::from)
                 ],
                 outbound_from_row,
             )?
@@ -176,7 +178,7 @@ impl Database {
                 params![
                     organization_id,
                     super::messages::page_limit(limit),
-                    i64::from(offset)
+                    offset.map(i64::from)
                 ],
                 outbound_from_row,
             )?
@@ -248,21 +250,28 @@ impl Database {
     }
 }
 
+/// One outbound message, read by the names of the columns every outbound
+/// query selects.
 fn outbound_from_row(row: &Row<'_>) -> sql::Result<OutboundMessage> {
     Ok(OutboundMessage {
-        id: parse_uuid(row.get::<_, String>(0)?)?,
-        mailbox_id: parse_uuid(row.get::<_, String>(1)?)?,
-        idempotency_key: row.get(2)?,
-        recipients: row.get(3)?,
-        cc: row.get(4)?,
-        subject: row.get(5)?,
-        body: row.get(6)?,
-        status: parse_enum(row.get::<_, String>(7)?, 7)?,
-        provider_message_id: row.get(8)?,
-        error_code: row.get(9)?,
-        error_message: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
-        sent_at: row.get(13)?,
+        id: parse_uuid(row.get::<_, String>("id")?)?,
+        mailbox_id: parse_uuid(row.get::<_, String>("mailbox_id")?)?,
+        idempotency_key: row.get("idempotency_key")?,
+        recipients: row.get("recipients")?,
+        cc: row.get("cc")?,
+        subject: row.get("subject")?,
+        body: row.get("body")?,
+        status: row
+            .get::<_, String>("status")?
+            .parse::<DeliveryStatus>()
+            .map_err(|error| {
+                sql::Error::Conversion(format!("column status holds no delivery status: {error}"))
+            })?,
+        provider_message_id: row.get("provider_message_id")?,
+        error_code: row.get("error_code")?,
+        error_message: row.get("error_message")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+        sent_at: row.get("sent_at")?,
     })
 }
