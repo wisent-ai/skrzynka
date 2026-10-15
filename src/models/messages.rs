@@ -4,6 +4,12 @@ use super::ParseModelError;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// A message as Skrzynka stored it. `recipients` and `subject` are the
+/// message's own `To` and `Subject` headers, absent when it states none:
+/// nothing is written in for a header the sender never wrote. `sent_at` is
+/// the instant its `Date` header names; a `Date` header that cannot be read
+/// as one leaves `sent_at` absent and is kept, with why, in
+/// `sent_at_unreadable`, so an undated message is told from a misdated one.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: Uuid,
@@ -14,12 +20,21 @@ pub struct Message {
     pub references: Option<String>,
     pub sender: String,
     pub reply_to: Option<String>,
-    pub recipients: String,
-    pub subject: String,
+    pub recipients: Option<String>,
+    pub subject: Option<String>,
     pub sent_at: Option<String>,
+    pub sent_at_unreadable: Option<UnreadableDate>,
     pub received_at: String,
     pub body_text: String,
     pub snippet: String,
+}
+
+/// A `Date` header a message states but that does not read as an instant:
+/// the header as the message wrote it, and why it could not be read.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UnreadableDate {
+    pub header: String,
+    pub error: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,11 +45,20 @@ pub struct NewMessage {
     pub references: Option<String>,
     pub sender: String,
     pub reply_to: Option<String>,
-    pub recipients: String,
-    pub subject: String,
+    pub recipients: Option<String>,
+    pub subject: Option<String>,
     pub sent_at: Option<String>,
+    pub sent_at_unreadable: Option<UnreadableDate>,
     pub body_text: String,
     pub snippet: String,
+}
+
+impl NewMessage {
+    /// What a `Date` header the message states but that does not read as an
+    /// instant is kept as: the header as written and why it was not read.
+    pub fn unreadable_date(header: String, error: String) -> UnreadableDate {
+        UnreadableDate { header, error }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

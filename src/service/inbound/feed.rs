@@ -11,12 +11,13 @@ use serde_json::{json, Value};
 /// Skarbiec by its role: `token` is the bearer, `url` the service address.
 const INTEGRATION_ROLE: &str = "role:skrzynka-integration-api";
 
-/// One received message as the feed lists it.
+/// One received message as the feed lists it. `subject` is absent when the
+/// message states none; nothing is written in for it.
 pub(super) struct Listed {
     pub id: String,
     pub sender: String,
     pub recipients: Vec<String>,
-    pub subject: String,
+    pub subject: Option<String>,
     pub received_at: String,
 }
 
@@ -70,8 +71,13 @@ impl Feed {
         let listed = rows
             .iter()
             .map(|row| {
-                listed(row)
-                    .ok_or_else(|| shape(action, "a row without id, from, to or created_at", row))
+                listed(row).ok_or_else(|| {
+                    shape(
+                        action,
+                        "a row without id, from, created_at or a readable to",
+                        row,
+                    )
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
         let more = answer
@@ -144,20 +150,20 @@ impl Feed {
     }
 }
 
+/// A feed row, or nothing when it lacks a field the store needs or carries a
+/// recipient that is no address: an unreadable recipient refuses the row
+/// instead of being dropped from its list.
 fn listed(row: &Value) -> Option<Listed> {
     let text = |name: &str| row.get(name).and_then(Value::as_str).map(str::to_string);
     let recipients = match row.get("to")? {
-        Value::Array(entries) => entries.iter().filter_map(address).collect(),
+        Value::Array(entries) => entries.iter().map(address).collect::<Option<Vec<_>>>()?,
         single => vec![address(single)?],
     };
     Some(Listed {
         id: text("id")?,
         sender: text("from")?,
         recipients,
-        subject: match text("subject") {
-            Some(subject) => subject,
-            None => String::new(),
-        },
+        subject: text("subject"),
         received_at: text("created_at")?,
     })
 }

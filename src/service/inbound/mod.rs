@@ -113,7 +113,12 @@ impl AppState {
                 .database
                 .inbound_domain_named(organization_id, address.domain())?
                 .is_some()),
-            Err(_) => Ok(false),
+            Err(error) => {
+                // Not an address, so no inbound domain holds it; the
+                // mailboxes answer it, and their filter refuses what is blank.
+                tracing::debug!(%error, recipient, "recipient is not a mail address");
+                Ok(false)
+            }
         }
     }
 
@@ -148,7 +153,7 @@ impl AppState {
                 AppError::invalid(
                     "INBOUND_DOMAIN_NOT_DECLARED",
                     format!(
-                        "{} is not an inbound domain of this organization; declare it with skrzynka inbound add --domain {}",
+                        "{} is not an inbound domain of this organization; declare it with skrzynka mailbox declare --inbound-domain {}",
                         address.domain(),
                         address.domain()
                     ),

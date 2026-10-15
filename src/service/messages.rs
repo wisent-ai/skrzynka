@@ -38,10 +38,14 @@ impl AppState {
             .database
             .list_messages(organization_id, mailbox_id, None, None)?
             .into_iter()
-            .filter(|message| match &recipient {
-                Some(address) => addressed_to(&message.recipients, address),
-                None => true,
-            })
+            // A message that states no To is addressed to no one.
+            .filter(
+                |message| match (&recipient, message.recipients.as_deref()) {
+                    (Some(address), Some(header)) => addressed_to(header, address),
+                    (Some(_), None) => false,
+                    (None, _) => true,
+                },
+            )
             .filter(|message| match &sender {
                 Some(part) => message.sender.to_lowercase().contains(part.as_str()),
                 None => true,
@@ -171,13 +175,13 @@ fn validate_reply_request(request: &CreateReplyRequest) -> Result<(), AppError> 
 
 /// A page size of zero names no page; every listing refuses it the same way.
 pub(super) fn page_size(limit: Option<u32>) -> Result<(), AppError> {
-    if limit == Some(0) {
-        return Err(AppError::invalid(
+    match limit.map(std::num::NonZeroU32::new) {
+        Some(None) => Err(AppError::invalid(
             "LIMIT_INVALID",
             "limit must be at least one; omit it to list every message",
-        ));
+        )),
+        Some(Some(_)) | None => Ok(()),
     }
-    Ok(())
 }
 
 /// A listing filter as given, lowercased, or refused when it is blank.

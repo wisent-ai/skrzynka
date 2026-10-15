@@ -20,7 +20,8 @@ pub struct InboundDomain {
 }
 
 /// One message received for an address of an inbound domain, stored once by
-/// the receiving provider's own id.
+/// the receiving provider's own id. `subject` is the message's own, absent
+/// when it states none.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InboundMessage {
     pub id: Uuid,
@@ -28,7 +29,7 @@ pub struct InboundMessage {
     pub provider_id: String,
     pub sender: String,
     pub recipients: String,
-    pub subject: String,
+    pub subject: Option<String>,
     pub received_at: String,
     pub body_text: String,
 }

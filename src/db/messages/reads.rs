@@ -2,7 +2,8 @@
 //! one message by id.
 
 use super::super::sql::{self, params, OptionalExtension, Row};
-use super::super::{checked_u32, parse_uuid, Database};
+use super::super::{parse_uuid, Database};
+use super::unreadable;
 use crate::{error::AppError, models::Message};
 use uuid::Uuid;
 
@@ -22,7 +23,8 @@ impl Database {
                     messages.provider_message_id, messages.in_reply_to,
                     messages.references_header, messages.sender, messages.reply_to,
                     messages.recipients, messages.subject, messages.sent_at,
-                    messages.received_at, messages.body_text, messages.snippet
+                    messages.sent_at_unreadable, messages.received_at,
+                    messages.body_text, messages.snippet
              FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
              WHERE messages.mailbox_id=$1 AND mailboxes.organization_id=$2
              ORDER BY messages.received_at DESC LIMIT $3 OFFSET $4"
@@ -31,7 +33,8 @@ impl Database {
                     messages.provider_message_id, messages.in_reply_to,
                     messages.references_header, messages.sender, messages.reply_to,
                     messages.recipients, messages.subject, messages.sent_at,
-                    messages.received_at, messages.body_text, messages.snippet
+                    messages.sent_at_unreadable, messages.received_at,
+                    messages.body_text, messages.snippet
              FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
              WHERE mailboxes.organization_id=$1
              ORDER BY messages.received_at DESC LIMIT $2 OFFSET $3"
@@ -63,7 +66,8 @@ impl Database {
                         messages.provider_message_id, messages.in_reply_to,
                         messages.references_header, messages.sender, messages.reply_to,
                         messages.recipients, messages.subject, messages.sent_at,
-                        messages.received_at, messages.body_text, messages.snippet
+                        messages.sent_at_unreadable, messages.received_at,
+                        messages.body_text, messages.snippet
                  FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
                  WHERE messages.id=$1 AND mailboxes.organization_id=$2",
                 params![id.to_string(), organization_id],
@@ -80,21 +84,23 @@ pub(in crate::db) fn page_limit(limit: Option<u32>) -> Option<i64> {
     limit.map(i64::from)
 }
 
+/// One stored message, read by column name.
 fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {
     let mut message = Message {
-        id: parse_uuid(row.get::<_, String>(0)?)?,
-        mailbox_id: parse_uuid(row.get::<_, String>(1)?)?,
-        external_uid: checked_u32(row.get::<_, i64>(2)?, 2)?,
-        message_id: row.get(3)?,
-        in_reply_to: row.get(4)?,
-        references: row.get(5)?,
-        sender: row.get(6)?,
-        reply_to: row.get(7)?,
-        recipients: row.get(8)?,
-        subject: row.get(9)?,
-        sent_at: row.get(10)?,
-        received_at: row.get(11)?,
-        body_text: row.get(12)?,
+        id: parse_uuid(row.get::<_, String>("id")?)?,
+        mailbox_id: parse_uuid(row.get::<_, String>("mailbox_id")?)?,
+        external_uid: u32::try_from(row.get::<_, i64>("external_uid")?)?,
+        message_id: row.get("provider_message_id")?,
+        in_reply_to: row.get("in_reply_to")?,
+        references: row.get("references_header")?,
+        sender: row.get("sender")?,
+        reply_to: row.get("reply_to")?,
+        recipients: row.get("recipients")?,
+        subject: row.get("subject")?,
+        sent_at: row.get("sent_at")?,
+        sent_at_unreadable: unreadable::read(row)?,
+        received_at: row.get("received_at")?,
+        body_text: row.get("body_text")?,
         snippet: String::new(),
     };
     message.snippet = message

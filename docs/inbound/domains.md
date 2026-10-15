@@ -33,7 +33,8 @@ skrzynka --organization ORGANIZATION message list --recipient ADDRESS --sender T
 When `ADDRESS` is at a declared inbound domain, Skrzynka first reads the
 receiving feed for that domain and stores every message it has not stored,
 then lists the address's stored mail, newest first. Each row carries `id`,
-`domain_id`, `provider_id`, `sender`, `recipients`, `subject`, `received_at`
+`domain_id`, `provider_id`, `sender`, `recipients`, `subject` (`null` when the
+message states none; Desktop shows `No subject stated`), `received_at`
 and `body_text` (the plain text part, or the HTML part when the message has no
 plain text). `--sender` keeps the messages whose From contains the text;
 `--limit` and `--offset` page the result. An address at any other domain is

@@ -1,7 +1,7 @@
 //! Message rows: the import commit here, the message reads in `reads`.
 
 use super::sql::{params, OptionalExtension};
-use super::{checked_u32, is_unique_constraint, Database};
+use super::{is_unique_constraint, Database};
 use crate::{
     error::AppError,
     models::{Mailbox, NewMessage},
@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 mod reads;
+mod unreadable;
 pub(super) use reads::page_limit;
 
 impl Database {
@@ -48,13 +49,12 @@ impl Database {
                 ));
             }
         }
+        // A UID given twice with the same data is one message; with different
+        // data it is a conflict.
         let mut unique_messages: HashMap<u32, &NewMessage> = HashMap::new();
-        let mut unchanged = 0usize;
         for message in messages {
             match unique_messages.get(&message.external_uid) {
-                Some(existing) if *existing == message => {
-                    unchanged += 1;
-                }
+                Some(existing) if *existing == message => {}
                 Some(_) => {
                     return Err(AppError::conflict(
                         "MAILBOX_IMPORT_CONFLICT",
@@ -76,22 +76,23 @@ impl Database {
                 .query_row(
                     "SELECT external_uid, provider_message_id, in_reply_to,
                             references_header, sender, reply_to, recipients,
-                            subject, sent_at, body_text, snippet
+                            subject, sent_at, sent_at_unreadable, body_text, snippet
                      FROM messages WHERE mailbox_id=$1 AND external_uid=$2",
                     params![mailbox.id.to_string(), i64::from(message.external_uid)],
                     |row| {
                         Ok(NewMessage {
-                            external_uid: checked_u32(row.get::<_, i64>(0)?, 0)?,
-                            message_id: row.get(1)?,
-                            in_reply_to: row.get(2)?,
-                            references: row.get(3)?,
-                            sender: row.get(4)?,
-                            reply_to: row.get(5)?,
-                            recipients: row.get(6)?,
-                            subject: row.get(7)?,
-                            sent_at: row.get(8)?,
-                            body_text: row.get(9)?,
-                            snippet: row.get(10)?,
+                            external_uid: u32::try_from(row.get::<_, i64>("external_uid")?)?,
+                            message_id: row.get("provider_message_id")?,
+                            in_reply_to: row.get("in_reply_to")?,
+                            references: row.get("references_header")?,
+                            sender: row.get("sender")?,
+                            reply_to: row.get("reply_to")?,
+                            recipients: row.get("recipients")?,
+                            subject: row.get("subject")?,
+                            sent_at: row.get("sent_at")?,
+                            sent_at_unreadable: unreadable::read(row)?,
+                            body_text: row.get("body_text")?,
+                            snippet: row.get("snippet")?,
                         })
                     },
                 )
@@ -113,7 +114,6 @@ impl Database {
                     ));
                 }
                 existing_uids.insert(message.external_uid);
-                unchanged += 1;
             }
         }
 
@@ -153,17 +153,17 @@ impl Database {
         }
 
         let received_at = Utc::now().to_rfc3339();
-        let mut imported = 0usize;
         for message in unique_messages.values().copied() {
             if existing_uids.contains(&message.external_uid) {
                 continue;
             }
+            let sent_at_unreadable = unreadable::stored(message.sent_at_unreadable.as_ref())?;
             transaction.execute(
                 "INSERT INTO messages (
                     id, mailbox_id, external_uid, provider_message_id, in_reply_to,
                     references_header, sender, reply_to, recipients, subject,
-                    sent_at, received_at, body_text, snippet
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+                    sent_at, sent_at_unreadable, received_at, body_text, snippet
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
                 params![
                     Uuid::new_v4().to_string(),
                     mailbox.id.to_string(),
@@ -176,13 +176,18 @@ impl Database {
                     message.recipients,
                     message.subject,
                     message.sent_at,
+                    sent_at_unreadable,
                     received_at,
                     message.body_text,
                     message.snippet,
                 ],
             )?;
-            imported += 1;
         }
+        // Every message given was either already stored or written now; one
+        // given twice with the same data counts once as written and once as
+        // unchanged.
+        let imported = unique_messages.len() - existing_uids.len();
+        let unchanged = messages.len() - imported;
         let completed_at = Utc::now().to_rfc3339();
         transaction.execute(
             "UPDATE mailboxes SET last_uid=$2, last_sync_at=$3,

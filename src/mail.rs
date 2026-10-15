@@ -1,6 +1,6 @@
 use crate::{
     error::AppError,
-    models::{Mailbox, Message, NewMessage, OutboundMessage, SmtpSecurity},
+    models::{Mailbox, Message, OutboundMessage, SmtpSecurity},
     skarbiec::ResolvedCredentials,
 };
 use lettre::{
@@ -8,13 +8,14 @@ use lettre::{
     transport::smtp::authentication::{Credentials, Mechanism},
     Message as OutgoingMessage, SmtpTransport, Transport,
 };
-use mailparse::{MailHeaderMap, ParsedMail};
 use std::str::FromStr;
 use uuid::Uuid;
 
 mod incoming;
+mod normalize;
 mod password;
 pub use incoming::{fetch_messages, wait_for_new_mail, GMAIL_IMAP_HOST};
+use normalize::normalize_message;
 pub use password::verify_gmail_app_password;
 
 pub fn send_reply(
@@ -34,35 +35,39 @@ pub fn send_reply(
         )
     })?;
     let from = LettreMailbox::new(Some(mailbox.display_name.clone()), from_address);
-    let target = inbound
-        .reply_to
-        .as_deref()
-        .unwrap_or(inbound.sender.as_str());
+    // Reply-To names where the sender asked answers to go; a message that
+    // names none is answered at its From address.
+    let target = match inbound.reply_to.as_deref() {
+        Some(reply_to) => reply_to,
+        None => inbound.sender.as_str(),
+    };
     let to = LettreMailbox::from_str(target).map_err(|cause| {
         AppError::invalid(
             "MESSAGE_REPLY_TARGET_INVALID",
             format!("the message's Reply-To or From address {target:?} is not valid: {cause}"),
         )
     })?;
-    let subject = if inbound.subject.to_ascii_lowercase().starts_with("re:") {
-        inbound.subject.clone()
-    } else {
-        format!("Re: {}", inbound.subject)
-    };
     let provider_message_id = format!("<{}@skrzynka.local>", Uuid::new_v4());
     let mut builder = OutgoingMessage::builder()
         .from(from)
         .to(to)
-        .subject(subject)
         .message_id(Some(provider_message_id.clone()))
         .header(ContentType::TEXT_PLAIN);
+    // A message that states no subject is answered with none: the reply
+    // carries no subject its sender never wrote.
+    match inbound.subject.as_deref() {
+        Some(subject) if subject.to_ascii_lowercase().starts_with("re:") => {
+            builder = builder.subject(subject);
+        }
+        Some(subject) => builder = builder.subject(format!("Re: {subject}")),
+        None => {}
+    }
     if let Some(message_id) = inbound.message_id.as_deref() {
         builder = builder.in_reply_to(message_id.to_string());
-        let references = inbound
-            .references
-            .as_deref()
-            .map(|existing| format!("{existing} {message_id}"))
-            .unwrap_or_else(|| message_id.to_string());
+        let references = match inbound.references.as_deref() {
+            Some(existing) => format!("{existing} {message_id}"),
+            None => message_id.to_string(),
+        };
         builder = builder.references(references);
     }
     let outgoing = builder.body(body.to_string()).map_err(|cause| {
@@ -112,13 +117,10 @@ pub fn send_outbound(
     for recipient in recipients {
         builder = builder.to(parse_recipient(recipient)?);
     }
-    for recipient in outbound
-        .cc
-        .as_deref()
-        .map(split_addresses)
-        .unwrap_or_default()
-    {
-        builder = builder.cc(parse_recipient(recipient)?);
+    if let Some(cc) = outbound.cc.as_deref() {
+        for recipient in split_addresses(cc) {
+            builder = builder.cc(parse_recipient(recipient)?);
+        }
     }
     let outgoing = builder.body(outbound.body.clone()).map_err(|cause| {
         AppError::invalid(
@@ -161,11 +163,18 @@ fn deliver(
             .authentication(vec![Mechanism::Xoauth2]),
     };
     let transport = builder
-        // No client deadline (cli.md rule 8): the submission ends with the
+        // No client limit (cli.md rule 8): the submission ends with the
         // server's answer or the connection's own error.
         .timeout(None)
         .build();
-    transport.send(outgoing).map_err(|error| {
+    let server = format!("{}:{}", mailbox.smtp_host, mailbox.smtp_port);
+    stado_wait::blocking(
+        stado_wait::Kind::Network,
+        format!("SMTP submission from {}", mailbox.email),
+        &server,
+        || transport.send(outgoing),
+    )
+    .map_err(|error| {
         // The server's own sentence is the only thing that says why it
         // refused. A fixed message sends the operator hunting through logs
         // Skrzynka does not keep for a reason the provider already stated.
@@ -216,82 +225,6 @@ fn parse_recipient(value: &str) -> Result<LettreMailbox, AppError> {
             format!("outbound recipient {value:?} is not a valid email address: {cause}"),
         )
     })
-}
-
-fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, AppError> {
-    let parsed = mailparse::parse_mail(bytes).map_err(|error| {
-        dependency_error(
-            "MESSAGE_MALFORMED",
-            format!("provider message {uid} could not be parsed: {error}"),
-            false,
-        )
-    })?;
-    let headers = &parsed.headers;
-    let sender = headers
-        .get_first_value("From")
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            dependency_error(
-                "MESSAGE_MALFORMED",
-                "provider message has no From header",
-                false,
-            )
-        })?;
-    let recipients = headers.get_first_value("To").unwrap_or_default();
-    let subject = headers
-        .get_first_value("Subject")
-        .unwrap_or_else(|| "(no subject)".to_string());
-    let text = extract_text(&parsed).map_err(|error| {
-        dependency_error(
-            "MESSAGE_BODY_UNDECODABLE",
-            format!("provider message {uid} has a text part that cannot be decoded: {error}"),
-            false,
-        )
-    })?;
-    // A message with no text/plain part (HTML only) has no text body.
-    let body_text = match text {
-        Some(text) => text.trim().to_string(),
-        None => String::new(),
-    };
-    let snippet = body_text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let sent_at = headers
-        .get_first_value("Date")
-        .and_then(|value| mailparse::dateparse(&value).ok())
-        .and_then(|seconds| chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, 0))
-        .map(|value| value.to_rfc3339());
-    Ok(NewMessage {
-        external_uid: uid,
-        message_id: headers.get_first_value("Message-ID"),
-        in_reply_to: headers.get_first_value("In-Reply-To"),
-        references: headers.get_first_value("References"),
-        sender,
-        reply_to: headers.get_first_value("Reply-To"),
-        recipients,
-        subject,
-        sent_at,
-        body_text,
-        snippet,
-    })
-}
-
-/// The first text/plain part's decoded body, `None` when the message has no
-/// such part, or the decoding failure. A part whose charset or transfer
-/// encoding failed used to read as "no text part", so the message was stored
-/// with an empty body as if it had none; it is now rejected and counted under
-/// its own reason in the sync summary.
-fn extract_text(parsed: &ParsedMail<'_>) -> Result<Option<String>, mailparse::MailParseError> {
-    if parsed.subparts.is_empty() {
-        if parsed.ctype.mimetype.eq_ignore_ascii_case("text/plain") {
-            return parsed.get_body().map(Some);
-        }
-        return Ok(None);
-    }
-    for part in &parsed.subparts {
-        if let Some(text) = extract_text(part)? {
-            return Ok(Some(text));
-        }
-    }
-    Ok(None)
 }
 
 fn dependency_error(code: &'static str, message: impl Into<String>, retryable: bool) -> AppError {

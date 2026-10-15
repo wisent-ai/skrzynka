@@ -19,9 +19,27 @@ CREATE TABLE IF NOT EXISTS inbound_messages (
     provider_id TEXT NOT NULL,
     sender TEXT NOT NULL,
     recipients TEXT NOT NULL,
-    subject TEXT NOT NULL,
+    subject TEXT,
     received_at TEXT NOT NULL,
     body_text TEXT NOT NULL,
     UNIQUE (domain_id, provider_id)
 );
 CREATE INDEX IF NOT EXISTS inbound_messages_domain_idx ON inbound_messages (domain_id, received_at DESC);
+-- A message's subject is NULL when it states none. A table older builds wrote
+-- keeps subject NOT NULL and holds '' where they wrote one in for a feed row
+-- without a subject; those rows are carried to NULL once, as the constraint
+-- is dropped.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'inbound_messages'
+          AND column_name = 'subject'
+          AND is_nullable = 'NO'
+    ) THEN
+        ALTER TABLE inbound_messages ALTER COLUMN subject DROP NOT NULL;
+        UPDATE inbound_messages SET subject = NULL WHERE subject = '';
+    END IF;
+END
+$$;
