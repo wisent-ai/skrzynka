@@ -2,18 +2,20 @@
 # Goal: undeclare a mailbox, inspect it, then remove only its Skrzynka state.
 # Status: Skrzynka development channel 0.2.x.
 # Risk: removes the skrzynka:mailbox tag in Skarbiec; destructive mutation of the fleet database: the mailbox's messages and reply evidence are deleted.
-# Environment: Stado resolving the fleet database skrzynka.
-# Usage: CONFIRM_REMOVE=yes sh remove-local-mailbox.sh <organization-id> <mailbox-uuid>
+# Environment: Stado resolving the fleet database skrzynka; SKRZYNKA_BIN naming the skrzynka executable.
+# Usage: CONFIRM_REMOVE=yes SKRZYNKA_BIN=<skrzynka> sh remove-local-mailbox.sh <organization-id> <mailbox-uuid>
 # Removes: the item's skrzynka:mailbox tag, one mailbox and its cascading records; the item and provider remain.
 set -eu
 
-[ "$#" -eq 2 ] || { echo "usage: CONFIRM_REMOVE=yes $0 <organization-id> <mailbox-uuid>" >&2; exit 64; }
-[ "${CONFIRM_REMOVE:-}" = yes ] || { echo "ERROR: set CONFIRM_REMOVE=yes after backing up required evidence" >&2; exit 1; }
+usage() { echo "usage: CONFIRM_REMOVE=yes SKRZYNKA_BIN=<skrzynka> $0 <organization-id> <mailbox-uuid>" >&2; exit 64; } # https://man.freebsd.org/cgi/man.cgi?query=sysexits EX_USAGE "The command was used incorrectly"
+fail() { echo "ERROR: $*" >&2; exit 1; } # https://pubs.opengroup.org/onlinepubs/9799919799/functions/exit.html EXIT_FAILURE
+[ -n "${2+set}" ] && [ -z "${3+set}" ] || usage
+[ -n "${CONFIRM_REMOVE+set}" ] && [ "$CONFIRM_REMOVE" = yes ] || fail "set CONFIRM_REMOVE=yes after backing up required evidence"
 ORGANIZATION=$1
 MAILBOX_ID=$2
-SKRZYNKA_BIN=${SKRZYNKA_BIN:-target/debug/skrzynka}
+: "${SKRZYNKA_BIN:?set SKRZYNKA_BIN to the skrzynka executable: an installed skrzynka, or target/debug/skrzynka in a checkout}"
 
-[ -x "$SKRZYNKA_BIN" ] || { echo "ERROR: executable not found: $SKRZYNKA_BIN" >&2; exit 1; }
+[ -x "$SKRZYNKA_BIN" ] || fail "executable not found: $SKRZYNKA_BIN"
 
 printf '%s\n' '== undeclare: remove the skrzynka:mailbox tag so polling stops and removal is allowed'
 "$SKRZYNKA_BIN" --organization "$ORGANIZATION" mailbox undeclare "$MAILBOX_ID"
