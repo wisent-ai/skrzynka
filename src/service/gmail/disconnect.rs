@@ -74,11 +74,12 @@ impl AppState {
 /// answer: the grant was revoked or expired before. Any other answer keeps
 /// the credential, so the token is never lost while it may still be live.
 async fn revoke(token: &str) -> Result<&'static str, AppError> {
-    let response = reqwest::Client::new()
-        .post(GOOGLE_REVOKE_URL)
-        .form(&[("token", token)])
-        .send()
-        .await
+    let response = stado_wait::request(
+        reqwest::Client::new()
+            .post(GOOGLE_REVOKE_URL)
+            .form(&[("token", token)]),
+    )
+    .await
         .map_err(|error| {
             AppError::dependency(
                 "GMAIL_REVOKE_UNAVAILABLE",

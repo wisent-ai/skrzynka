@@ -35,18 +35,15 @@ impl GmailOAuthBroker {
         pending: &PendingFlow,
         code: &str,
     ) -> Result<GmailAuthorization, AppError> {
-        let response = self
-            .client
-            .post(&pending.oauth_client.token_uri)
-            .form(&[
+        let response =
+            stado_wait::request(self.client.post(&pending.oauth_client.token_uri).form(&[
                 ("client_id", pending.oauth_client.client_id.as_str()),
                 ("client_secret", pending.oauth_client.client_secret.as_str()),
                 ("code", code),
                 ("code_verifier", pending.verifier.as_str()),
                 ("redirect_uri", self.callback_url.as_str()),
                 ("grant_type", "authorization_code"),
-            ])
-            .send()
+            ]))
             .await
             .map_err(|error| {
                 AppError::dependency(
@@ -110,19 +107,19 @@ impl GmailOAuthBroker {
                     false,
                 )
             })?;
-        let userinfo_response = self
-            .client
-            .get(GOOGLE_USERINFO_URL)
-            .bearer_auth(access_token)
-            .send()
-            .await
-            .map_err(|error| {
-                AppError::dependency(
-                    "GMAIL_IDENTITY_UNAVAILABLE",
-                    format!("Google identity service is unavailable: {error}"),
-                    true,
-                )
-            })?;
+        let userinfo_response = stado_wait::request(
+            self.client
+                .get(GOOGLE_USERINFO_URL)
+                .bearer_auth(access_token),
+        )
+        .await
+        .map_err(|error| {
+            AppError::dependency(
+                "GMAIL_IDENTITY_UNAVAILABLE",
+                format!("Google identity service is unavailable: {error}"),
+                true,
+            )
+        })?;
         let userinfo_status = userinfo_response.status();
         let userinfo: Value = userinfo_response.json().await.map_err(|error| {
             AppError::dependency(
