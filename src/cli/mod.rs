@@ -25,10 +25,16 @@ static TEXT: OnceLock<bool> = OnceLock::new();
 pub async fn run(cli: Cli) -> Result<(), AppError> {
     TEXT.get_or_init(|| cli.text);
     if matches!(cli.command, Command::Version) {
+        // A build that was not given its source revision reports itself as a
+        // source build, as `skrzynka version` documents.
+        let source = match option_env!("SKRZYNKA_SOURCE_REVISION") {
+            Some(revision) => revision,
+            None => "source-build",
+        };
         print_json(&json!({
             "product": "skrzynka",
             "version": env!("CARGO_PKG_VERSION"),
-            "source": option_env!("SKRZYNKA_SOURCE_REVISION").unwrap_or("source-build"),
+            "source": source,
         }))?;
         return Ok(());
     }
@@ -142,7 +148,17 @@ async fn serve(
     tracing::info!(address = %args.bind, "Skrzynka API ready");
     axum::serve(listener, crate::api::router(state))
         .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+            // Ctrl-C stops the server gracefully. A listener that cannot be
+            // installed is said, and the server keeps serving until its
+            // process is ended: read as a Ctrl-C, it stopped the server the
+            // moment it had announced its address.
+            if let Err(error) = tokio::signal::ctrl_c().await {
+                tracing::error!(
+                    %error,
+                    "Ctrl-C cannot be listened for; the server stops only when its process is ended"
+                );
+                std::future::pending::<()>().await;
+            }
         })
         .await
         .map_err(|error| AppError::internal(format!("loopback API stopped unexpectedly: {error}")))
