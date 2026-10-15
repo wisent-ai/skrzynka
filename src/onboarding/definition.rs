@@ -6,10 +6,9 @@ use serde_json::Value;
 use std::collections::HashSet;
 
 /// The priority `transition` of `screen` declares, refused naming the screen
-/// and its target when it declares none or one that is not a whole number.
-/// Reading a missing priority as the lowest let an undeclared transition
-/// decide the next screen whenever it was the only one or tied with another.
-fn priority(screen: &str, transition: &Value) -> Result<i64, AppError> {
+/// and its target when it declares none or one that is not a non-negative
+/// whole number, the journey contract's type for it.
+fn priority(screen: &str, transition: &Value) -> Result<u64, AppError> {
     let target = transition
         .get("next_screen_id")
         .and_then(Value::as_str)
@@ -20,10 +19,10 @@ fn priority(screen: &str, transition: &Value) -> Result<i64, AppError> {
         })?;
     transition
         .get("priority")
-        .and_then(Value::as_i64)
+        .and_then(Value::as_u64)
         .ok_or_else(|| {
             AppError::internal(format!(
-                "canonical onboarding transition from {screen} to {target} declares no whole-number priority"
+                "canonical onboarding transition from {screen} to {target} declares no non-negative whole-number priority"
             ))
         })
 }
@@ -94,13 +93,19 @@ pub(super) fn canonical_definition() -> Result<Value, AppError> {
             .get("screen_id")
             .and_then(Value::as_str)
             .ok_or_else(|| AppError::internal("canonical onboarding screen has no id"))?;
+        let mut priorities = HashSet::new();
         for transition in screen
             .get("transitions")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
         {
-            priority(id, transition)?;
+            let rank = priority(id, transition)?;
+            if !priorities.insert(rank) {
+                return Err(AppError::internal(format!(
+                    "canonical onboarding transitions of {id} share priority {rank}; the journey contract requires them unique"
+                )));
+            }
             let next = transition
                 .get("next_screen_id")
                 .and_then(Value::as_str)
@@ -131,6 +136,9 @@ pub(super) fn screen_by_id<'a>(definition: &'a Value, id: &str) -> Result<&'a Va
         })
 }
 
+/// The target of the transition that leads: the lowest priority, as the
+/// journey contract and Echo's own routing order transitions. Priorities are
+/// unique per screen, which the definition check enforces.
 pub(super) fn next_screen_id(screen: &Value) -> Result<Option<String>, AppError> {
     let Some(transitions) = screen.get("transitions").and_then(Value::as_array) else {
         return Ok(None);
@@ -139,10 +147,10 @@ pub(super) fn next_screen_id(screen: &Value) -> Result<Option<String>, AppError>
         .get("screen_id")
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::internal("canonical onboarding screen has no id"))?;
-    let mut chosen: Option<(i64, &Value)> = None;
+    let mut chosen: Option<(u64, &Value)> = None;
     for transition in transitions {
         let rank = priority(id, transition)?;
-        if chosen.is_none_or(|(best, _)| rank > best) {
+        if chosen.is_none_or(|(best, _)| rank < best) {
             chosen = Some((rank, transition));
         }
     }
