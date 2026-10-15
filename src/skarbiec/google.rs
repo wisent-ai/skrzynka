@@ -35,24 +35,20 @@ impl SkarbiecResolver {
             }
         }
         let requested_at = Utc::now();
-        let response = self
-            .client
-            .post(&oauth_client.token_uri)
-            .form(&[
-                ("client_id", oauth_client.client_id.as_str()),
-                ("client_secret", oauth_client.client_secret.as_str()),
-                ("refresh_token", refresh_token),
-                ("grant_type", "refresh_token"),
-            ])
-            .send()
-            .await
-            .map_err(|error| {
-                AppError::dependency(
-                    "GMAIL_TOKEN_REFRESH_UNAVAILABLE",
-                    format!("Google refresh-token request failed: {error}"),
-                    true,
-                )
-            })?;
+        let response = stado_wait::request(self.client.post(&oauth_client.token_uri).form(&[
+            ("client_id", oauth_client.client_id.as_str()),
+            ("client_secret", oauth_client.client_secret.as_str()),
+            ("refresh_token", refresh_token),
+            ("grant_type", "refresh_token"),
+        ]))
+        .await
+        .map_err(|error| {
+            AppError::dependency(
+                "GMAIL_TOKEN_REFRESH_UNAVAILABLE",
+                format!("Google refresh-token request failed: {error}"),
+                true,
+            )
+        })?;
         let status = response.status();
         let payload: Value = response.json().await.map_err(|error| {
             AppError::dependency(
@@ -130,7 +126,7 @@ impl SkarbiecResolver {
             "aud": account.token_uri,
             "scope": GMAIL_DELEGATION_SCOPE,
             "iat": now,
-            "exp": now + 3600,
+            "exp": now + 3600, // Google's ceiling for exp after iat: https://developers.google.com/identity/protocols/oauth2/service-account#authorizingrequests
         });
         let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
         header.kid = account.private_key_id.clone();
@@ -145,22 +141,18 @@ impl SkarbiecResolver {
             AppError::internal(format!("delegation assertion could not be signed: {error}"))
         })?;
         let requested_at = Utc::now();
-        let response = self
-            .client
-            .post(&account.token_uri)
-            .form(&[
-                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                ("assertion", assertion.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|error| {
-                AppError::dependency(
-                    "GOOGLE_TOKEN_UNAVAILABLE",
-                    format!("Google delegated-token request failed: {error}"),
-                    true,
-                )
-            })?;
+        let response = stado_wait::request(self.client.post(&account.token_uri).form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", assertion.as_str()),
+        ]))
+        .await
+        .map_err(|error| {
+            AppError::dependency(
+                "GOOGLE_TOKEN_UNAVAILABLE",
+                format!("Google delegated-token request failed: {error}"),
+                true,
+            )
+        })?;
         let status = response.status();
         let payload: Value = response.json().await.map_err(|error| {
             AppError::dependency(
