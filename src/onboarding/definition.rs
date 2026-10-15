@@ -5,12 +5,40 @@ use crate::error::AppError;
 use serde_json::Value;
 use std::collections::HashSet;
 
+/// The priority `transition` of `screen` declares, refused naming the screen
+/// and its target when it declares none or one that is not a whole number.
+/// Reading a missing priority as the lowest let an undeclared transition
+/// decide the next screen whenever it was the only one or tied with another.
+fn priority(screen: &str, transition: &Value) -> Result<i64, AppError> {
+    let target = transition
+        .get("next_screen_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            AppError::internal(format!(
+                "canonical onboarding transition of screen {screen} has no target"
+            ))
+        })?;
+    transition
+        .get("priority")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| {
+            AppError::internal(format!(
+                "canonical onboarding transition from {screen} to {target} declares no whole-number priority"
+            ))
+        })
+}
+
+/// The first-use journey compiled into this binary, checked against the
+/// identity and shape this reader needs. The definition is embedded at build
+/// time (`DEFINITION`), so it is always the file this code was written with;
+/// what is checked is what the reader relies on: who the journey is for, that
+/// every screen has an id and a presentation, and that every transition names
+/// an existing target and a priority.
 pub(super) fn canonical_definition() -> Result<Value, AppError> {
     let definition: Value = serde_json::from_str(DEFINITION).map_err(|error| {
         AppError::internal(format!("canonical onboarding journey is invalid: {error}"))
     })?;
-    if definition.get("schema_version").and_then(Value::as_u64) != Some(1)
-        || definition.get("product_id").and_then(Value::as_str) != Some(PRODUCT_ID)
+    if definition.get("product_id").and_then(Value::as_str) != Some(PRODUCT_ID)
         || definition.get("journey_id").and_then(Value::as_str) != Some(JOURNEY_ID)
         || definition.get("first_success_fact").and_then(Value::as_str) != Some(FIRST_SUCCESS_FACT)
     {
@@ -62,12 +90,17 @@ pub(super) fn canonical_definition() -> Result<Value, AppError> {
         ));
     }
     for screen in screens {
+        let id = screen
+            .get("screen_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::internal("canonical onboarding screen has no id"))?;
         for transition in screen
             .get("transitions")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
         {
+            priority(id, transition)?;
             let next = transition
                 .get("next_screen_id")
                 .and_then(Value::as_str)
@@ -102,15 +135,19 @@ pub(super) fn next_screen_id(screen: &Value) -> Result<Option<String>, AppError>
     let Some(transitions) = screen.get("transitions").and_then(Value::as_array) else {
         return Ok(None);
     };
-    transitions
-        .iter()
-        .max_by_key(|transition| {
-            transition
-                .get("priority")
-                .and_then(Value::as_i64)
-                .unwrap_or_default()
-        })
-        .map(|transition| {
+    let id = screen
+        .get("screen_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::internal("canonical onboarding screen has no id"))?;
+    let mut chosen: Option<(i64, &Value)> = None;
+    for transition in transitions {
+        let rank = priority(id, transition)?;
+        if chosen.is_none_or(|(best, _)| rank > best) {
+            chosen = Some((rank, transition));
+        }
+    }
+    chosen
+        .map(|(_, transition)| {
             transition
                 .get("next_screen_id")
                 .and_then(Value::as_str)
