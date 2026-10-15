@@ -47,14 +47,16 @@ pub(super) async fn authorize_gmail(
                     eprintln!("{error}; callback authorization remains pending");
                 }
                 if matches!(diagnosis.as_ref(), Ok(Some(refusal)) if refusal == "redirect_uri_mismatch") {
-                    if let Some((client_id, redirect_uri)) =
-                        crate::gmail::authorization_operands(&flow.authorization_url)
-                    {
-                        return Err(crate::gmail::redirect_not_registered(
-                            &client_id,
-                            &redirect_uri,
-                        ));
-                    }
+                    // A mismatch is refused either way: with the client and
+                    // redirect Google was given, or with why they are unreadable.
+                    return Err(
+                        match crate::gmail::authorization_operands(&flow.authorization_url) {
+                            Ok((client_id, redirect_uri)) => {
+                                crate::gmail::redirect_not_registered(&client_id, &redirect_uri)
+                            }
+                            Err(error) => error,
+                        },
+                    );
                 }
                 state.gmail_oauth_settled(organization, flow.flow_id).await
             }

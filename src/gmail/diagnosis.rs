@@ -10,17 +10,36 @@ use reqwest::{Client, Url};
 /// Google encodes it as base64url in `authError`, so the code an operator needs
 /// is unreadable without decoding. Split out from the request that fetched the
 /// URL so the decode is exercised against a real captured error rather than a
-/// stubbed server.
-pub fn oauth_error_code(landing_url: &str) -> Option<String> {
-    let parsed = Url::parse(landing_url).ok()?;
-    let encoded = parsed
+/// stubbed server. A landing URL that does not parse, or an `authError` that
+/// is not base64url or holds no code, is refused: it is a refusal this
+/// product cannot read, not the absence of one.
+pub fn oauth_error_code(landing_url: &str) -> Result<Option<String>, AppError> {
+    let unreadable = |what: String| {
+        AppError::dependency(
+            "GMAIL_OAUTH_DIAGNOSIS_FAILED",
+            format!("Google's authorization landing page {what}"),
+            false,
+        )
+    };
+    let parsed = Url::parse(landing_url)
+        .map_err(|error| unreadable(format!("address does not parse: {error}")))?;
+    let Some(encoded) = parsed
         .query_pairs()
         .find(|(name, _)| name == "authError")
-        .map(|(_, value)| value.into_owned())?;
+        .map(|(_, value)| value.into_owned())
+    else {
+        return Ok(None);
+    };
     if encoded.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let decoded = URL_SAFE_NO_PAD.decode(encoded.trim_end_matches('=')).ok()?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(encoded.trim_end_matches('='))
+        .map_err(|error| {
+            unreadable(format!(
+                "carries an authError that is not base64url ({error}): {encoded}"
+            ))
+        })?;
     // The payload is an undocumented blob whose first field is the code as
     // plain text, so the code is the leading run of code-shaped bytes rather
     // than the result of parsing a format Google does not publish.
@@ -30,7 +49,12 @@ pub fn oauth_error_code(landing_url: &str) -> Option<String> {
         .skip_while(|character| !character.is_ascii_alphabetic())
         .take_while(|character| character.is_ascii_alphabetic() || *character == '_')
         .collect();
-    (!code.is_empty()).then_some(code)
+    if code.is_empty() {
+        return Err(unreadable(format!(
+            "carries an authError with no error code in it: {encoded}"
+        )));
+    }
+    Ok(Some(code))
 }
 
 /// The refusal an unregistered loopback redirect deserves.
@@ -115,9 +139,16 @@ pub fn google_imap_password_rejected(
 
 /// The `client_id` and `redirect_uri` an authorization URL carries, for the
 /// refusal above. Read back from the URL that was actually handed out rather
-/// than recomputed, so the sentence names what Google was really given.
-pub fn authorization_operands(authorization_url: &str) -> Option<(String, String)> {
-    let parsed = Url::parse(authorization_url).ok()?;
+/// than recomputed, so the sentence names what Google was really given; a URL
+/// that lacks either is refused naming what it lacks.
+pub fn authorization_operands(authorization_url: &str) -> Result<(String, String), AppError> {
+    let refused = |what: String| {
+        AppError::internal(format!(
+            "the authorization URL this product handed out {what}: {authorization_url}"
+        ))
+    };
+    let parsed = Url::parse(authorization_url)
+        .map_err(|error| refused(format!("does not parse ({error})")))?;
     let mut client_id = None;
     let mut redirect_uri = None;
     for (name, value) in parsed.query_pairs() {
@@ -127,33 +158,38 @@ pub fn authorization_operands(authorization_url: &str) -> Option<(String, String
             _ => {}
         }
     }
-    Some((client_id?, redirect_uri?))
+    match (client_id, redirect_uri) {
+        (Some(client_id), Some(redirect_uri)) => Ok((client_id, redirect_uri)),
+        (None, _) => Err(refused("carries no client_id".to_string())),
+        (_, None) => Err(refused("carries no redirect_uri".to_string())),
+    }
 }
 
 /// Ask Google for an authorization-page refusal without gating callback serving.
 /// An answering page with no OAuth error is weaker than a completed flow;
 /// request failure is a separate diagnostic error, never proof of acceptance.
 pub async fn diagnose_authorization(authorization_url: &str) -> Result<Option<String>, AppError> {
-    let response = Client::new()
-        .get(authorization_url)
-        .header("user-agent", "Mozilla/5.0")
-        .send()
-        .await
-        .map_err(|error| {
-            let error = error.without_url();
-            let mut detail = error.to_string();
-            let mut cause = std::error::Error::source(&error);
-            while let Some(source) = cause {
-                detail.push_str(&format!("; {source}"));
-                cause = source.source();
-            }
-            AppError::dependency(
-                "GMAIL_OAUTH_DIAGNOSIS_FAILED",
-                format!("requesting Google authorization-page diagnosis failed: {detail}"),
-                true,
-            )
-        })?;
-    let refusal = oauth_error_code(response.url().as_str());
+    let response = stado_wait::request(
+        Client::new()
+            .get(authorization_url)
+            .header("user-agent", "Mozilla/5.0"),
+    )
+    .await
+    .map_err(|error| {
+        let error = error.without_url();
+        let mut detail = error.to_string();
+        let mut cause = std::error::Error::source(&error);
+        while let Some(source) = cause {
+            detail.push_str(&format!("; {source}"));
+            cause = source.source();
+        }
+        AppError::dependency(
+            "GMAIL_OAUTH_DIAGNOSIS_FAILED",
+            format!("requesting Google authorization-page diagnosis failed: {detail}"),
+            true,
+        )
+    })?;
+    let refusal = oauth_error_code(response.url().as_str())?;
     if refusal.is_none() && !response.status().is_success() {
         return Err(AppError::dependency(
             "GMAIL_OAUTH_DIAGNOSIS_FAILED",
