@@ -155,6 +155,13 @@ fn nothing_to_authenticate(organization_id: &str, account: Option<&str>) -> Gmai
 /// The exact command that connects this account: Weles creates the app
 /// password and hands it to Skrzynka on stdin, so no secret is typed or placed
 /// in argv.
+///
+/// When no account was named the command carries a placeholder for it, as it
+/// does for the login role, for the reader to fill in.
 fn connect_action(organization_id: &str, account: Option<&str>) -> String {
-    crate::gmail::app_password_action(organization_id, account.unwrap_or("<address>"))
+    let account = match account {
+        Some(account) => account,
+        None => "<address>",
+    };
+    crate::gmail::app_password_action(organization_id, account)
 }
