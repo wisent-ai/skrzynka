@@ -92,10 +92,27 @@ impl AppState {
         let attempt =
             self.database
                 .update_reply(attempt.id, DeliveryStatus::Sending, None, None, None)?;
-        let message = self.database.get_message(organization_id, message_id)?;
-        let mailbox = self
+        let source = self
             .database
-            .get_mailbox(organization_id, message.mailbox_id)?;
+            .get_message(organization_id, message_id)
+            .and_then(|message| {
+                self.database
+                    .get_mailbox(organization_id, message.mailbox_id)
+                    .map(|mailbox| (message, mailbox))
+            });
+        let (message, mailbox) = match source {
+            Ok(source) => source,
+            Err(error) => {
+                let recorded = self.database.update_reply(
+                    attempt.id,
+                    DeliveryStatus::Failed,
+                    None,
+                    Some(error.code),
+                    Some(&error.message),
+                );
+                return Err(error.with_unrecorded(recorded, "sending"));
+            }
+        };
         let credentials = match self
             .resolver
             .resolve_credentials(mailbox.outbound_skarbiec_item_id())
@@ -126,13 +143,16 @@ impl AppState {
                 None,
                 None,
             ),
-            Ok(Err(error)) if error.code == "SMTP_UNCERTAIN" => self.database.update_reply(
-                attempt.id,
-                DeliveryStatus::Uncertain,
-                None,
-                Some("REPLY_UNCERTAIN"),
-                Some(&error.message),
-            ),
+            Ok(Err(error)) if error.code == "SMTP_UNCERTAIN" => self
+                .database
+                .update_reply(
+                    attempt.id,
+                    DeliveryStatus::Uncertain,
+                    None,
+                    Some("REPLY_UNCERTAIN"),
+                    Some(&error.message),
+                )
+                .map_err(|write| error.with_unrecorded::<()>(Err(write), "sending")),
             Ok(Err(error)) => {
                 let recorded = self.database.update_reply(
                     attempt.id,
@@ -143,15 +163,24 @@ impl AppState {
                 );
                 Err(error.with_unrecorded(recorded, "sending"))
             }
-            Err(stopped) => self.database.update_reply(
-                attempt.id,
-                DeliveryStatus::Uncertain,
-                None,
-                Some("REPLY_UNCERTAIN"),
-                Some(&format!(
-                    "send task stopped before terminal SMTP evidence was recorded: {stopped}"
-                )),
-            ),
+            Err(stopped) => {
+                let error = AppError::dependency(
+                    "REPLY_UNCERTAIN",
+                    format!(
+                        "send task stopped before terminal SMTP evidence was recorded: {stopped}"
+                    ),
+                    false,
+                );
+                self.database
+                    .update_reply(
+                        attempt.id,
+                        DeliveryStatus::Uncertain,
+                        None,
+                        Some(error.code),
+                        Some(&error.message),
+                    )
+                    .map_err(|write| error.with_unrecorded::<()>(Err(write), "sending"))
+            }
         }
     }
 }

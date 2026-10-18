@@ -13,6 +13,10 @@ autotests = false
 name = "database-schema"
 path = "tests/database/schema.rs"
 
+[[test]]
+name = "delivery-persistence"
+path = "tests/delivery/persistence.rs"
+
 [dependencies]
 anyhow = "1.0"
 base64 = "0.22"
