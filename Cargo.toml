@@ -9,6 +9,10 @@ repository = "https://github.com/wisent-ai/skrzynka"
 # Real product integration targets are declared explicitly from tests/<area>/.
 autotests = false
 
+[[test]]
+name = "database-schema"
+path = "tests/database/schema.rs"
+
 [dependencies]
 anyhow = "1.0"
 base64 = "0.22"
