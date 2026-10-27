@@ -11,20 +11,6 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 impl AppState {
-    /// Outbound messages, newest first: every one from `offset`, or a page
-    /// of `limit` when the caller names one.
-    pub fn list_outbound(
-        &self,
-        organization_id: &str,
-        mailbox_id: Option<Uuid>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> Result<Vec<OutboundMessage>, AppError> {
-        super::messages::page_size(limit)?;
-        self.database
-            .list_outbound(organization_id, mailbox_id, limit, offset)
-    }
-
     pub fn get_outbound(
         &self,
         organization_id: &str,
@@ -80,21 +66,44 @@ impl AppState {
     /// Originate mail from one mailbox. The row is claimed by its idempotency
     /// key before anything leaves this process, so repeating the same call
     /// returns the first attempt instead of handing the provider a second copy.
-    pub async fn send_outbound(
+    /// `send_outbound` is the entry point; it adds the follow-up.
+    pub(super) async fn originate(
         &self,
         organization_id: &str,
         mailbox_id: Uuid,
         request: CreateOutboundRequest,
     ) -> Result<OutboundMessage, AppError> {
         let normalized = validate_outbound_request(&request)?;
+        // A repeated key answers its first attempt whatever was learned since,
+        // so only a key not claimed yet is held to the suppression list and
+        // the bounce reports.
+        let claimed = self.database.get_outbound_by_key(organization_id, request.idempotency_key.trim())?;
+        if claimed.is_none() {
+            let addressed: Vec<String> = [Some(normalized.recipients.as_str()), normalized.cc.as_deref(), normalized.bcc.as_deref()]
+                .into_iter()
+                .flatten()
+                .flat_map(|header| header.split(", "))
+                .map(str::to_lowercase)
+                .collect();
+            self.refuse_suppressed(organization_id, &addressed, "this send")?;
+            if !request.allow_bounced {
+                self.refuse_bounced(organization_id, &addressed)?;
+            }
+        }
+        // Every file is checked before the row is claimed, so a file that
+        // cannot be sent never leaves a claimed request behind.
+        let files = mail::prepare_attachments(&request.attachments)?;
+        let records: Vec<_> = files.iter().map(|file| file.record.clone()).collect();
         let (outbound, created) = self.database.begin_outbound(
             organization_id,
             mailbox_id,
             request.idempotency_key.trim(),
             &normalized.recipients,
             normalized.cc.as_deref(),
+            normalized.bcc.as_deref(),
             &normalized.subject,
             &normalized.body,
+            &records,
         )?;
         if !created {
             return Ok(outbound);
@@ -136,9 +145,11 @@ impl AppState {
                 return Err(error.with_unrecorded(recorded, "sending"));
             }
         };
-        let pending = outbound.clone();
+        let mut pending = outbound.clone();
+        // The signature is the one the row was claimed with.
+        pending.body = mail::signed(&pending.body, pending.signature.as_deref());
         let result = tokio::task::spawn_blocking(move || {
-            mail::send_outbound(&mailbox, &credentials, &pending)
+            mail::send_outbound(&mailbox, &credentials, &pending, &files)
         })
         .await;
         match result {
@@ -194,20 +205,35 @@ impl AppState {
 struct NormalizedOutbound {
     recipients: String,
     cc: Option<String>,
+    bcc: Option<String>,
     subject: String,
     body: String,
 }
 
-fn validate_outbound_request(
-    request: &CreateOutboundRequest,
-) -> Result<NormalizedOutbound, AppError> {
-    let key = request.idempotency_key.trim();
+/// An idempotency key as every claim reads it, trimmed; one that is blank or
+/// holds whitespace is `IDEMPOTENCY_KEY_INVALID`, before anything is claimed.
+pub(in crate::service) fn checked_key(key: &str) -> Result<&str, AppError> {
+    let key = key.trim();
     if key.is_empty() || key.chars().any(char::is_whitespace) {
         return Err(AppError::invalid(
             "IDEMPOTENCY_KEY_INVALID",
             "idempotency_key must contain non-whitespace characters only",
         ));
     }
+    Ok(key)
+}
+
+/// The addresses of a header an outbound row or a draft stores
+/// comma-separated, each as written, blanks left out: what sending the row
+/// again, drafting from it or reminding its recipients addresses.
+pub(in crate::service) fn stored_addresses(stored: &str) -> Vec<String> {
+    stored.split(',').map(str::trim).filter(|address| !address.is_empty()).map(String::from).collect()
+}
+
+fn validate_outbound_request(
+    request: &CreateOutboundRequest,
+) -> Result<NormalizedOutbound, AppError> {
+    checked_key(&request.idempotency_key)?;
     let subject = request.subject.trim().to_string();
     if subject.is_empty() {
         return Err(AppError::invalid(
@@ -229,9 +255,11 @@ fn validate_outbound_request(
         ));
     }
     let cc = normalize_addresses(&request.cc)?;
+    let bcc = normalize_addresses(&request.bcc)?;
     Ok(NormalizedOutbound {
         recipients: recipients.join(", "),
         cc: (!cc.is_empty()).then(|| cc.join(", ")),
+        bcc: (!bcc.is_empty()).then(|| bcc.join(", ")),
         subject,
         body: request.body.trim_end().to_string(),
     })
@@ -240,7 +268,7 @@ fn validate_outbound_request(
 /// Recipients are bare addresses, deduplicated in the order given. A display
 /// name is refused here rather than at the provider, where the refusal would
 /// arrive after the row was already claimed.
-fn normalize_addresses(values: &[String]) -> Result<Vec<String>, AppError> {
+pub(super) fn normalize_addresses(values: &[String]) -> Result<Vec<String>, AppError> {
     let mut addresses = Vec::with_capacity(values.len());
     for value in values {
         for candidate in value.split(',') {
@@ -248,10 +276,10 @@ fn normalize_addresses(values: &[String]) -> Result<Vec<String>, AppError> {
             if candidate.is_empty() {
                 continue;
             }
-            Address::from_str(candidate).map_err(|_| {
+            Address::from_str(candidate).map_err(|cause| {
                 AppError::invalid(
                     "OUTBOUND_RECIPIENT_INVALID",
-                    format!("{candidate} is not a valid email address"),
+                    format!("{candidate} is not a valid email address: {cause}"),
                 )
             })?;
             if !addresses.iter().any(|existing| existing == candidate) {

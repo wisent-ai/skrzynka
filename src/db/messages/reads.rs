@@ -1,10 +1,11 @@
 //! Message reads: a page of an organization's messages, newest first, and
-//! one message by id.
+//! one message by id, each with the attachments and bounce report its import
+//! recorded.
 
 use super::super::sql::{self, params, OptionalExtension, Row};
 use super::super::{parse_uuid, Database};
-use super::unreadable;
-use crate::{error::AppError, models::Message};
+use super::{attachments, bounces, notes, snoozes, tags, unreadable};
+use crate::{error::AppError, mail::AuthenticationVerdict, models::Message};
 use uuid::Uuid;
 
 impl Database {
@@ -24,7 +25,9 @@ impl Database {
                     messages.references_header, messages.sender, messages.reply_to,
                     messages.recipients, messages.subject, messages.sent_at,
                     messages.sent_at_unreadable, messages.received_at,
-                    messages.body_text, messages.snippet
+                    messages.body_text, messages.snippet, messages.details_recorded,
+                    messages.list_id, messages.list_unsubscribe, messages.list_unsubscribe_post,
+                    messages.authentication_results, messages.cc_header
              FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
              WHERE messages.mailbox_id=$1 AND mailboxes.organization_id=$2
              ORDER BY messages.received_at DESC LIMIT $3 OFFSET $4"
@@ -34,7 +37,9 @@ impl Database {
                     messages.references_header, messages.sender, messages.reply_to,
                     messages.recipients, messages.subject, messages.sent_at,
                     messages.sent_at_unreadable, messages.received_at,
-                    messages.body_text, messages.snippet
+                    messages.body_text, messages.snippet, messages.details_recorded,
+                    messages.list_id, messages.list_unsubscribe, messages.list_unsubscribe_post,
+                    messages.authentication_results, messages.cc_header
              FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
              WHERE mailboxes.organization_id=$1
              ORDER BY messages.received_at DESC LIMIT $2 OFFSET $3"
@@ -56,25 +61,43 @@ impl Database {
                 message_from_row,
             )?
         };
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        let mut messages = rows.collect::<Result<Vec<_>, _>>()?;
+        attachments::attach(connection, &mut messages)?;
+        bounces::attach(connection, &mut messages)?;
+        tags::attach(connection, &mut messages)?;
+        snoozes::attach(connection, &mut messages)?;
+        notes::attach(connection, &mut messages)?;
+        Ok(messages)
     }
 
     pub fn get_message(&self, organization_id: &str, id: Uuid) -> Result<Message, AppError> {
-        self.lock()?
+        let connection = self.lock()?;
+        let message = connection
             .query_row(
                 "SELECT messages.id, messages.mailbox_id, messages.external_uid,
                         messages.provider_message_id, messages.in_reply_to,
                         messages.references_header, messages.sender, messages.reply_to,
                         messages.recipients, messages.subject, messages.sent_at,
                         messages.sent_at_unreadable, messages.received_at,
-                        messages.body_text, messages.snippet
+                        messages.body_text, messages.snippet, messages.details_recorded,
+                        messages.list_id, messages.list_unsubscribe,
+                        messages.list_unsubscribe_post, messages.authentication_results,
+                        messages.cc_header
                  FROM messages JOIN mailboxes ON mailboxes.id=messages.mailbox_id
                  WHERE messages.id=$1 AND mailboxes.organization_id=$2",
                 params![id.to_string(), organization_id],
                 message_from_row,
             )
             .optional()?
-            .ok_or_else(|| AppError::not_found("message"))
+            .ok_or_else(|| AppError::not_found("message"))?;
+        let mut messages = [message];
+        attachments::attach(connection, &mut messages)?;
+        bounces::attach(connection, &mut messages)?;
+        tags::attach(connection, &mut messages)?;
+        snoozes::attach(connection, &mut messages)?;
+        notes::attach(connection, &mut messages)?;
+        let [message] = messages;
+        Ok(message)
     }
 }
 
@@ -84,8 +107,10 @@ pub(in crate::db) fn page_limit(limit: Option<u32>) -> Option<i64> {
     limit.map(i64::from)
 }
 
-/// One stored message, read by column name.
+/// One stored message, read by column name. A message whose attachments
+/// were recorded starts with none; `attachments::attach` fills them in.
 fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {
+    let recorded = row.get::<_, bool>("details_recorded")?;
     let mut message = Message {
         id: parse_uuid(row.get::<_, String>("id")?)?,
         mailbox_id: parse_uuid(row.get::<_, String>("mailbox_id")?)?,
@@ -96,12 +121,23 @@ fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {
         sender: row.get("sender")?,
         reply_to: row.get("reply_to")?,
         recipients: row.get("recipients")?,
+        cc: row.get("cc_header")?,
         subject: row.get("subject")?,
         sent_at: row.get("sent_at")?,
         sent_at_unreadable: unreadable::read(row)?,
         received_at: row.get("received_at")?,
         body_text: row.get("body_text")?,
         snippet: String::new(),
+        attachments: recorded.then(Vec::new),
+        mailing_list: match recorded {
+            true => Some(attachments::mailing_list_from_row(row)?),
+            false => None,
+        },
+        bounce: None,
+        authentication: authentication_from_row(row)?,
+        tags: Vec::new(),
+        snoozed_until: None,
+        note: None,
     };
     message.snippet = message
         .body_text
@@ -109,4 +145,17 @@ fn message_from_row(row: &Row<'_>) -> sql::Result<Message> {
         .collect::<Vec<_>>()
         .join(" ");
     Ok(message)
+}
+
+/// The stored `Authentication-Results` verdicts; absent for a message whose
+/// details were recorded before verdicts were.
+fn authentication_from_row(row: &Row<'_>) -> sql::Result<Option<Vec<AuthenticationVerdict>>> {
+    let Some(stored) = row.get::<_, Option<String>>("authentication_results")? else {
+        return Ok(None);
+    };
+    serde_json::from_str(&stored).map(Some).map_err(|error| {
+        sql::Error::Conversion(format!(
+            "column authentication_results holds no authentication verdicts: {error}"
+        ))
+    })
 }

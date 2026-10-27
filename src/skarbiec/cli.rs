@@ -97,7 +97,7 @@ impl SkarbiecResolver {
         })?;
         if let Some(path) = &self.local {
             let output =
-                super::local::run(path, &["set-json", item_id, "--type", kind], Some(&bytes))?;
+                super::local::run(path, &["set", item_id, "--type", kind], Some(&bytes))?;
             if !output.status.success() {
                 return Err(AppError::dependency(
                     "SKARBIEC_WRITE_FAILED",
@@ -114,7 +114,7 @@ impl SkarbiecResolver {
         }
         let mut command = Command::new(&self.binary);
         command
-            .args(["set-json", item_id, "--type", kind])
+            .args(["set", item_id, "--type", kind])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -123,7 +123,7 @@ impl SkarbiecResolver {
             AppError::dependency(
                 "SKARBIEC_UNAVAILABLE",
                 format!(
-                    "start {} set-json for item '{item_id}': {error}",
+                    "start {} set for item '{item_id}': {error}",
                     self.binary.display()
                 ),
                 true,
@@ -141,14 +141,14 @@ impl SkarbiecResolver {
             },
             stado_wait::child_output_async(
                 child,
-                format!("skarbiec set-json {item_id} --type {kind}"),
+                format!("skarbiec set {item_id} --type {kind}"),
             )
         );
         let output = output.map_err(|error| {
             AppError::dependency(
                 "SKARBIEC_WRITE_FAILED",
                 format!(
-                    "wait for Skarbiec set-json for item '{item_id}': {error}; persisted state is unknown"
+                    "wait for Skarbiec set for item '{item_id}': {error}; persisted state is unknown"
                 ),
                 false,
             )
@@ -220,11 +220,11 @@ impl SkarbiecResolver {
     pub(super) async fn output(
         &self,
         arguments: &[&str],
-    ) -> Result<std::process::Output, AppError> {
+    ) -> Result<super::local::Reply, AppError> {
         if let Some(path) = &self.local {
             return super::local::run(path, arguments, None);
         }
-        self.run(&self.binary, arguments).await
+        self.run(&self.binary, arguments).await.map(super::local::Reply::from)
     }
 
     async fn run(

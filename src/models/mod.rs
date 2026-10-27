@@ -8,8 +8,9 @@ pub use credential_source::CredentialSource;
 mod inbound;
 pub use inbound::{InboundDomain, InboundMessage};
 
-/// How long a mailbox's host names may be (RFC 1035). A mailbox is read when its
-/// provider reports new mail (IMAP IDLE); no polling interval exists.
+/// How long a mailbox's host names may be in text form
+/// (https://www.rfc-editor.org/rfc/rfc1035#section-2.3.4). A mailbox is read
+/// when its provider reports new mail (IMAP IDLE); no polling interval exists.
 pub const MAX_HOST_LENGTH: usize = 253;
 
 #[derive(Debug, thiserror::Error)]
@@ -44,10 +45,14 @@ pub struct Mailbox {
 }
 
 impl Mailbox {
+    /// The Skarbiec item SMTP signs in with: the mailbox's own SMTP item
+    /// when it declares one, else the one item it declares for both IMAP
+    /// and SMTP.
     pub fn outbound_skarbiec_item_id(&self) -> &str {
-        self.smtp_skarbiec_item_id
-            .as_deref()
-            .unwrap_or(&self.skarbiec_item_id)
+        match self.smtp_skarbiec_item_id.as_deref() {
+            Some(smtp) => smtp,
+            None => &self.skarbiec_item_id,
+        }
     }
 }
 

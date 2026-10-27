@@ -82,7 +82,16 @@ pub fn run(reset: bool) -> Result<(), AppError> {
 
 pub fn record_mailbox_import_completed() -> Result<(), AppError> {
     let path = state_path()?;
-    if !path.exists() {
+    // No journey started means nothing to record; a state file that cannot be
+    // examined is refused, because read as absent the import's first success
+    // was never recorded and nothing said so.
+    let started = path.try_exists().map_err(|error| {
+        AppError::internal(format!(
+            "onboarding state at {} cannot be examined: {error}",
+            path.display()
+        ))
+    })?;
+    if !started {
         return Ok(());
     }
 

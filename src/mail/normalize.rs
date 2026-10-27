@@ -3,11 +3,24 @@
 //! header the message leaves out, and a header it states unreadably is kept
 //! with why, so a stored row never claims what the sender did not write.
 
+use super::attachments::{attachment_parts, AttachmentPart};
+use super::authentication::authentication_verdicts;
+use super::lists::MailingList;
+use super::reports::bounce_report;
 use super::dependency_error;
 use crate::{error::AppError, models::NewMessage};
 use mailparse::{MailHeaderMap, ParsedMail};
 
 pub(super) fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, AppError> {
+    read_message(uid, bytes).map(|(message, _)| message)
+}
+
+/// A provider message read whole: what Skrzynka stores of it, attachments
+/// described, and each attachment with its decoded bytes.
+pub fn read_message(
+    uid: u32,
+    bytes: &[u8],
+) -> Result<(NewMessage, Vec<AttachmentPart>), AppError> {
     let parsed = mailparse::parse_mail(bytes).map_err(|error| {
         dependency_error(
             "MESSAGE_MALFORMED",
@@ -61,7 +74,9 @@ pub(super) fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, Ap
             ),
         },
     };
-    Ok(NewMessage {
+    let parts = attachment_parts(&parsed);
+    let attachments = parts.iter().map(|part| part.attachment.clone()).collect();
+    let message = NewMessage {
         external_uid: uid,
         message_id: headers.get_first_value("Message-ID"),
         in_reply_to: headers.get_first_value("In-Reply-To"),
@@ -74,7 +89,13 @@ pub(super) fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, Ap
         sent_at_unreadable,
         body_text,
         snippet,
-    })
+        attachments,
+        mailing_list: MailingList::of(headers),
+        bounce: bounce_report(&parsed),
+        authentication: authentication_verdicts(headers),
+        cc: headers.get_first_value("Cc"),
+    };
+    Ok((message, parts))
 }
 
 /// The first text/plain part's decoded body, `None` when the message has no

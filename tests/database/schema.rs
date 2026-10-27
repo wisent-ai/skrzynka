@@ -22,7 +22,7 @@ impl Journey {
         fs::write(self.output.join(format!("{index}.stdout")), &result.stdout)?;
         fs::write(self.output.join(format!("{index}.stderr")), &result.stderr)?;
         self.commands
-            .push(json!({"argv": [vec![program], args.to_vec()].concat(),
+            .push(json!({"argv": ([vec![program], args.to_vec()].concat()),
             "exit_status": result.status.code(), "status": result.status.to_string(),
             "stdout": format!("{index}.stdout"), "stderr": format!("{index}.stderr")}));
         Ok(result)

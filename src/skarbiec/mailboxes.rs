@@ -11,51 +11,13 @@ use super::{
     validate_item_id, ResolvedCredentials, SkarbiecResolver, GOOGLE_OAUTH_CLIENT_ITEM_ID,
     GOOGLE_SERVICE_ACCOUNT_ITEM_ID,
 };
-use crate::{db::MailboxConfig, error::AppError, models::SmtpSecurity};
+use crate::{db::MailboxConfig, error::AppError, mail::registered_tcp_port, models::SmtpSecurity};
 use lettre::{
     transport::smtp::{SUBMISSIONS_PORT, SUBMISSION_PORT},
     Address,
 };
 use serde_json::Value;
-use std::{path::Path, str::FromStr};
-
-/// The services database the operating system ships: the IANA port registry
-/// as `services(5)` lays it out.
-const SERVICES_DATABASE: &str = "/etc/services";
-
-/// The TCP port the services database assigns to `service`, so a mailbox that
-/// states no IMAP port is reached on the registered one rather than on a
-/// number written here.
-fn registered_tcp_port(service: &str) -> Result<u16, AppError> {
-    let path = Path::new(SERVICES_DATABASE);
-    let text = std::fs::read_to_string(path).map_err(|cause| {
-        profile_error(format!(
-            "the item states no port and {} could not be read for the {service} port: {cause}",
-            path.display()
-        ))
-    })?;
-    let entry = text
-        .lines()
-        .filter_map(|line| line.split('#').next())
-        .find_map(|line| {
-            let mut words = line.split_whitespace();
-            let name = words.next()?;
-            let port = words.next()?.strip_suffix("/tcp")?;
-            (name == service || words.any(|alias| alias == service)).then_some(port)
-        })
-        .ok_or_else(|| {
-            profile_error(format!(
-                "the item states no port and {} assigns no TCP port to {service}",
-                path.display()
-            ))
-        })?;
-    entry.parse::<u16>().map_err(|cause| {
-        profile_error(format!(
-            "{} assigns {service} the port '{entry}', which is no port: {cause}",
-            path.display()
-        ))
-    })
-}
+use std::str::FromStr;
 
 /// The Skarbiec tag that declares an item one of Skrzynka's mailboxes.
 pub const MAILBOX_TAG: &str = "skrzynka:mailbox";
@@ -252,7 +214,8 @@ impl SkarbiecResolver {
         };
         let imap_port = match fields.get("imap_port") {
             Some(value) => port_field(value, "imap_port")?,
-            None => registered_tcp_port("imaps")?,
+            None => registered_tcp_port("imaps")
+                .map_err(|cause| profile_error(format!("the item states no port and {cause}")))?,
         };
         let smtp_port = match fields.get("smtp_port") {
             Some(value) => port_field(value, "smtp_port")?,

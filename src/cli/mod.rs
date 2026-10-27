@@ -6,16 +6,53 @@ use crate::{
 };
 use axum::http::StatusCode;
 use serde_json::{json, Value};
-use std::{net::SocketAddr, sync::OnceLock};
+use std::{net::SocketAddr, path::PathBuf, sync::OnceLock};
 
+mod actions;
 mod arguments;
+mod attachment;
+mod auto_replies;
+mod drafts;
+mod export;
+mod forward;
 mod gmail;
+mod listing;
 mod mailbox;
 mod message;
+mod output;
+mod reading;
+mod rules;
+mod follow_ups;
+mod sending;
+mod suppressed;
+mod templates;
+mod views;
+mod watch;
 
-pub use arguments::Cli;
-use arguments::{AccountCommand, Command, MailProvider, ServeArgs};
-use gmail::{authorize_gmail, read_gmail_app_password};
+use arguments::{AccountCommand, Command};
+
+#[derive(clap::Parser)]
+#[command(
+    name = "skrzynka",
+    version,
+    about = "Receive and reply across multiple mailboxes without moving credentials out of Skarbiec",
+    after_help = "Mailboxes are the Skarbiec items tagged skrzynka:mailbox. Safe first result: skrzynka mailbox declare --skarbiec-item <ITEM_ID>, which imports every message the INBOX holds"
+)]
+pub struct Cli {
+    /// The organization a command acts for in the fleet database. Every
+    /// command except `serve`, `version` and `onboarding` needs one; none is assumed.
+    #[arg(long, global = true, value_name = "ID")]
+    organization: Option<String>,
+    /// The `skarbiec` executable that reads and tags mailbox items.
+    #[arg(long, global = true, default_value = "skarbiec", value_name = "PATH")]
+    skarbiec_bin: PathBuf,
+    /// Print results as `path: value` lines for people instead of JSON.
+    #[arg(long, global = true)]
+    text: bool,
+    #[command(subcommand)]
+    command: Command,
+}
+use gmail::{authorize_gmail, read_gmail_app_password, MailProvider};
 use mailbox::run_mailbox;
 use message::run_message;
 
@@ -79,13 +116,7 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (
-                MailProvider::Gmail,
-                AccountCommand::Delegate {
-                    email,
-                    display_name,
-                },
-            ) => {
+            (MailProvider::Gmail, AccountCommand::Delegate(gmail::ConnectedAccount { email, display_name })) => {
                 let state = state(None)?;
                 print_json(
                     &state
@@ -93,13 +124,7 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (
-                MailProvider::Gmail,
-                AccountCommand::AppPassword {
-                    email,
-                    display_name,
-                },
-            ) => {
+            (MailProvider::Gmail, AccountCommand::Password(gmail::ConnectedAccount { email, display_name })) => {
                 let password = read_gmail_app_password()?;
                 let state = state(None)?;
                 print_json(
@@ -108,25 +133,37 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (MailProvider::Gmail, AccountCommand::Disconnect { email }) => {
+            (MailProvider::Gmail, AccountCommand::Disconnect(gmail::DisconnectedAccount { email })) => {
                 print_json(&state(None)?.disconnect_gmail(&email).await?)
             }
         },
         Command::Message { command } => run_message(state(None)?, organization, command).await,
-        Command::Sync {
+        Command::Sync(mailbox::SyncArgs {
             mailbox,
             inbound_domain,
-        } => {
+        }) => {
             let state = state(None)?;
             match (mailbox, inbound_domain) {
                 (_, Some(id)) => print_json(&state.sync_inbound_domain(organization, id).await?),
-                (Some(id), None) => print_json(&state.sync_mailbox(organization, id).await?),
+                (Some(selector), None) => {
+                    let id = state.resolve_mailbox(organization, &selector)?.id;
+                    print_json(&state.sync_mailbox(organization, id).await?)
+                }
                 (None, None) => print_json(&state.sync_all(organization).await?),
             }
         }
         Command::Version => unreachable!(),
         Command::Onboarding { .. } => unreachable!(),
     }
+}
+
+/// What `serve` takes.
+#[derive(clap::Args)]
+pub(super) struct ServeArgs {
+    /// Loopback address the API listens on; a non-loopback address is refused.
+    /// No address is assumed: the service declaration that runs `serve` names it.
+    #[arg(long)]
+    pub(super) bind: SocketAddr,
 }
 
 async fn serve(
@@ -136,7 +173,7 @@ async fn serve(
 ) -> Result<(), AppError> {
     let callback_base_url = loopback_callback(args.bind)?;
     let state = AppState::new(database, resolver, Some(&callback_base_url))?;
-    state.clone().start_watching();
+    state.clone().start_watching()?;
     let listener = tokio::net::TcpListener::bind(args.bind)
         .await
         .map_err(|error| {

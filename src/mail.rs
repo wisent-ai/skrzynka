@@ -11,18 +11,72 @@ use lettre::{
 use std::str::FromStr;
 use uuid::Uuid;
 
+// A message's files: described at import, read again from the provider.
+mod attachments;
+pub use attachments::{AttachmentPart, MessageAttachment};
+pub use incoming::fetch_message_source;
+pub use normalize::read_message;
+// A mailing list's headers and its own way out.
+mod lists;
+pub use lists::{
+    post_one_click, send_unsubscribe_mail, MailingList, Subscription, Subscriptions,
+    UnsubscribeAttempt, UnsubscribeMethod, UnsubscribeRequest, UnsubscribeTarget,
+};
+// Delivery status notifications: which send bounced, and why.
+mod reports;
+pub use reports::{BounceReport, RecipientOutcome, StoredBounce};
+// What the receiving provider concluded about a message's sender.
+mod authentication;
+pub use authentication::AuthenticationVerdict;
+// What Skrzynka changes about one INBOX message at its provider.
+mod actions;
+pub use actions::{
+    act_on_message, ActionStatus, MarkMessageRequest, MarkState, MessageAction,
+    MoveMessageRequest, ProviderAction, SpecialUse,
+};
+// Files originated mail carries: checked, recorded and attached.
+mod outgoing;
+pub use outgoing::{
+    prepare_attachments, quoted, signed, OutboundAttachment, OutgoingAttachment,
+    PreparedAttachment, ReplyCopies,
+};
+use outgoing::{parse_recipient, split_addresses};
+// Messages being written, kept in Skrzynka until they are sent.
+mod drafts;
+pub use drafts::{placeholders, Draft, DraftChange, MessageTemplate};
+// The operator's rules that tag mail as it arrives.
+mod rules;
+pub use rules::{RuleSubject, TagRule};
+// Recipients no originated mail may be sent to.
+mod suppressions;
+pub use suppressions::{suppression_entry, Suppression};
+mod folders;
+mod automation;
+pub use automation::{machine_sent, AutoReply, AutoReplyDecision};
+pub use folders::{append_message, list_folders, AppendOutcome, ProviderFolder};
+
 mod incoming;
 mod normalize;
 mod password;
+mod ports;
 pub use incoming::{fetch_messages, wait_for_new_mail, GMAIL_IMAP_HOST};
 use normalize::normalize_message;
 pub use password::verify_gmail_app_password;
+pub use ports::registered_tcp_port;
 
+/// A reply through the mailbox that received `inbound`, threaded to it. With
+/// files, the body is a `multipart/mixed` of the text and each file in the
+/// order given. `copies` adds every To and Cc of the message, the addresses
+/// asked for openly, and blind copies named in no header. An `automatic`
+/// reply states `Auto-Submitted: auto-replied` (RFC 3834).
 pub fn send_reply(
     mailbox: &Mailbox,
     credentials: &ResolvedCredentials,
     inbound: &Message,
     body: &str,
+    attachments: &[PreparedAttachment],
+    copies: &ReplyCopies,
+    automatic: bool,
 ) -> Result<String, AppError> {
     validate_body(body, "REPLY_BODY_INVALID")?;
     let from_address = mailbox.email.parse().map_err(|cause| {
@@ -51,8 +105,21 @@ pub fn send_reply(
     let mut builder = OutgoingMessage::builder()
         .from(from)
         .to(to)
-        .message_id(Some(provider_message_id.clone()))
-        .header(ContentType::TEXT_PLAIN);
+        .message_id(Some(provider_message_id.clone()));
+    // Every address is copied once: one --all already copies is not added again.
+    let mut copied: Vec<String> = Vec::new();
+    if copies.all {
+        for everyone in outgoing::everyone_else(inbound, &mailbox.email, target)? {
+            copied.push(everyone.email.to_string().to_lowercase());
+            builder = builder.cc(everyone);
+        }
+    }
+    for (addresses, blind) in [(&copies.cc, false), (&copies.bcc, true)] {
+        for address in addresses.iter().filter(|address| !copied.contains(&address.to_lowercase())) {
+            let recipient = parse_recipient(address)?;
+            builder = if blind { builder.bcc(recipient) } else { builder.cc(recipient) };
+        }
+    }
     // A message that states no subject is answered with none: the reply
     // carries no subject its sender never wrote.
     match inbound.subject.as_deref() {
@@ -70,7 +137,17 @@ pub fn send_reply(
         };
         builder = builder.references(references);
     }
-    let outgoing = builder.body(body.to_string()).map_err(|cause| {
+    if automatic {
+        builder = builder.header(automation::AutoSubmitted::replied());
+    }
+    let built = if attachments.is_empty() {
+        builder
+            .header(ContentType::TEXT_PLAIN)
+            .body(body.to_string())
+    } else {
+        builder.multipart(outgoing::body_with_attachments(body, attachments))
+    };
+    let outgoing = built.map_err(|cause| {
         AppError::invalid(
             "REPLY_MESSAGE_INVALID",
             format!("reply could not be encoded as an email message: {cause}"),
@@ -80,13 +157,14 @@ pub fn send_reply(
     Ok(provider_message_id)
 }
 
-/// Mail this mailbox originates. Recipients and subject come from the stored
-/// outbound row rather than an inbound message, and no threading headers are
-/// written: there is no thread to join yet.
+/// Mail this mailbox originates, from the stored outbound row; no threading
+/// headers are written. Blind copies are envelope recipients only: the built
+/// message drops its Bcc header. With files, the body is `multipart/mixed`.
 pub fn send_outbound(
     mailbox: &Mailbox,
     credentials: &ResolvedCredentials,
     outbound: &OutboundMessage,
+    attachments: &[PreparedAttachment],
 ) -> Result<String, AppError> {
     validate_body(&outbound.body, "OUTBOUND_BODY_INVALID")?;
     let recipients = split_addresses(&outbound.recipients);
@@ -112,17 +190,24 @@ pub fn send_outbound(
             from_address,
         ))
         .subject(outbound.subject.clone())
-        .message_id(Some(provider_message_id.clone()))
-        .header(ContentType::TEXT_PLAIN);
+        .message_id(Some(provider_message_id.clone()));
     for recipient in recipients {
         builder = builder.to(parse_recipient(recipient)?);
     }
-    if let Some(cc) = outbound.cc.as_deref() {
-        for recipient in split_addresses(cc) {
-            builder = builder.cc(parse_recipient(recipient)?);
+    for (copies, blind) in [(outbound.cc.as_deref(), false), (outbound.bcc.as_deref(), true)] {
+        for recipient in copies.map(split_addresses).into_iter().flatten() {
+            let recipient = parse_recipient(recipient)?;
+            builder = if blind { builder.bcc(recipient) } else { builder.cc(recipient) };
         }
     }
-    let outgoing = builder.body(outbound.body.clone()).map_err(|cause| {
+    let built = if attachments.is_empty() {
+        builder
+            .header(ContentType::TEXT_PLAIN)
+            .body(outbound.body.clone())
+    } else {
+        builder.multipart(outgoing::body_with_attachments(&outbound.body, attachments))
+    };
+    let outgoing = built.map_err(|cause| {
         AppError::invalid(
             "OUTBOUND_MESSAGE_INVALID",
             format!("outbound message could not be encoded as an email message: {cause}"),
@@ -208,23 +293,6 @@ fn validate_body(body: &str, empty_code: &'static str) -> Result<(), AppError> {
         ));
     }
     Ok(())
-}
-
-fn split_addresses(value: &str) -> Vec<&str> {
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|address| !address.is_empty())
-        .collect()
-}
-
-fn parse_recipient(value: &str) -> Result<LettreMailbox, AppError> {
-    LettreMailbox::from_str(value).map_err(|cause| {
-        AppError::invalid(
-            "OUTBOUND_RECIPIENT_INVALID",
-            format!("outbound recipient {value:?} is not a valid email address: {cause}"),
-        )
-    })
 }
 
 fn dependency_error(code: &'static str, message: impl Into<String>, retryable: bool) -> AppError {

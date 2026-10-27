@@ -5,7 +5,7 @@ use crate::{
     models::{Mailbox, NewMessage},
     skarbiec::ResolvedCredentials,
 };
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, num::NonZeroU32};
 
 /// Gmail's own IMAP endpoint: the only host the Gmail connection paths speak
 /// for, and the boundary that decides whether a refusal is Google's.
@@ -62,7 +62,7 @@ pub fn wait_for_new_mail(
 }
 
 /// Connect over TLS, authenticate with the mailbox's credentials and select INBOX.
-fn open_inbox(
+pub(super) fn open_inbox(
     mailbox: &Mailbox,
     credentials: &ResolvedCredentials,
 ) -> Result<imap::Session<imap::Connection>, AppError> {
@@ -145,15 +145,20 @@ pub fn fetch_messages(
 ) -> Result<FetchedMessages, AppError> {
     let mut session = open_inbox(mailbox, credentials)?;
 
-    let first_uid = mailbox.last_uid.saturating_add(1).max(1);
-    let query = format!("UID {first_uid}:*");
+    // No cursor yet reads every message; `last:*` holds the cursor itself, and
+    // the newest message when nothing is newer (RFC 3501, 6.4.8), both of
+    // which the filter below drops.
+    let query = match NonZeroU32::new(mailbox.last_uid) {
+        None => "ALL".to_string(),
+        Some(last) => format!("UID {last}:*"),
+    };
     let mut uids = session
-        .uid_search(query)
+        .uid_search(&query)
         .map_err(|error| {
             dependency_error(
                 "IMAP_SEARCH_FAILED",
                 format!(
-                    "IMAP UID search from {first_uid} at {}:{} failed: {error:?}",
+                    "IMAP UID SEARCH {query} at {}:{} failed: {error:?}",
                     mailbox.imap_host, mailbox.imap_port
                 ),
                 true,
@@ -166,8 +171,9 @@ pub fn fetch_messages(
     // stops part way never leaves an older unread row behind its cursor.
     uids.sort_unstable();
 
-    let mut skipped = 0usize;
-    let mut rejected_by_reason = BTreeMap::new();
+    // The UIDs each reason kept out; the counts the caller reports are read
+    // from them.
+    let mut rejected: BTreeMap<String, Vec<u32>> = BTreeMap::new();
     let mut last_uid = mailbox.last_uid;
     for requested_uid in uids {
         let fetches = session
@@ -194,10 +200,10 @@ pub fn fetch_messages(
                     true,
                 ));
             }
-            skipped += 1;
-            *rejected_by_reason
+            rejected
                 .entry("provider_row_missing".to_string())
-                .or_default() += 1;
+                .or_default()
+                .push(requested_uid);
             last_uid = last_uid.max(requested_uid);
             commit(&[], last_uid)?;
             continue;
@@ -205,28 +211,83 @@ pub fn fetch_messages(
         let uid = requested_uid;
         last_uid = requested_uid;
         let Some(body) = fetch.body() else {
-            skipped += 1;
-            *rejected_by_reason
+            rejected
                 .entry("message_body_missing".to_string())
-                .or_default() += 1;
+                .or_default()
+                .push(uid);
             commit(&[], last_uid)?;
             continue;
         };
         match normalize_message(uid, body) {
             Ok(message) => commit(std::slice::from_ref(&message), last_uid)?,
             Err(error) => {
-                skipped += 1;
-                *rejected_by_reason
+                rejected
                     .entry(error.code.to_ascii_lowercase())
-                    .or_default() += 1;
+                    .or_default()
+                    .push(uid);
                 commit(&[], last_uid)?;
             }
         }
     }
-    let _ = session.logout();
+    // Every fetched message is committed; a LOGOUT the server does not answer
+    // cleanly changes none of that and is said, not dropped.
+    if let Err(error) = session.logout() {
+        tracing::warn!(%error, host = %mailbox.imap_host, "IMAP LOGOUT after a fetch failed");
+    }
+    let rejected_by_reason: BTreeMap<String, usize> = rejected
+        .into_iter()
+        .map(|(reason, uids)| (reason, uids.len()))
+        .collect();
     Ok(FetchedMessages {
-        skipped,
+        skipped: rejected_by_reason.values().sum(),
         rejected_by_reason,
         last_uid,
     })
+}
+
+/// The provider's own copy of one INBOX message, read by UID with
+/// `BODY.PEEK[]` so it is not marked seen; `None` when INBOX no longer holds
+/// that UID (the message was deleted, archived or moved at the provider).
+pub fn fetch_message_source(
+    mailbox: &Mailbox,
+    credentials: &ResolvedCredentials,
+    uid: u32,
+) -> Result<Option<Vec<u8>>, AppError> {
+    let mut session = open_inbox(mailbox, credentials)?;
+    let source = {
+        let fetches = session
+            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+            .map_err(|error| {
+                dependency_error(
+                    "IMAP_FETCH_FAILED",
+                    format!(
+                        "IMAP fetch at UID {uid} on {}:{} failed: {error:?}",
+                        mailbox.imap_host, mailbox.imap_port
+                    ),
+                    true,
+                )
+            })?;
+        match fetches.iter().find(|fetch| fetch.uid == Some(uid)) {
+            None => None,
+            Some(fetch) => match fetch.body() {
+                Some(body) => Some(body.to_vec()),
+                None => {
+                    return Err(dependency_error(
+                        "IMAP_FETCH_FAILED",
+                        format!(
+                            "IMAP fetch at UID {uid} on {}:{} answered the message without its body",
+                            mailbox.imap_host, mailbox.imap_port
+                        ),
+                        true,
+                    ))
+                }
+            },
+        }
+    };
+    // The message is read; a LOGOUT the server does not answer cleanly
+    // changes none of that and is said, not dropped.
+    if let Err(error) = session.logout() {
+        tracing::warn!(%error, host = %mailbox.imap_host, "IMAP LOGOUT after reading one message failed");
+    }
+    Ok(source)
 }

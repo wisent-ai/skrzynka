@@ -17,16 +17,13 @@ const GOOGLE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
 
 impl AppState {
     pub async fn disconnect_gmail(&self, email: &str) -> Result<Value, AppError> {
-        let candidates = [
-            SkarbiecResolver::gmail_item_id(email),
-            SkarbiecResolver::gmail_app_password_item_id(email)?,
-        ];
+        let email = super::password::validated_gmail_email(email)?;
         let held: Vec<_> = self
             .resolver
             .list_items()
             .await?
             .into_iter()
-            .filter(|item| candidates.contains(&item.id))
+            .filter(|item| SkarbiecResolver::names_gmail_address(&item.id, &email))
             .collect();
         if held.is_empty() {
             return Err(AppError::invalid(

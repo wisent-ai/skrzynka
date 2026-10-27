@@ -4,7 +4,7 @@
 //! recipient and sender, as it answers a mailbox's mail.
 
 use super::{
-    messages::{addressed_to, filter_value, page_size},
+    messages::{addressed_to, entry_address, filter_value, page_size},
     AppState,
 };
 use crate::{
@@ -190,7 +190,7 @@ impl AppState {
                 let ours = listed
                     .recipients
                     .iter()
-                    .any(|recipient| bare(recipient).ends_with(&suffix));
+                    .any(|recipient| entry_address(recipient).to_lowercase().ends_with(&suffix));
                 if !ours {
                     continue;
                 }
@@ -223,15 +223,4 @@ impl AppState {
         }
         Ok(received)
     }
-}
-
-/// The address of one recipient entry, lowercased: the bracketed part of a
-/// display-name entry, or the entry itself.
-fn bare(entry: &str) -> String {
-    let entry = entry.trim();
-    let address = match (entry.rfind('<'), entry.rfind('>')) {
-        (Some(open), Some(close)) if open < close => entry[open..close].trim_start_matches('<'),
-        _ => entry,
-    };
-    address.trim().to_lowercase()
 }

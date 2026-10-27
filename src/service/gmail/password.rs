@@ -28,7 +28,7 @@ impl AppState {
                 "Google app-specific password supplied through stdin must not be empty",
             ));
         }
-        let item_id = SkarbiecResolver::gmail_app_password_item_id(&email)?;
+        let item_id = self.resolver.gmail_app_password_item(&email).await?;
         verify_gmail_app_password(organization_id, &email, password, &item_id).await?;
         let item_id = self
             .resolver
@@ -101,10 +101,16 @@ impl AppState {
     }
 }
 
-fn validated_gmail_email(email: &str) -> Result<String, AppError> {
+/// The address a Gmail path is asked for, trimmed, or the refusal naming it
+/// and why it is no address.
+pub(super) fn validated_gmail_email(email: &str) -> Result<String, AppError> {
     let email = email.trim();
-    Address::from_str(email)
-        .map_err(|_| AppError::invalid("GMAIL_PROFILE_INVALID", "email is not a valid address"))?;
+    Address::from_str(email).map_err(|cause| {
+        AppError::invalid(
+            "GMAIL_PROFILE_INVALID",
+            format!("'{email}' is not a valid address: {cause}"),
+        )
+    })?;
     Ok(email.to_string())
 }
 

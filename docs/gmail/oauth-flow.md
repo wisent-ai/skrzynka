@@ -26,7 +26,7 @@ wait with it. The flow itself stays open until a callback settles it.
 The answer has the same shape as the status read:
 
 ```json
-{"flow_id": "6f0c…", "status": "completed", "mailbox": {"id": "…", "email": "user@gmail.com"}, "error": null}
+{"flow_id": "6f0c…", "status": "completed", "mailbox": {"id": "…", "email": "user@example.com"}, "error": null}
 {"flow_id": "6f0c…", "status": "failed", "mailbox": null, "error": {"code": "GMAIL_OAUTH_REJECTED", "message": "…", "retryable": false}}
 ```
 

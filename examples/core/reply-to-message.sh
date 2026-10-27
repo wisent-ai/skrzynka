@@ -27,6 +27,9 @@ printf '%s\n' '== send: submit exactly one idempotency-keyed reply'
 "$SKRZYNKA_BIN" --organization "$ORGANIZATION" message reply "$MESSAGE_ID" \
   --body-file "$BODY_FILE" --idempotency-key "$IDEMPOTENCY_KEY"
 
+printf '%s\n' '== observe: read the message reply attempts back from the fleet database'
+"$SKRZYNKA_BIN" --organization "$ORGANIZATION" message replies "$MESSAGE_ID"
+
 printf '%s\n' "Expected result: status is 'sent' with a provider_message_id."
 printf '%s\n' "Failure: a failed attempt is retained; an uncertain attempt must be checked in provider Sent mail before any new key is used."
 printf '%s\n' "Cleanup: the SMTP message cannot be recalled by Skrzynka; remove the mailbox's state only with the operations example."

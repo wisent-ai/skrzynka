@@ -17,6 +17,15 @@ The canonical command references are
 [message reply](https://skrzynka.wisent.com/docs/cli/message/reply) and
 [message send](https://skrzynka.wisent.com/docs/cli/message/send).
 
+## Body-file admission
+
+Both CLI send paths require a readable regular UTF-8 body file before claiming
+an attempt. File refusals use `REPLY_FILE_INVALID` or `OUTBOUND_FILE_INVALID`.
+Every refusal names the selected path. Metadata and read failures retain the
+operating-system cause; only an invalid-data read is described as invalid
+UTF-8, with its cause retained. A directory is refused as a non-regular file.
+These failures do not reach SMTP or create a delivery attempt.
+
 ## Real database refusal qualification
 
 `tests/delivery/persistence.rs`, registered as `delivery-persistence`, runs the

@@ -3,6 +3,7 @@
 
 use super::dependency_error;
 use super::incoming::GMAIL_IMAP_HOST;
+use super::ports::registered_tcp_port;
 use crate::{error::AppError, gmail};
 
 /// Why an IMAP password login did not complete: the code this product raises,
@@ -41,19 +42,28 @@ impl PasswordLoginRefusal {
 /// Prove a Gmail password credential without selecting or reading the inbox.
 /// The caller persists only after this login succeeds.
 pub fn verify_gmail_app_password(email: &str, password: &str) -> Result<(), PasswordLoginRefusal> {
-    let client = imap::ClientBuilder::new(GMAIL_IMAP_HOST, 993)
+    let port = registered_tcp_port("imaps").map_err(|cause| PasswordLoginRefusal {
+        code: "IMAP_PORT_UNREGISTERED",
+        retryable: false,
+        evidence: format!("the IMAP over TLS port for {GMAIL_IMAP_HOST} is unknown: {cause}"),
+    })?;
+    let client = imap::ClientBuilder::new(GMAIL_IMAP_HOST, port)
         .mode(imap::ConnectionMode::Tls)
         .tls_kind(imap::TlsKind::Native)
         .connect()
         .map_err(|error| PasswordLoginRefusal {
             code: "IMAP_UNAVAILABLE",
             retryable: true,
-            evidence: format!("IMAP TLS connect to {GMAIL_IMAP_HOST}: {error:?}"),
+            evidence: format!("IMAP TLS connect to {GMAIL_IMAP_HOST}:{port}: {error:?}"),
         })?;
     let mut session = client
         .login(email, password)
         .map_err(|(error, _)| password_login_refusal(error, GMAIL_IMAP_HOST, password))?;
-    let _ = session.logout();
+    // The login is the proof; a LOGOUT the server does not answer cleanly
+    // leaves the proof standing and is said, not dropped.
+    if let Err(error) = session.logout() {
+        tracing::warn!(%error, host = GMAIL_IMAP_HOST, "IMAP LOGOUT after a proven login failed");
+    }
     Ok(())
 }
 

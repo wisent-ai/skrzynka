@@ -2,13 +2,15 @@
 //! by `SKRZYNKA_CREDENTIALS_FILE`, mapping item id to the same
 //! `skarbiec.item.v2` object Skarbiec stores (`kind`, `fields`, `context`)
 //! plus its `tags`. The resolver sends it the four Skarbiec verbs it uses —
-//! `get`, `list`, `set-json`, `retag` — and `version`, and reads the answer
+//! `get`, `list`, `set`, `retag` — and `version`, and reads the answer
 //! exactly as it reads Skarbiec's, so nothing above the transport changes.
 
+mod reply;
+
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{ExitStatus, Output};
+
+pub use reply::{Reply, Status};
 
 use serde_json::{json, Map, Value};
 
@@ -23,16 +25,22 @@ pub fn configured() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn answer(status: i32, stdout: Vec<u8>, stderr: String) -> Output {
-    Output {
-        status: ExitStatus::from_raw(status << 8),
+/// An answer the credentials file gives when it does what was asked.
+fn served(stdout: Vec<u8>) -> Reply {
+    Reply {
+        status: Status::Served,
         stdout,
-        stderr: stderr.into_bytes(),
+        stderr: Vec::new(),
     }
 }
 
-fn refused(detail: String) -> Output {
-    answer(1, Vec::new(), detail)
+/// An answer the credentials file gives when it refuses, the reason on stderr.
+fn refused(detail: String) -> Reply {
+    Reply {
+        status: Status::Refused,
+        stdout: Vec::new(),
+        stderr: detail.into_bytes(),
+    }
 }
 
 fn unavailable(path: &Path, detail: impl std::fmt::Display) -> AppError {
@@ -56,8 +64,9 @@ fn read(path: &Path) -> Result<Map<String, Value>, AppError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
         Err(error) => return Err(unavailable(path, error)),
     };
-    let mode = metadata.permissions().mode() & 0o777;
-    if mode & 0o077 != 0 {
+    let owner = u32::from(libc::S_IRWXU);
+    let mode = metadata.permissions().mode() & u32::from(libc::S_IRWXU | libc::S_IRWXG | libc::S_IRWXO);
+    if mode | owner != owner {
         return Err(unavailable(
             path,
             format!("must be readable by its owner only (chmod 600); it is {mode:o}"),
@@ -80,7 +89,7 @@ fn write(path: &Path, items: &Map<String, Value>) -> Result<(), AppError> {
     })?;
     let staged = path.with_extension("tmp");
     std::fs::write(&staged, text).map_err(|error| unavailable(path, error))?;
-    std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o600))
+    std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(u32::from(libc::S_IRUSR | libc::S_IWUSR)))
         .map_err(|error| unavailable(path, error))?;
     std::fs::rename(&staged, path).map_err(|error| unavailable(path, error))
 }
@@ -93,12 +102,12 @@ fn tags_of(item: &Value) -> Value {
 }
 
 /// Answer one Skarbiec invocation from the file at `path`.
-pub fn run(path: &Path, arguments: &[&str], stdin: Option<&[u8]>) -> Result<Output, AppError> {
+pub fn run(path: &Path, arguments: &[&str], stdin: Option<&[u8]>) -> Result<Reply, AppError> {
     let mut items = read(path)?;
     Ok(match arguments {
-        ["version"] => answer(0, b"local credentials file\n".to_vec(), String::new()),
+        ["version"] => served(b"local credentials file\n".to_vec()),
         ["get", id] => match items.get(*id) {
-            Some(item) => answer(0, encoded(item)?, String::new()),
+            Some(item) => served(encoded(item)?),
             None => refused(format!("item not found: {id}")),
         },
         ["list"] => {
@@ -113,7 +122,7 @@ pub fn run(path: &Path, arguments: &[&str], stdin: Option<&[u8]>) -> Result<Outp
                     })
                 })
                 .collect();
-            answer(0, encoded(&listed)?, String::new())
+            served(encoded(&listed)?)
         }
         ["retag", id, "--tags", joined] => {
             match items.get_mut(*id).and_then(Value::as_object_mut) {
@@ -121,16 +130,16 @@ pub fn run(path: &Path, arguments: &[&str], stdin: Option<&[u8]>) -> Result<Outp
                     let tags: Vec<&str> = joined.split(',').filter(|tag| !tag.is_empty()).collect();
                     item.insert("tags".into(), json!(tags));
                     write(path, &items)?;
-                    answer(0, Vec::new(), String::new())
+                    served(Vec::new())
                 }
                 None => refused(format!("item not found: {id}")),
             }
         }
-        ["set-json", id, "--type", kind] => {
+        ["set", id, "--type", kind] => {
             let parsed = stdin.map(serde_json::from_slice::<Value>);
             let Some(Ok(Value::Object(mut item))) = parsed else {
                 return Ok(refused(
-                    "set-json needs one JSON object on standard input".into(),
+                    "set needs one JSON object on standard input".into(),
                 ));
             };
             item.insert("kind".into(), json!(kind));
@@ -139,17 +148,17 @@ pub fn run(path: &Path, arguments: &[&str], stdin: Option<&[u8]>) -> Result<Outp
             }
             items.insert((*id).to_string(), Value::Object(item));
             write(path, &items)?;
-            answer(0, Vec::new(), String::new())
+            served(Vec::new())
         }
         ["delete", id] => match items.remove(*id) {
             Some(_) => {
                 write(path, &items)?;
-                answer(0, Vec::new(), String::new())
+                served(Vec::new())
             }
             None => refused(format!("item not found: {id}")),
         },
         other => refused(format!(
-            "{CREDENTIALS_FILE_ENV} answers get, list, set-json, retag, delete and version; not {other:?}"
+            "{CREDENTIALS_FILE_ENV} answers get, list, set, retag, delete and version; not {other:?}"
         )),
     })
 }

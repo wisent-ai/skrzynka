@@ -24,8 +24,12 @@ axum = "0.7"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
 imap = "3.0.0-alpha.15"
+# The LIST attribute type `imap` answers folders with but does not re-export.
+imap-proto = "0.16"
 jsonwebtoken = "9"
 lettre = "0.11"
+# The permission bits the local credentials file is held to (owner-only).
+libc = "0.2"
 mailparse = "0.15"
 native-tls = "0.2"
 stado-database = { git = "https://github.com/wisent-ai/stado", package = "stado-database" }
@@ -38,6 +42,8 @@ serde_json = "1.0"
 sha2 = "0.10"
 thiserror = "2.0"
 tokio = { version = "1.40", features = ["full"] }
+# The channel a watch hands stored mail through to the HTTP event stream.
+tokio-stream = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1.10", features = ["serde", "v4"] }

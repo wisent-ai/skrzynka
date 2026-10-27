@@ -10,6 +10,33 @@ use std::{
     net::SocketAddr,
 };
 
+/// The mail providers `skrzynka account` implements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub(super) enum MailProvider {
+    /// Google Gmail and Workspace: app-specific password, OAuth, delegation.
+    Gmail,
+}
+
+/// The account `account delegate` or `account password` connects, and
+/// the name shown for the mailbox it becomes.
+#[derive(clap::Args)]
+pub(super) struct ConnectedAccount {
+    /// The Workspace or Gmail address to connect.
+    #[arg(long)]
+    pub(super) email: String,
+    /// Name shown for the mailbox; the address when omitted.
+    #[arg(long)]
+    pub(super) display_name: Option<String>,
+}
+
+/// The account `account disconnect` revokes and forgets.
+#[derive(clap::Args)]
+pub(super) struct DisconnectedAccount {
+    /// Account to disconnect.
+    #[arg(long)]
+    pub(super) email: String,
+}
+
 pub(super) async fn authorize_gmail(
     database: Database,
     resolver: SkarbiecResolver,

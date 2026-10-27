@@ -10,17 +10,61 @@ use crate::{
     skarbiec::SkarbiecResolver,
 };
 use serde::Serialize;
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
+mod actions;
+mod attachments;
+pub use attachments::{file_table, FileFilter, StoredFile};
+mod blocked;
+pub use blocked::blocked_table;
+mod delivery;
+pub use delivery::ReplyFilter;
 mod gmail;
+mod contacts;
+pub use contacts::{contact_table, vcards, Contact, ContactFilter};
+mod drafts;
+pub use drafts::{DraftFilter, DraftSendRequest};
+mod follow_ups;
+pub use follow_ups::{follow_up_table, FollowUpFilter, FollowUpState};
+mod filters;
+pub use filters::{CountedView, MailboxState, MessageFilters, OutboundFilters, SavedFilters, SavedView};
+mod tables;
+pub use tables::{bounced_table, draft_table, message_table, outbound_table, reply_table};
+pub(crate) use filters::instant as filter_instant;
+mod tags;
+pub use tags::{tag_table, RetagRequest, TagFilter};
+mod rules;
+pub use rules::NewTagRule;
+mod signatures;
+mod snoozes;
+mod suppressions;
+pub use suppressions::{suppression_table, SuppressionFilter};
+mod templates;
+pub use templates::TemplateFilter;
+pub use signatures::SignatureRequest;
+mod auto_replies;
+pub use auto_replies::AutoReplyRequest;
+mod watch;
+mod forward;
+pub use forward::{ForwardRequest, ForwardViewRequest};
 mod inbound;
 pub use inbound::InboundSyncSummary;
+mod limits;
+pub use limits::WarmUpRequest;
 mod mailboxes;
 mod messages;
+mod threads;
+pub use threads::ReplyViewRequest;
 mod outbound;
+mod resend;
 mod sync;
+mod unsubscribe;
+pub use unsubscribe::{subscription_table, SubscriptionFilter};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -32,6 +76,10 @@ pub struct AppState {
     /// names the callback address it reports on.
     gmail_oauth: Option<GmailOAuthBroker>,
     operation_lock: Arc<Mutex<()>>,
+    /// Why this service stopped receiving mailbox announcements, once it has:
+    /// from then on a mailbox declared anywhere is not watched until the
+    /// service starts again, and the health answer says so.
+    watching_stopped: Arc<OnceLock<String>>,
 }
 
 #[derive(Serialize)]
@@ -97,13 +145,17 @@ impl AppState {
             resolver,
             gmail_oauth,
             operation_lock: Arc::new(Mutex::new(())),
+            watching_stopped: Arc::new(OnceLock::new()),
         })
     }
 
     pub async fn status(&self, organization_id: &str) -> Result<StatusResponse, AppError> {
         let (mailbox_count, enabled_mailbox_count, message_count) =
             self.database.counts(organization_id)?;
-        let skarbiec_available = self.resolver.is_available().await;
+        let skarbiec_unavailable = match self.resolver.availability().await {
+            Ok(()) => None,
+            Err(error) => Some(error.to_string()),
+        };
         Ok(StatusResponse {
             product: "skrzynka",
             version: env!("CARGO_PKG_VERSION"),
@@ -112,7 +164,8 @@ impl AppState {
             mailbox_count,
             enabled_mailbox_count,
             message_count,
-            skarbiec_available,
+            skarbiec_available: skarbiec_unavailable.is_none(),
+            skarbiec_unavailable,
         })
     }
 
@@ -137,17 +190,67 @@ impl AppState {
         })
     }
 
-    /// Reads every enabled mailbox as its provider reports new mail. Each round
-    /// reconciles Skarbiec's declarations and starts a watcher for every enabled
-    /// mailbox that has none; a watcher imports what is waiting, then holds an
-    /// IMAP IDLE until the provider announces new mail, and ends, recording its
-    /// error on the mailbox, when the connection fails. Rounds are spaced by the
-    /// IDLE refresh boundary RFC 2177 states for servers, so a failed watcher and
-    /// a newly declared item are taken up within it; no cadence is chosen here.
-    pub fn start_watching(self) {
+    /// Why mailbox announcements stopped reaching this service, if they have.
+    pub fn watching_stopped(&self) -> Option<&str> {
+        self.watching_stopped.get().map(String::as_str)
+    }
+
+    /// Reads every enabled mailbox as its provider reports new mail. A round
+    /// reconciles Skarbiec's declarations and starts a watcher for every
+    /// enabled mailbox that has none; a watcher imports what is waiting, then
+    /// holds an IMAP IDLE until the provider announces new mail, and ends,
+    /// recording its error on the mailbox, when the connection fails.
+    ///
+    /// A round runs once the service is subscribed to the fleet database's
+    /// mailbox announcements and again on each announcement, which the
+    /// database makes for every write that changes what is watched, by this
+    /// service, the CLI or a process on another host (`db/sql/schema.sql`).
+    /// A mailbox declared anywhere is watched at once; a watcher that stopped
+    /// on a failure starts again once a sync of its mailbox succeeds
+    /// (`skrzynka sync --mailbox <ID>`, `POST /v1/mailboxes/:id/sync`), or
+    /// its declaration changes; no timer restarts it. A service that cannot
+    /// subscribe refuses to start, naming the cause; one whose subscription
+    /// ends and cannot be taken again keeps serving and answers /healthz
+    /// with the cause (`watching_stopped`).
+    pub fn start_watching(self) -> Result<(), AppError> {
+        let subscription = self.database.subscribe_mailboxes()?;
+        // Scheduled drafts are sent, and received mail answered automatically,
+        // by the same running service.
+        self.start_scheduling()?;
+        self.start_answering()?;
+        let rounds = Arc::new(Notify::new());
+        rounds.notify_one();
+        let database = self.database.clone();
+        let heard = rounds.clone();
+        let stopped = self.watching_stopped.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut subscription = subscription;
+            loop {
+                subscription = match database.next_announcement(subscription) {
+                    Ok(subscription) => subscription,
+                    Err(ended) => {
+                        tracing::warn!(code = ended.code, message = %ended.message, "mailbox announcements stopped; subscribing again");
+                        match database.subscribe_mailboxes() {
+                            Ok(subscription) => subscription,
+                            Err(error) => {
+                                let cause = format!(
+                                    "{}: {}; mailboxes declared from now on are not watched until this service starts again",
+                                    error.code, error.message
+                                );
+                                tracing::error!(code = error.code, message = %cause, "mailbox announcements cannot be received");
+                                stopped.get_or_init(|| cause);
+                                return;
+                            }
+                        }
+                    }
+                };
+                heard.notify_one();
+            }
+        });
         tokio::spawn(async move {
             let mut watchers: HashMap<Uuid, tokio::task::JoinHandle<()>> = HashMap::new();
             loop {
+                rounds.notified().await;
                 if let Err(error) = self.reconcile_mailboxes(None).await {
                     tracing::warn!(code = error.code, message = %error.message, "Skarbiec mailbox declarations could not be read");
                 }
@@ -170,12 +273,8 @@ impl AppState {
                         tracing::error!(code = error.code, message = %error.message, "mailboxes could not be listed")
                     }
                 }
-                tokio::time::sleep(IMAP_IDLE_REFRESH).await;
             }
         });
+        Ok(())
     }
 }
-
-/// RFC 2177: a server may drop an IDLE that has not been re-issued within 30
-/// minutes, so clients refresh it every 29. The standard's number, not ours.
-const IMAP_IDLE_REFRESH: Duration = Duration::from_secs(29 * 60);

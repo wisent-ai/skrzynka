@@ -10,8 +10,27 @@ use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+mod actions;
+mod attachments;
+mod blocked;
+mod bounces;
+mod drafts;
+mod follow_ups;
+mod limits;
 mod reads;
+mod mutes;
+mod notes;
+mod rules;
+mod signatures;
+mod views;
+mod statistics;
+mod suppressions;
+mod snoozes;
+mod stream;
+mod tags;
+mod templates;
 mod unreadable;
+mod unsubscribes;
 pub(super) use reads::page_limit;
 
 impl Database {
@@ -70,40 +89,65 @@ impl Database {
             }
         }
 
+        // Stored messages whose attachments were not recorded when they were
+        // imported: they are compared on everything else, and their
+        // attachments are recorded with this commit.
+        let mut unrecorded: Vec<(String, &NewMessage)> = Vec::new();
         let mut existing_uids = HashSet::new();
         for message in unique_messages.values().copied() {
             let existing = transaction
                 .query_row(
-                    "SELECT external_uid, provider_message_id, in_reply_to,
+                    "SELECT id, external_uid, provider_message_id, in_reply_to,
                             references_header, sender, reply_to, recipients,
-                            subject, sent_at, sent_at_unreadable, body_text, snippet
+                            subject, sent_at, sent_at_unreadable, body_text, snippet,
+                            details_recorded, list_id, list_unsubscribe, list_unsubscribe_post
                      FROM messages WHERE mailbox_id=$1 AND external_uid=$2",
                     params![mailbox.id.to_string(), i64::from(message.external_uid)],
                     |row| {
-                        Ok(NewMessage {
-                            external_uid: u32::try_from(row.get::<_, i64>("external_uid")?)?,
-                            message_id: row.get("provider_message_id")?,
-                            in_reply_to: row.get("in_reply_to")?,
-                            references: row.get("references_header")?,
-                            sender: row.get("sender")?,
-                            reply_to: row.get("reply_to")?,
-                            recipients: row.get("recipients")?,
-                            subject: row.get("subject")?,
-                            sent_at: row.get("sent_at")?,
-                            sent_at_unreadable: unreadable::read(row)?,
-                            body_text: row.get("body_text")?,
-                            snippet: row.get("snippet")?,
-                        })
+                        Ok((
+                            row.get::<_, String>("id")?,
+                            row.get::<_, bool>("details_recorded")?,
+                            NewMessage {
+                                external_uid: u32::try_from(row.get::<_, i64>("external_uid")?)?,
+                                message_id: row.get("provider_message_id")?,
+                                in_reply_to: row.get("in_reply_to")?,
+                                references: row.get("references_header")?,
+                                sender: row.get("sender")?,
+                                reply_to: row.get("reply_to")?,
+                                recipients: row.get("recipients")?,
+                                cc: None,
+                                subject: row.get("subject")?,
+                                sent_at: row.get("sent_at")?,
+                                sent_at_unreadable: unreadable::read(row)?,
+                                body_text: row.get("body_text")?,
+                                snippet: row.get("snippet")?,
+                                attachments: Vec::new(),
+                                mailing_list: attachments::mailing_list_from_row(row)?,
+                                bounce: None,
+                                authentication: Vec::new(),
+                            },
+                        ))
                     },
                 )
                 .optional()?;
-            if let Some(mut existing) = existing {
-                // The preview is derived presentation, not provider identity.
+            if let Some((stored_id, recorded, mut existing)) = existing {
+                // The preview is derived presentation, not provider identity;
+                // a bounce report and the provider's authentication verdicts
+                // are read from what the row does not keep whole.
                 existing.snippet = existing
                     .body_text
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join(" ");
+                existing.bounce = message.bounce.clone();
+                existing.authentication = message.authentication.clone();
+                existing.cc = message.cc.clone();
+                if recorded {
+                    existing.attachments = attachments::recorded_in(&transaction, &stored_id)?;
+                } else {
+                    existing.attachments = message.attachments.clone();
+                    existing.mailing_list = message.mailing_list.clone();
+                }
                 if &existing != message {
                     return Err(AppError::conflict(
                         "MAILBOX_IMPORT_CONFLICT",
@@ -113,8 +157,14 @@ impl Database {
                         ),
                     ));
                 }
+                if !recorded {
+                    unrecorded.push((stored_id, message));
+                }
                 existing_uids.insert(message.external_uid);
             }
+        }
+        for (stored_id, message) in &unrecorded {
+            attachments::record(&transaction, stored_id, message)?;
         }
 
         if create_mailbox {
@@ -152,11 +202,14 @@ impl Database {
             }
         }
 
+        // The organization's tag rules tag each message as it is written.
+        let rules = rules::for_mailbox(&transaction, &mailbox.id.to_string())?;
         let received_at = Utc::now().to_rfc3339();
         for message in unique_messages.values().copied() {
             if existing_uids.contains(&message.external_uid) {
                 continue;
             }
+            let id = Uuid::new_v4().to_string();
             let sent_at_unreadable = unreadable::stored(message.sent_at_unreadable.as_ref())?;
             transaction.execute(
                 "INSERT INTO messages (
@@ -165,7 +218,7 @@ impl Database {
                     sent_at, sent_at_unreadable, received_at, body_text, snippet
                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
                 params![
-                    Uuid::new_v4().to_string(),
+                    id,
                     mailbox.id.to_string(),
                     i64::from(message.external_uid),
                     message.message_id,
@@ -182,6 +235,8 @@ impl Database {
                     message.snippet,
                 ],
             )?;
+            attachments::record(&transaction, &id, message)?;
+            rules::tag_imported(&transaction, mailbox.id, &id, message, &rules)?;
         }
         // Every message given was either already stored or written now; one
         // given twice with the same data counts once as written and once as
