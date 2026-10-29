@@ -45,7 +45,10 @@ pub(super) struct ListArgs {
 
 impl ListArgs {
     fn filter(self) -> TemplateFilter {
-        TemplateFilter { contains: self.contains, placeholder: self.placeholder }
+        TemplateFilter {
+            contains: self.contains,
+            placeholder: self.placeholder,
+        }
     }
 }
 
@@ -96,15 +99,25 @@ pub(super) fn run_template(
     command: TemplateCommand,
 ) -> Result<(), AppError> {
     match command {
-        TemplateCommand::Save(SaveArgs { name, file, subject }) => {
+        TemplateCommand::Save(SaveArgs {
+            name,
+            file,
+            subject,
+        }) => {
             let body = read_body_file(&file, "TEMPLATE_FILE_INVALID")?;
             print_json(&state.save_template(organization, &name, subject.as_deref(), &body)?)
         }
-        TemplateCommand::List(listing) => print_json(&state.templates(organization, &listing.filter())?),
-        TemplateCommand::Show(NameArg { name }) => print_json(&state.template(organization, &name)?),
-        TemplateCommand::Render(RenderArgs { name, sets, message }) => {
-            print_json(&state.render_template(organization, &name, &values(&sets)?, message)?)
+        TemplateCommand::List(listing) => {
+            print_json(&state.templates(organization, &listing.filter())?)
         }
+        TemplateCommand::Show(NameArg { name }) => {
+            print_json(&state.template(organization, &name)?)
+        }
+        TemplateCommand::Render(RenderArgs {
+            name,
+            sets,
+            message,
+        }) => print_json(&state.render_template(organization, &name, &values(&sets)?, message)?),
         TemplateCommand::Rename(RenameArgs { name, to }) => {
             print_json(&state.rename_template(organization, &name, &to)?)
         }
@@ -115,17 +128,23 @@ pub(super) fn run_template(
             print_json(&state.delete_template(organization, &name)?)
         }
         TemplateCommand::Export(ExportArgs { output, listing }) => {
-            let file = NewFile { path: &output, exists: "TEMPLATE_OUTPUT_EXISTS", invalid: "TEMPLATE_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &output,
+                exists: "TEMPLATE_OUTPUT_EXISTS",
+                invalid: "TEMPLATE_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
             let filter = listing.filter();
             let templates = state.templates(organization, &filter)?.len();
             let document = state.template_document(organization, &filter)?;
             file.write(document.as_bytes())?;
-            print_json(&serde_json::json!({ "path": output, "templates": templates, "size_bytes": document.len() }))
+            print_json(
+                &serde_json::json!({ "path": output, "templates": templates, "size_bytes": document.len() }),
+            )
         }
-        TemplateCommand::Import(ImportArgs { input }) => {
-            print_json(&state.import_templates(organization, &read_body_file(&input, "TEMPLATE_INVALID")?)?)
-        }
+        TemplateCommand::Import(ImportArgs { input }) => print_json(
+            &state.import_templates(organization, &read_body_file(&input, "TEMPLATE_INVALID")?)?,
+        ),
     }
 }
 
@@ -167,16 +186,25 @@ pub(super) fn written(
 pub(super) fn values(sets: &[String]) -> Result<BTreeMap<String, String>, AppError> {
     let mut values = BTreeMap::new();
     for set in sets {
-        let Some((key, value)) = set.split_once('=').filter(|(key, _)| !key.trim().is_empty()) else {
+        let Some((key, value)) = set
+            .split_once('=')
+            .filter(|(key, _)| !key.trim().is_empty())
+        else {
             return Err(AppError::invalid(
                 "TEMPLATE_VALUE_INVALID",
                 format!("--set {set:?} is not KEY=VALUE; name the placeholder's key before ="),
             ));
         };
-        if values.insert(key.trim().to_string(), value.to_string()).is_some() {
+        if values
+            .insert(key.trim().to_string(), value.to_string())
+            .is_some()
+        {
             return Err(AppError::invalid(
                 "TEMPLATE_VALUE_INVALID",
-                format!("--set gives {:?} twice; give each placeholder one value", key.trim()),
+                format!(
+                    "--set gives {:?} twice; give each placeholder one value",
+                    key.trim()
+                ),
             ));
         }
     }

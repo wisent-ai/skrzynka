@@ -44,7 +44,9 @@ impl LimitRow {
         }
         let elapsed = (today - began).num_days();
         let days = u32::try_from(elapsed).map_err(|error| {
-            AppError::internal(format!("{elapsed} days of warm-up is not a count of days: {error}"))
+            AppError::internal(format!(
+                "{elapsed} days of warm-up is not a count of days: {error}"
+            ))
         })?;
         Ok(self
             .per_day
@@ -55,7 +57,11 @@ impl LimitRow {
 
 /// A stored BIGINT read as a count of at least one message; anything else is
 /// a row no command writes, named as such.
-pub(super) fn stored_count(mailbox_id: &str, column: &str, stored: i64) -> Result<NonZeroU32, AppError> {
+pub(super) fn stored_count(
+    mailbox_id: &str,
+    column: &str,
+    stored: i64,
+) -> Result<NonZeroU32, AppError> {
     let count = u32::try_from(stored).map_err(|error| {
         AppError::internal(format!(
             "mailbox {mailbox_id} stores {column} {stored}, which is not a count: {error}"

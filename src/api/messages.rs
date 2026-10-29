@@ -96,7 +96,13 @@ pub(super) async fn list_outbound(
 ) -> Result<Json<Value>, AppError> {
     let mailbox_id = query.mailbox_id.as_deref().map(parse_uuid).transpose()?;
     let filters = query.filters();
-    Ok(Json(json!(state.search_outbound(&auth.organization_id, mailbox_id, &filters, query.limit, query.offset)?)))
+    Ok(Json(json!(state.search_outbound(
+        &auth.organization_id,
+        mailbox_id,
+        &filters,
+        query.limit,
+        query.offset
+    )?)))
 }
 
 /// `GET /v1/outbound/csv` with the listing's parameters: the messages it
@@ -108,8 +114,17 @@ pub(super) async fn outbound_csv(
     Query(query): Query<OutboundQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let mailbox_id = query.mailbox_id.as_deref().map(parse_uuid).transpose()?;
-    let messages = state.search_outbound(&auth.organization_id, mailbox_id, &query.filters(), query.limit, query.offset)?;
-    Ok(super::listing::csv_file("outbound.csv", crate::service::outbound_table(&messages)))
+    let messages = state.search_outbound(
+        &auth.organization_id,
+        mailbox_id,
+        &query.filters(),
+        query.limit,
+        query.offset,
+    )?;
+    Ok(super::listing::csv_file(
+        "outbound.csv",
+        crate::service::outbound_table(&messages),
+    ))
 }
 
 /// `POST /v1/outbound/follow-ups` with the listing's parameters and `{by}`:
@@ -128,7 +143,14 @@ pub(super) async fn expect_answers(
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
     let mailbox_id = query.mailbox_id.as_deref().map(parse_uuid).transpose()?;
-    let set = state.expect_answers(&auth.organization_id, mailbox_id, &query.filters(), query.limit, query.offset, &request.by)?;
+    let set = state.expect_answers(
+        &auth.organization_id,
+        mailbox_id,
+        &query.filters(),
+        query.limit,
+        query.offset,
+        &request.by,
+    )?;
     Ok(Json(json!(set)))
 }
 
@@ -148,7 +170,16 @@ pub(super) async fn resend_failed(
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
     let mailbox_id = query.mailbox_id.as_deref().map(parse_uuid).transpose()?;
-    Ok(Json(json!(state.resend_failed(&auth.organization_id, mailbox_id, &query.filters(), &request.idempotency_key).await?)))
+    Ok(Json(json!(
+        state
+            .resend_failed(
+                &auth.organization_id,
+                mailbox_id,
+                &query.filters(),
+                &request.idempotency_key
+            )
+            .await?
+    )))
 }
 
 pub(super) async fn list_mailbox_outbound(
@@ -158,7 +189,13 @@ pub(super) async fn list_mailbox_outbound(
     Query(query): Query<OutboundQuery>,
 ) -> Result<Json<Value>, AppError> {
     let mailbox_id = Some(parse_uuid(&id)?);
-    Ok(Json(json!(state.search_outbound(&auth.organization_id, mailbox_id, &query.filters(), query.limit, query.offset)?)))
+    Ok(Json(json!(state.search_outbound(
+        &auth.organization_id,
+        mailbox_id,
+        &query.filters(),
+        query.limit,
+        query.offset
+    )?)))
 }
 
 pub(super) async fn get_outbound(
@@ -215,12 +252,13 @@ pub(super) async fn get_attachment(
     let content = state
         .read_attachment(&auth.organization_id, parse_uuid(&id)?, index)
         .await?;
-    let content_type = HeaderValue::from_str(&content.attachment.content_type).map_err(|error| {
-        AppError::internal(format!(
-            "attachment {index} type {:?} cannot be sent as a Content-Type header: {error}",
-            content.attachment.content_type
-        ))
-    })?;
+    let content_type =
+        HeaderValue::from_str(&content.attachment.content_type).map_err(|error| {
+            AppError::internal(format!(
+                "attachment {index} type {:?} cannot be sent as a Content-Type header: {error}",
+                content.attachment.content_type
+            ))
+        })?;
     let disposition = content_disposition(content.attachment.filename.as_deref());
     let disposition = HeaderValue::from_str(&disposition).map_err(|error| {
         AppError::internal(format!(
@@ -228,7 +266,10 @@ pub(super) async fn get_attachment(
         ))
     })?;
     Ok((
-        [(CONTENT_TYPE, content_type), (CONTENT_DISPOSITION, disposition)],
+        [
+            (CONTENT_TYPE, content_type),
+            (CONTENT_DISPOSITION, disposition),
+        ],
         content.bytes,
     )
         .into_response())
@@ -274,15 +315,14 @@ fn content_disposition(filename: Option<&str>) -> String {
             _ => '_',
         })
         .collect();
-    let encoded: String = name
-        .bytes()
-        .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => char::from(byte).to_string(),
-            b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~' => {
-                char::from(byte).to_string()
-            }
-            other => format!("%{other:02X}"),
-        })
-        .collect();
+    let encoded: String =
+        name.bytes()
+            .map(|byte| match byte {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' => char::from(byte).to_string(),
+                b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|'
+                | b'~' => char::from(byte).to_string(),
+                other => format!("%{other:02X}"),
+            })
+            .collect();
     format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
 }

@@ -5,13 +5,12 @@ use super::{
     actions::{run_provider, ProviderCommand},
     arguments::MessageCommand,
     attachment::run_attachment,
-    drafts,
-    forward,
+    drafts, forward,
     listing::{self, ListArgs},
     print_json,
     reading::{
-        self, MessageRef, NoteArgs, SenderArg, SnoozeArgs, UnsubscribeArgs,
-        TagArgs, TagsArgs, WakeArgs,
+        self, MessageRef, NoteArgs, SenderArg, SnoozeArgs, TagArgs, TagsArgs, UnsubscribeArgs,
+        WakeArgs,
     },
     sending, suppressed,
 };
@@ -79,10 +78,32 @@ pub(super) async fn run_message(
             csv,
         }) if state.is_inbound_recipient(organization, &recipient)? => {
             let narrowed = contains.is_some() || since.is_some() || until.is_some();
-            let flagged = with_attachments || bounces || include_blocked || include_snoozed || include_muted || answered;
-            let judged = unanswered || failed_authentication || oldest_first || snoozed || noted || muted || untagged;
-            let viewed = view.is_some() || save_view.is_some() || attachment.is_some() || cc.is_some() || files_over.is_some();
-            if narrowed || flagged || judged || viewed || tag.is_some() || list.is_some() || csv.is_some() {
+            let flagged = with_attachments
+                || bounces
+                || include_blocked
+                || include_snoozed
+                || include_muted
+                || answered;
+            let judged = unanswered
+                || failed_authentication
+                || oldest_first
+                || snoozed
+                || noted
+                || muted
+                || untagged;
+            let viewed = view.is_some()
+                || save_view.is_some()
+                || attachment.is_some()
+                || cc.is_some()
+                || files_over.is_some();
+            if narrowed
+                || flagged
+                || judged
+                || viewed
+                || tag.is_some()
+                || list.is_some()
+                || csv.is_some()
+            {
                 return Err(AppError::invalid(
                     "MESSAGE_FILTER_INVALID",
                     &format!(
@@ -104,7 +125,9 @@ pub(super) async fn run_message(
             })
         }
         MessageCommand::List(list) => listing::list(&state, organization, list),
-        MessageCommand::Show(MessageRef { id }) => print_json(&state.get_message(organization, id)?),
+        MessageCommand::Show(MessageRef { id }) => {
+            print_json(&state.get_message(organization, id)?)
+        }
         MessageCommand::Watch(args) => super::watch::watch(&state, organization, args).await,
         MessageCommand::Replies(args) => sending::replies(&state, organization, args).await,
         MessageCommand::Thread(MessageRef { id }) => {
@@ -133,26 +156,36 @@ pub(super) async fn run_message(
             add,
             remove,
             ..
-        }) => print_json(&state.retag_thread(organization, thread, RetagRequest { add, remove })?),
+        }) => {
+            print_json(&state.retag_thread(organization, thread, RetagRequest { add, remove })?)
+        }
         // Clap requires one of <ID>, --view and --thread, and refuses two.
         MessageCommand::Tag(TagArgs { .. }) => Err(AppError::invalid(
             "MESSAGE_TAG_INVALID",
             "name a message ID, --view <NAME> or --thread <ID> to change",
         )),
-        MessageCommand::Tags(TagsArgs { rename: Some(from), to: Some(to), .. }) => {
-            print_json(&state.rename_tag(organization, &from, &to)?)
-        }
-        MessageCommand::Tags(TagsArgs { remove: Some(tag), .. }) => {
-            print_json(&state.remove_tag(organization, &tag)?)
-        }
+        MessageCommand::Tags(TagsArgs {
+            rename: Some(from),
+            to: Some(to),
+            ..
+        }) => print_json(&state.rename_tag(organization, &from, &to)?),
+        MessageCommand::Tags(TagsArgs {
+            remove: Some(tag), ..
+        }) => print_json(&state.remove_tag(organization, &tag)?),
         MessageCommand::Tags(args) => reading::list_tags(&state, organization, args),
-        MessageCommand::Note(NoteArgs { id, file, append, .. }) => {
+        MessageCommand::Note(NoteArgs {
+            id, file, append, ..
+        }) => {
             let note = file
                 .map(|file| read_body_file(&file, "MESSAGE_NOTE_INVALID"))
                 .transpose()?;
             match (append, note) {
-                (true, Some(text)) => print_json(&state.append_message_note(organization, id, &text)?),
-                (_, note) => print_json(&state.set_message_note(organization, id, note.as_deref())?),
+                (true, Some(text)) => {
+                    print_json(&state.append_message_note(organization, id, &text)?)
+                }
+                (_, note) => {
+                    print_json(&state.set_message_note(organization, id, note.as_deref())?)
+                }
             }
         }
         MessageCommand::Block(SenderArg { address }) => {
@@ -164,7 +197,9 @@ pub(super) async fn run_message(
         MessageCommand::Blocked(args) => reading::blocked(&state, organization, args),
         MessageCommand::Bounced(args) => reading::bounced(&state, organization, args),
         MessageCommand::Suppressed(args) => suppressed::suppressed(&state, organization, args),
-        MessageCommand::Recipients(args) => suppressed::check_recipients(&state, organization, args),
+        MessageCommand::Recipients(args) => {
+            suppressed::check_recipients(&state, organization, args)
+        }
         MessageCommand::Snooze(SnoozeArgs {
             id: Some(id),
             until,
@@ -188,19 +223,22 @@ pub(super) async fn run_message(
         MessageCommand::Wake(WakeArgs { id: Some(id), .. }) => {
             print_json(&state.wake_message(organization, id)?)
         }
-        MessageCommand::Wake(WakeArgs { view: Some(view), .. }) => {
-            print_json(&state.wake_view(organization, &view)?)
-        }
-        MessageCommand::Wake(WakeArgs { thread: Some(thread), .. }) => {
-            print_json(&state.wake_thread(organization, thread)?)
-        }
+        MessageCommand::Wake(WakeArgs {
+            view: Some(view), ..
+        }) => print_json(&state.wake_view(organization, &view)?),
+        MessageCommand::Wake(WakeArgs {
+            thread: Some(thread),
+            ..
+        }) => print_json(&state.wake_thread(organization, thread)?),
         // Clap requires one of <ID>, --view and --thread, and refuses two.
         MessageCommand::Wake(WakeArgs { .. }) => Err(AppError::invalid(
             "SNOOZE_INVALID",
             "name a message ID, --view <NAME> or --thread <ID> to wake",
         )),
         MessageCommand::Mute(args) => super::reading::mutes::mute(&state, organization, args, true),
-        MessageCommand::Unmute(args) => super::reading::mutes::mute(&state, organization, args, false),
+        MessageCommand::Unmute(args) => {
+            super::reading::mutes::mute(&state, organization, args, false)
+        }
         MessageCommand::Rule { command } => super::rules::run_rule(&state, organization, command),
         MessageCommand::Template { command } => {
             super::templates::run_template(&state, organization, command)
@@ -214,20 +252,40 @@ pub(super) async fn run_message(
             run_attachment(state, organization, command).await
         }
         MessageCommand::Draft { command } => drafts::run_draft(&state, organization, command).await,
-        MessageCommand::Subscriptions(args) => reading::subscriptions(&state, organization, args).await,
-        MessageCommand::Unsubscribe(UnsubscribeArgs { id, list, mailbox, idempotency_key }) => {
-            let request = UnsubscribeRequest { idempotency_key: required_key(idempotency_key, "message unsubscribe")? };
+        MessageCommand::Subscriptions(args) => {
+            reading::subscriptions(&state, organization, args).await
+        }
+        MessageCommand::Unsubscribe(UnsubscribeArgs {
+            id,
+            list,
+            mailbox,
+            idempotency_key,
+        }) => {
+            let request = UnsubscribeRequest {
+                idempotency_key: required_key(idempotency_key, "message unsubscribe")?,
+            };
             match (id, list) {
                 (Some(id), _) => print_json(&state.unsubscribe(organization, id, request).await?),
                 (None, Some(list)) => {
                     let mailbox_id = reading::chosen_mailbox(&state, organization, mailbox)?;
-                    print_json(&state.unsubscribe_list(organization, &list, mailbox_id, request).await?)
+                    print_json(
+                        &state
+                            .unsubscribe_list(organization, &list, mailbox_id, request)
+                            .await?,
+                    )
                 }
-                (None, None) => Err(AppError::invalid("UNSUBSCRIBE_LIST_INVALID", "name a message ID or a --list")),
+                (None, None) => Err(AppError::invalid(
+                    "UNSUBSCRIBE_LIST_INVALID",
+                    "name a message ID or a --list",
+                )),
             }
         }
-        MessageCommand::Mark(args) => run_provider(state, organization, ProviderCommand::Mark(args)).await,
-        MessageCommand::Move(args) => run_provider(state, organization, ProviderCommand::Move(args)).await,
+        MessageCommand::Mark(args) => {
+            run_provider(state, organization, ProviderCommand::Mark(args)).await
+        }
+        MessageCommand::Move(args) => {
+            run_provider(state, organization, ProviderCommand::Move(args)).await
+        }
         MessageCommand::Delete(args) => {
             run_provider(state, organization, ProviderCommand::Delete(args)).await
         }
@@ -252,7 +310,10 @@ pub(super) fn read_body_file(path: &Path, code: &'static str) -> Result<String, 
     if !metadata.is_file() {
         return Err(AppError::invalid(
             code,
-            format!("message body file {} must be a regular file", path.display()),
+            format!(
+                "message body file {} must be a regular file",
+                path.display()
+            ),
         ));
     }
     // A permission or I/O failure is not a UTF-8 failure; only the decoding

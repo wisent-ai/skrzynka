@@ -8,8 +8,15 @@ use crate::mail::{Subscription, UnsubscribeTarget};
 /// The table's header: the fields of a list `message subscriptions` prints,
 /// its ways out and its last request to leave flattened to text.
 const HEADER: &[&str] = &[
-    "list_id", "sender", "mailbox_id", "messages", "latest_message_id", "latest_received_at", "ways_out",
-    "last_attempt_status", "last_attempt_at",
+    "list_id",
+    "sender",
+    "mailbox_id",
+    "messages",
+    "latest_message_id",
+    "latest_received_at",
+    "ways_out",
+    "last_attempt_status",
+    "last_attempt_at",
 ];
 
 /// Every list as one row under the header, in the order given: `ways_out`
@@ -30,7 +37,10 @@ pub fn subscription_table(lists: &[Subscription]) -> String {
             })
             .collect();
         let (status, at) = match &list.last_attempt {
-            Some(attempt) => (attempt.status.as_str().to_string(), attempt.created_at.clone()),
+            Some(attempt) => (
+                attempt.status.as_str().to_string(),
+                attempt.created_at.clone(),
+            ),
             None => (String::new(), String::new()),
         };
         table.push_str(&row(&[

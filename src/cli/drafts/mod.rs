@@ -195,7 +195,8 @@ impl DraftFields {
         let (templated, body) = match (self.body_file, self.template) {
             (Some(path), _) => (None, Some(read_body_file(&path, "DRAFT_FILE_INVALID")?)),
             (None, Some(name)) => {
-                let filled = state.render_template(organization, &name, &values(&self.set)?, None)?;
+                let filled =
+                    state.render_template(organization, &name, &values(&self.set)?, None)?;
                 (filled.subject, Some(filled.body))
             }
             (None, None) => (None, None),
@@ -221,73 +222,196 @@ pub(super) async fn run_draft(
     command: DraftCommand,
 ) -> Result<(), AppError> {
     match command {
-        DraftCommand::Save(SaveArgs { mailbox, merge: Some(path), fields }) => {
-            let refused = |message: String| AppError::invalid("DRAFT_MERGE_INVALID", format!("{message}; nothing was drafted"));
-            let Some(template) = fields.template else {
-                return Err(refused("--merge fills a template; name it with --template".to_string()));
+        DraftCommand::Save(SaveArgs {
+            mailbox,
+            merge: Some(path),
+            fields,
+        }) => {
+            let refused = |message: String| {
+                AppError::invalid(
+                    "DRAFT_MERGE_INVALID",
+                    format!("{message}; nothing was drafted"),
+                )
             };
-            let table = std::fs::read_to_string(&path)
-                .map_err(|error| refused(format!("the table {} could not be read as UTF-8 text: {error}", path.display())))?;
+            let Some(template) = fields.template else {
+                return Err(refused(
+                    "--merge fills a template; name it with --template".to_string(),
+                ));
+            };
+            let table = std::fs::read_to_string(&path).map_err(|error| {
+                refused(format!(
+                    "the table {} could not be read as UTF-8 text: {error}",
+                    path.display()
+                ))
+            })?;
             print_json(&state.merge_drafts(organization, &mailbox, &template, &table)?)
         }
-        DraftCommand::Save(SaveArgs { mailbox, merge: None, fields }) => {
-            print_json(&state.create_draft(organization, &mailbox, fields.change(state, organization)?)?)
-        }
+        DraftCommand::Save(SaveArgs {
+            mailbox,
+            merge: None,
+            fields,
+        }) => print_json(&state.create_draft(
+            organization,
+            &mailbox,
+            fields.change(state, organization)?,
+        )?),
         DraftCommand::Again(OutboundRef { outbound_id }) => {
             print_json(&state.draft_from_outbound(organization, outbound_id)?)
         }
         DraftCommand::Copy(CopyArgs { id, mailbox }) => {
             print_json(&state.copy_draft(organization, id, mailbox.as_deref())?)
         }
-        DraftCommand::Update(UpdateArgs { id, fields }) => {
-            print_json(&state.update_draft(organization, id, fields.change(state, organization)?)?)
-        }
-        DraftCommand::List(ListArgs { mailbox, scheduled, contains, bounced, suppressed, since, until, with_attachments, send_by, csv }) => {
+        DraftCommand::Update(UpdateArgs { id, fields }) => print_json(&state.update_draft(
+            organization,
+            id,
+            fields.change(state, organization)?,
+        )?),
+        DraftCommand::List(ListArgs {
+            mailbox,
+            scheduled,
+            contains,
+            bounced,
+            suppressed,
+            since,
+            until,
+            with_attachments,
+            send_by,
+            csv,
+        }) => {
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            let filter =
-                DraftFilter { mailbox_id, scheduled, contains, bounced, suppressed, since, until, with_attachments, send_by };
+            let filter = DraftFilter {
+                mailbox_id,
+                scheduled,
+                contains,
+                bounced,
+                suppressed,
+                since,
+                until,
+                with_attachments,
+                send_by,
+            };
             let Some(path) = csv else {
                 return print_json(&state.list_drafts(organization, &filter)?);
             };
-            let file = NewFile { path: &path, exists: "DRAFT_OUTPUT_EXISTS", invalid: "DRAFT_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &path,
+                exists: "DRAFT_OUTPUT_EXISTS",
+                invalid: "DRAFT_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
             let drafts = state.list_drafts(organization, &filter)?;
             let table = draft_table(&drafts);
             file.write(table.as_bytes())?;
-            print_json(&serde_json::json!({ "path": path, "drafts": drafts.len(), "size_bytes": table.len() }))
+            print_json(
+                &serde_json::json!({ "path": path, "drafts": drafts.len(), "size_bytes": table.len() }),
+            )
         }
         DraftCommand::Show(DraftRef { id }) => print_json(&state.get_draft(organization, id)?),
         DraftCommand::Delete(ChosenDrafts { id: Some(id), .. }) => {
             state.delete_draft(organization, id)?;
             print_json(&serde_json::json!({ "deleted": id }))
         }
-        DraftCommand::Delete(ChosenDrafts { id: None, contains, mailbox }) => {
+        DraftCommand::Delete(ChosenDrafts {
+            id: None,
+            contains,
+            mailbox,
+        }) => {
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            print_json(&state.delete_drafts(organization, &DraftFilter { mailbox_id, contains, ..DraftFilter::default() })?)
+            print_json(&state.delete_drafts(
+                organization,
+                &DraftFilter {
+                    mailbox_id,
+                    contains,
+                    ..DraftFilter::default()
+                },
+            )?)
         }
-        DraftCommand::Send(SendArgs { chosen: ChosenDrafts { id: Some(id), .. }, idempotency_key, allow_bounced, follow_up }) => {
-            let request = DraftSendRequest { idempotency_key: required_key(idempotency_key, "message draft send")?, allow_bounced, follow_up };
+        DraftCommand::Send(SendArgs {
+            chosen: ChosenDrafts { id: Some(id), .. },
+            idempotency_key,
+            allow_bounced,
+            follow_up,
+        }) => {
+            let request = DraftSendRequest {
+                idempotency_key: required_key(idempotency_key, "message draft send")?,
+                allow_bounced,
+                follow_up,
+            };
             print_json(&state.send_draft(organization, id, request).await?)
         }
-        DraftCommand::Send(SendArgs { chosen: ChosenDrafts { id: None, contains, mailbox }, idempotency_key, allow_bounced, follow_up }) => {
+        DraftCommand::Send(SendArgs {
+            chosen:
+                ChosenDrafts {
+                    id: None,
+                    contains,
+                    mailbox,
+                },
+            idempotency_key,
+            allow_bounced,
+            follow_up,
+        }) => {
             let key = required_key(idempotency_key, "message draft send")?;
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            let filter = DraftFilter { mailbox_id, contains, ..DraftFilter::default() };
-            print_json(&state.send_drafts(organization, &filter, &key, allow_bounced, follow_up.as_deref()).await?)
+            let filter = DraftFilter {
+                mailbox_id,
+                contains,
+                ..DraftFilter::default()
+            };
+            print_json(
+                &state
+                    .send_drafts(
+                        organization,
+                        &filter,
+                        &key,
+                        allow_bounced,
+                        follow_up.as_deref(),
+                    )
+                    .await?,
+            )
         }
-        DraftCommand::Schedule(ScheduleArgs { id, contains, mailbox, every, at, idempotency_key }) => {
+        DraftCommand::Schedule(ScheduleArgs {
+            id,
+            contains,
+            mailbox,
+            every,
+            at,
+            idempotency_key,
+        }) => {
             let key = required_key(idempotency_key, "message draft schedule")?;
             if let Some(id) = id {
                 return print_json(&state.schedule_draft(organization, id, &at, &key)?);
             }
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            let filter = DraftFilter { mailbox_id, contains, ..DraftFilter::default() };
-            print_json(&state.schedule_drafts(organization, &filter, &at, every.as_deref(), &key)?)
+            let filter = DraftFilter {
+                mailbox_id,
+                contains,
+                ..DraftFilter::default()
+            };
+            print_json(&state.schedule_drafts(
+                organization,
+                &filter,
+                &at,
+                every.as_deref(),
+                &key,
+            )?)
         }
-        DraftCommand::Unschedule(ChosenDrafts { id: Some(id), .. }) => print_json(&state.unschedule_draft(organization, id)?),
-        DraftCommand::Unschedule(ChosenDrafts { id: None, contains, mailbox }) => {
+        DraftCommand::Unschedule(ChosenDrafts { id: Some(id), .. }) => {
+            print_json(&state.unschedule_draft(organization, id)?)
+        }
+        DraftCommand::Unschedule(ChosenDrafts {
+            id: None,
+            contains,
+            mailbox,
+        }) => {
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            print_json(&state.unschedule_drafts(organization, &DraftFilter { mailbox_id, contains, ..DraftFilter::default() })?)
+            print_json(&state.unschedule_drafts(
+                organization,
+                &DraftFilter {
+                    mailbox_id,
+                    contains,
+                    ..DraftFilter::default()
+                },
+            )?)
         }
     }
 }

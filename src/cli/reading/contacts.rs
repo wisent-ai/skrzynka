@@ -50,23 +50,51 @@ pub(in crate::cli) struct ContactsArgs {
     #[arg(long)]
     csv: Option<PathBuf>,
     /// Suppress every contact listed the suppression list does not cover yet; the listing must be narrowed.
-    #[arg(long, conflicts_with = "vcard", conflicts_with = "csv", conflicts_with = "suppressed")]
+    #[arg(
+        long,
+        conflicts_with = "vcard",
+        conflicts_with = "csv",
+        conflicts_with = "suppressed"
+    )]
     suppress_listed: bool,
     /// With --suppress-listed: why, kept on every entry added.
     #[arg(long, requires = "suppress_listed")]
     reason: Option<String>,
     /// Block every contact listed no blocked entry covers yet, so listings leave their mail out; the listing must be narrowed.
-    #[arg(long, conflicts_with = "vcard", conflicts_with = "csv", conflicts_with = "suppress_listed", conflicts_with = "blocked")]
+    #[arg(
+        long,
+        conflicts_with = "vcard",
+        conflicts_with = "csv",
+        conflicts_with = "suppress_listed",
+        conflicts_with = "blocked"
+    )]
     block_listed: bool,
 }
 
 /// Print the correspondents, write them as vCards or a CSV table to a new
 /// file and print what was written, or put them on the suppression or
 /// blocked list.
-pub(in crate::cli) fn contacts(state: &AppState, organization: &str, args: ContactsArgs) -> Result<(), AppError> {
+pub(in crate::cli) fn contacts(
+    state: &AppState,
+    organization: &str,
+    args: ContactsArgs,
+) -> Result<(), AppError> {
     let ContactsArgs {
-        mailbox, contains, recent, bounced, suppressed, blocked, since, until, never_written, never_received, vcard, csv,
-        suppress_listed, reason, block_listed,
+        mailbox,
+        contains,
+        recent,
+        bounced,
+        suppressed,
+        blocked,
+        since,
+        until,
+        never_written,
+        never_received,
+        vcard,
+        csv,
+        suppress_listed,
+        reason,
+        block_listed,
     } = args;
     let filter = ContactFilter {
         mailbox_id: super::chosen_mailbox(state, organization, mailbox)?,

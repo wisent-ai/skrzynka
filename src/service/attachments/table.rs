@@ -9,7 +9,15 @@ use super::{
 
 /// The table's header, the field names `message attachment find` prints.
 const HEADER: &[&str] = &[
-    "message_id", "mailbox_id", "sender", "subject", "received_at", "index", "filename", "content_type", "size_bytes",
+    "message_id",
+    "mailbox_id",
+    "sender",
+    "subject",
+    "received_at",
+    "index",
+    "filename",
+    "content_type",
+    "size_bytes",
 ];
 
 /// Every file as one row under the header, in the order given; a name,

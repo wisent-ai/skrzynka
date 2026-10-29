@@ -121,8 +121,11 @@ impl SkarbiecResolver {
         refresh_token: &str,
     ) -> Result<String, AppError> {
         validate_item_id(source_item_id)?;
-        Address::from_str(email)
-            .map_err(|cause| invalid_item(format!("authorized Google identity '{email}' is not an email address: {cause}")))?;
+        Address::from_str(email).map_err(|cause| {
+            invalid_item(format!(
+                "authorized Google identity '{email}' is not an email address: {cause}"
+            ))
+        })?;
         let item_id = self.address_item(GMAIL_ITEM_PREFIX, email).await?;
         let payload = json!({
             "schema": "skarbiec.item.v2",
@@ -157,8 +160,11 @@ impl SkarbiecResolver {
         email: &str,
         display_name: Option<&str>,
     ) -> Result<String, AppError> {
-        Address::from_str(email)
-            .map_err(|cause| invalid_item(format!("delegated Google identity '{email}' is not an email address: {cause}")))?;
+        Address::from_str(email).map_err(|cause| {
+            invalid_item(format!(
+                "delegated Google identity '{email}' is not an email address: {cause}"
+            ))
+        })?;
         let item_id = self.address_item(GMAIL_ITEM_PREFIX, email).await?;
         let payload = json!({
             "schema": "skarbiec.item.v2",
@@ -187,7 +193,8 @@ impl SkarbiecResolver {
 
     /// The item an app-password connection keeps for `email`.
     pub async fn gmail_app_password_item(&self, email: &str) -> Result<String, AppError> {
-        self.address_item(GMAIL_APP_PASSWORD_ITEM_PREFIX, email).await
+        self.address_item(GMAIL_APP_PASSWORD_ITEM_PREFIX, email)
+            .await
     }
 
     /// Whether `item_id` is a credential item a Gmail connection path wrote

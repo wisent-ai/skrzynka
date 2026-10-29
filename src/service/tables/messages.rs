@@ -5,8 +5,23 @@ use crate::models::Message;
 
 /// The table's header: the fields of a stored message a report reads.
 const HEADER: &[&str] = &[
-    "id", "mailbox_id", "received_at", "sent_at", "sender", "reply_to", "recipients", "cc", "subject",
-    "message_id", "in_reply_to", "list_id", "snippet", "attachments", "tags", "note", "snoozed_until",
+    "id",
+    "mailbox_id",
+    "received_at",
+    "sent_at",
+    "sender",
+    "reply_to",
+    "recipients",
+    "cc",
+    "subject",
+    "message_id",
+    "in_reply_to",
+    "list_id",
+    "snippet",
+    "attachments",
+    "tags",
+    "note",
+    "snoozed_until",
 ];
 
 /// Every stored message as one row under the header, in the order given: a

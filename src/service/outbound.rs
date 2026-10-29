@@ -77,14 +77,20 @@ impl AppState {
         // A repeated key answers its first attempt whatever was learned since,
         // so only a key not claimed yet is held to the suppression list and
         // the bounce reports.
-        let claimed = self.database.get_outbound_by_key(organization_id, request.idempotency_key.trim())?;
+        let claimed = self
+            .database
+            .get_outbound_by_key(organization_id, request.idempotency_key.trim())?;
         if claimed.is_none() {
-            let addressed: Vec<String> = [Some(normalized.recipients.as_str()), normalized.cc.as_deref(), normalized.bcc.as_deref()]
-                .into_iter()
-                .flatten()
-                .flat_map(|header| header.split(", "))
-                .map(str::to_lowercase)
-                .collect();
+            let addressed: Vec<String> = [
+                Some(normalized.recipients.as_str()),
+                normalized.cc.as_deref(),
+                normalized.bcc.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .flat_map(|header| header.split(", "))
+            .map(str::to_lowercase)
+            .collect();
             self.refuse_suppressed(organization_id, &addressed, "this send")?;
             if !request.allow_bounced {
                 self.refuse_bounced(organization_id, &addressed)?;
@@ -227,7 +233,12 @@ pub(in crate::service) fn checked_key(key: &str) -> Result<&str, AppError> {
 /// comma-separated, each as written, blanks left out: what sending the row
 /// again, drafting from it or reminding its recipients addresses.
 pub(in crate::service) fn stored_addresses(stored: &str) -> Vec<String> {
-    stored.split(',').map(str::trim).filter(|address| !address.is_empty()).map(String::from).collect()
+    stored
+        .split(',')
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 fn validate_outbound_request(

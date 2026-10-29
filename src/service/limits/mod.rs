@@ -50,7 +50,12 @@ impl AppState {
         let warm_up = match stored.limit {
             Some(limit) => match limit.ramp {
                 Some(ramp) => Some(WarmUp {
-                    reaches_up_to_on: ceiling_day(&ramp.since, limit.per_day, ramp.grow_by, ramp.up_to)?,
+                    reaches_up_to_on: ceiling_day(
+                        &ramp.since,
+                        limit.per_day,
+                        ramp.grow_by,
+                        ramp.up_to,
+                    )?,
                     from: limit.per_day,
                     grow_by: ramp.grow_by,
                     up_to: ramp.up_to,
@@ -113,13 +118,27 @@ impl AppState {
 /// The UTC day a warm-up from `from` on `since`, growing by `grow_by` a
 /// day, first allows `up_to`: as many whole days after `since` as the gap
 /// takes, the last step rounded up.
-fn ceiling_day(since: &str, from: NonZeroU32, grow_by: NonZeroU32, up_to: NonZeroU32) -> Result<String, AppError> {
+fn ceiling_day(
+    since: &str,
+    from: NonZeroU32,
+    grow_by: NonZeroU32,
+    up_to: NonZeroU32,
+) -> Result<String, AppError> {
     let began = since.parse::<chrono::NaiveDate>().map_err(|error| {
-        AppError::internal(format!("a send limit warm-up names the day {since:?}, which is not a YYYY-MM-DD day: {error}"))
+        AppError::internal(format!(
+            "a send limit warm-up names the day {since:?}, which is not a YYYY-MM-DD day: {error}"
+        ))
     })?;
-    let days = up_to.get().saturating_sub(from.get()).div_ceil(grow_by.get());
+    let days = up_to
+        .get()
+        .saturating_sub(from.get())
+        .div_ceil(grow_by.get());
     began
         .checked_add_days(chrono::Days::new(u64::from(days)))
         .map(|day| day.to_string())
-        .ok_or_else(|| AppError::internal(format!("a warm-up from {began} reaches past the last day Skrzynka can name")))
+        .ok_or_else(|| {
+            AppError::internal(format!(
+                "a warm-up from {began} reaches past the last day Skrzynka can name"
+            ))
+        })
 }

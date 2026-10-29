@@ -5,9 +5,9 @@
 
 use super::attachments::{attachment_parts, AttachmentPart};
 use super::authentication::authentication_verdicts;
+use super::dependency_error;
 use super::lists::MailingList;
 use super::reports::bounce_report;
-use super::dependency_error;
 use crate::{error::AppError, models::NewMessage};
 use mailparse::{MailHeaderMap, ParsedMail};
 
@@ -17,10 +17,7 @@ pub(super) fn normalize_message(uid: u32, bytes: &[u8]) -> Result<NewMessage, Ap
 
 /// A provider message read whole: what Skrzynka stores of it, attachments
 /// described, and each attachment with its decoded bytes.
-pub fn read_message(
-    uid: u32,
-    bytes: &[u8],
-) -> Result<(NewMessage, Vec<AttachmentPart>), AppError> {
+pub fn read_message(uid: u32, bytes: &[u8]) -> Result<(NewMessage, Vec<AttachmentPart>), AppError> {
     let parsed = mailparse::parse_mail(bytes).map_err(|error| {
         dependency_error(
             "MESSAGE_MALFORMED",

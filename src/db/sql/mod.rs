@@ -74,6 +74,13 @@ pub fn connect() -> std::result::Result<Client, AppError> {
             .and_then(|fleet| stado_database::sync::Client::connect(&fleet))
     })
     .join()
-    .map_err(|stopped| unreachable(&format!("connecting stopped abnormally: {}", panic_text(stopped.as_ref()))))?;
-    opened.map(|client| Client(ManuallyDrop::new(client))).map_err(|error| unreachable(&error))
+    .map_err(|stopped| {
+        unreachable(&format!(
+            "connecting stopped abnormally: {}",
+            panic_text(stopped.as_ref())
+        ))
+    })?;
+    opened
+        .map(|client| Client(ManuallyDrop::new(client)))
+        .map_err(|error| unreachable(&error))
 }

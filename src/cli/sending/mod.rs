@@ -32,7 +32,11 @@ pub(super) struct ReplyArgs {
     #[arg(long)]
     view: Option<String>,
     /// File holding the reply body.
-    #[arg(long, required_unless_present = "template", conflicts_with = "template")]
+    #[arg(
+        long,
+        required_unless_present = "template",
+        conflicts_with = "template"
+    )]
     body_file: Option<PathBuf>,
     /// A template whose text is the reply body, as `message template list` names it.
     #[arg(long)]
@@ -79,7 +83,11 @@ pub(super) struct SendArgs {
     #[arg(long, required_unless_present = "template")]
     subject: Option<String>,
     /// File holding the message body.
-    #[arg(long, required_unless_present = "template", conflicts_with = "template")]
+    #[arg(
+        long,
+        required_unless_present = "template",
+        conflicts_with = "template"
+    )]
     body_file: Option<PathBuf>,
     /// A template whose text is the message body, as `message template list` names it.
     #[arg(long)]
@@ -119,7 +127,10 @@ fn read_attachment(spec: &str) -> Result<OutgoingAttachment, AppError> {
         .and_then(|name| name.to_str())
         .ok_or_else(|| invalid(format!("--attach {spec:?} names no file at its end")))?;
     let bytes = std::fs::read(path).map_err(|cause| {
-        invalid(format!("attachment file {} could not be read: {cause}", path.display()))
+        invalid(format!(
+            "attachment file {} could not be read: {cause}",
+            path.display()
+        ))
     })?;
     Ok(OutgoingAttachment {
         filename: filename.to_string(),
@@ -142,7 +153,11 @@ pub(super) async fn reply(
     if let Some(view) = args.view {
         let request = ReplyViewRequest {
             idempotency_key,
-            body: args.body_file.as_deref().map(|path| read_body_file(path, "REPLY_FILE_INVALID")).transpose()?,
+            body: args
+                .body_file
+                .as_deref()
+                .map(|path| read_body_file(path, "REPLY_FILE_INVALID"))
+                .transpose()?,
             template: args.template,
             values: values(&args.set)?,
             attachments,
@@ -154,12 +169,23 @@ pub(super) async fn reply(
         return print_json(&state.reply_view(organization, &view, request).await?);
     }
     let Some(id) = args.id else {
-        return Err(AppError::invalid("REPLY_TARGET_INVALID", "name the message to answer, or a view with --view"));
+        return Err(AppError::invalid(
+            "REPLY_TARGET_INVALID",
+            "name the message to answer, or a view with --view",
+        ));
     };
     let request = CreateReplyRequest {
         idempotency_key,
-        body: written(state, organization, args.body_file.as_ref(), args.template.as_deref(), &args.set, Some(id), "REPLY_FILE_INVALID")?
-            .body,
+        body: written(
+            state,
+            organization,
+            args.body_file.as_ref(),
+            args.template.as_deref(),
+            &args.set,
+            Some(id),
+            "REPLY_FILE_INVALID",
+        )?
+        .body,
         attachments,
         reply_all: args.all,
         quote: args.quote,
@@ -212,7 +238,13 @@ pub(super) async fn send(
             attachments: Some(attachments),
         };
         let id = mailbox.id.to_string();
-        return print_json(&state.schedule_new_draft(organization, &id, change, &at, &idempotency_key)?);
+        return print_json(&state.schedule_new_draft(
+            organization,
+            &id,
+            change,
+            &at,
+            &idempotency_key,
+        )?);
     }
     let request = CreateOutboundRequest {
         idempotency_key,
@@ -231,4 +263,3 @@ pub(super) async fn send(
             .await?,
     )
 }
-

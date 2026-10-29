@@ -18,7 +18,10 @@ pub(super) async fn mailbox_auto_reply(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.mailbox_auto_reply(&auth.organization_id, parse_uuid(&id)?)?)))
+    Ok(Json(json!(state.mailbox_auto_reply(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `PUT`: `{body, every, from?, until?}` sets the reply; `null` removes it.
@@ -42,7 +45,10 @@ pub(super) async fn auto_reply_decisions(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.auto_reply_decisions(&auth.organization_id, parse_uuid(&id)?)?)))
+    Ok(Json(json!(state.auto_reply_decisions(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `POST /v1/auto-replies/answer`: answer every message of the
@@ -53,5 +59,9 @@ pub(super) async fn answer_automatically(
     Extension(auth): Extension<AuthContext>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.answer_automatically(Some(&auth.organization_id)).await?)))
+    Ok(Json(json!(
+        state
+            .answer_automatically(Some(&auth.organization_id))
+            .await?
+    )))
 }

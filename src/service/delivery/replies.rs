@@ -35,7 +35,11 @@ impl AppState {
     /// narrowed as `filter` says. A blank
     /// or unknown status, a blank text or file name, an unreadable instant,
     /// or `since` not before `until` is `MESSAGE_FILTER_INVALID`.
-    pub fn all_replies(&self, organization_id: &str, filter: &ReplyFilter) -> Result<Vec<ReplyAttempt>, AppError> {
+    pub fn all_replies(
+        &self,
+        organization_id: &str,
+        filter: &ReplyFilter,
+    ) -> Result<Vec<ReplyAttempt>, AppError> {
         let status = filter_value(filter.status.as_deref(), "status")?
             .map(|written| {
                 DeliveryStatus::from_str(&written).map_err(|error| {
@@ -61,15 +65,24 @@ impl AppState {
             }
         }
         let mut kept = Vec::new();
-        for reply in self.database.all_replies(organization_id, filter.mailbox_id)? {
+        for reply in self
+            .database
+            .all_replies(organization_id, filter.mailbox_id)?
+        {
             if status.is_some_and(|status| reply.status != status) {
                 continue;
             }
-            if contains.as_deref().is_some_and(|part| !reply.body.to_lowercase().contains(part)) {
+            if contains
+                .as_deref()
+                .is_some_and(|part| !reply.body.to_lowercase().contains(part))
+            {
                 continue;
             }
             let carried = attachment.as_deref().is_none_or(|part| {
-                reply.attachments.iter().any(|file| file.filename.to_lowercase().contains(part))
+                reply
+                    .attachments
+                    .iter()
+                    .any(|file| file.filename.to_lowercase().contains(part))
             });
             if !carried {
                 continue;
@@ -83,7 +96,8 @@ impl AppState {
                         ))
                     })?
                     .with_timezone(&chrono::Utc);
-                if since.is_some_and(|from| claimed < from) || until.is_some_and(|to| claimed >= to) {
+                if since.is_some_and(|from| claimed < from) || until.is_some_and(|to| claimed >= to)
+                {
                     continue;
                 }
             }

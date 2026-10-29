@@ -2,7 +2,10 @@
 //! subscriptions` listing keeps, such as those gone quiet for months, each
 //! asked as `message unsubscribe` asks one, through its newest stored message.
 
-use super::{super::{outbound::checked_key, AppState}, SubscriptionFilter};
+use super::{
+    super::{outbound::checked_key, AppState},
+    SubscriptionFilter,
+};
 use crate::{
     error::AppError,
     mail::{UnsubscribeAttempt, UnsubscribeRequest},
@@ -40,7 +43,12 @@ impl AppState {
     /// `UNSUBSCRIBE_LIST_NOT_FOUND`. A list that cannot be left from here
     /// (only web pages, an unreachable way out) is named in `refused` and
     /// the others are still asked.
-    pub async fn unsubscribe_listed(&self, organization_id: &str, filter: &SubscriptionFilter, idempotency_key: &str) -> Result<LeftLists, AppError> {
+    pub async fn unsubscribe_listed(
+        &self,
+        organization_id: &str,
+        filter: &SubscriptionFilter,
+        idempotency_key: &str,
+    ) -> Result<LeftLists, AppError> {
         let key = checked_key(idempotency_key)?.to_string();
         if filter.contains.is_none() && filter.since.is_none() && filter.until.is_none() {
             return Err(AppError::invalid(
@@ -57,10 +65,18 @@ impl AppState {
                 false,
             ));
         }
-        let mut outcome = LeftLists { left: Vec::new(), refused: Vec::new() };
+        let mut outcome = LeftLists {
+            left: Vec::new(),
+            refused: Vec::new(),
+        };
         for list in lists {
-            let request = UnsubscribeRequest { idempotency_key: format!("{key}-{}", list.latest_message_id) };
-            match self.unsubscribe(organization_id, list.latest_message_id, request).await {
+            let request = UnsubscribeRequest {
+                idempotency_key: format!("{key}-{}", list.latest_message_id),
+            };
+            match self
+                .unsubscribe(organization_id, list.latest_message_id, request)
+                .await
+            {
                 Ok(attempt) => outcome.left.push(attempt),
                 Err(error) => outcome.refused.push(RefusedList {
                     list_id: list.list_id,

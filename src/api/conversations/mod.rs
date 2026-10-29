@@ -20,9 +20,10 @@ pub(in crate::api) async fn get_thread(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(
-        state.message_thread(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.message_thread(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `POST /v1/messages/:id/forward`: send the message on, the original
@@ -81,9 +82,10 @@ pub(in crate::api) async fn mute_conversation(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.mute_conversation(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.mute_conversation(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `DELETE /v1/messages/:id/mute`: show the conversation in listings again.
@@ -93,9 +95,10 @@ pub(in crate::api) async fn unmute_conversation(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.unmute_conversation(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.unmute_conversation(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `POST /v1/views/:name/snooze` with `{until}`: snooze every message the
@@ -134,7 +137,11 @@ pub(in crate::api) async fn mute_view(
     Path(name): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.mute_view(&auth.organization_id, &name, true)?)))
+    Ok(Json(json!(state.mute_view(
+        &auth.organization_id,
+        &name,
+        true
+    )?)))
 }
 
 pub(in crate::api) async fn unmute_view(
@@ -143,7 +150,11 @@ pub(in crate::api) async fn unmute_view(
     Path(name): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.mute_view(&auth.organization_id, &name, false)?)))
+    Ok(Json(json!(state.mute_view(
+        &auth.organization_id,
+        &name,
+        false
+    )?)))
 }
 
 /// `POST /v1/messages/:id/thread/snooze` with `{until}`: snooze every
@@ -156,7 +167,11 @@ pub(in crate::api) async fn snooze_thread(
     Json(request): Json<Snooze>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.snooze_thread(&auth.organization_id, parse_uuid(&id)?, &request.until)?)))
+    Ok(Json(json!(state.snooze_thread(
+        &auth.organization_id,
+        parse_uuid(&id)?,
+        &request.until
+    )?)))
 }
 
 pub(in crate::api) async fn wake_thread(
@@ -165,7 +180,9 @@ pub(in crate::api) async fn wake_thread(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.wake_thread(&auth.organization_id, parse_uuid(&id)?)?)))
+    Ok(Json(json!(
+        state.wake_thread(&auth.organization_id, parse_uuid(&id)?)?
+    )))
 }
 
 /// `PUT /v1/messages/:id/note` with `{note}`; `null` removes it.

@@ -53,7 +53,10 @@ impl AppState {
         if listed.is_empty() {
             return Err(AppError::not_found("draft"));
         }
-        let mut outcome = DraftsSent { sent: Vec::new(), refused: Vec::new() };
+        let mut outcome = DraftsSent {
+            sent: Vec::new(),
+            refused: Vec::new(),
+        };
         for draft in listed {
             let request = DraftSendRequest {
                 idempotency_key: format!("{key}-{}", draft.id),
@@ -62,7 +65,11 @@ impl AppState {
             };
             match self.send_draft(organization_id, draft.id, request).await {
                 Ok(sent) => outcome.sent.push(sent),
-                Err(error) => outcome.refused.push(RefusedDraft { draft_id: draft.id, code: error.code, message: error.message }),
+                Err(error) => outcome.refused.push(RefusedDraft {
+                    draft_id: draft.id,
+                    code: error.code,
+                    message: error.message,
+                }),
             }
         }
         Ok(outcome)

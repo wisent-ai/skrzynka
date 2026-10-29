@@ -96,7 +96,11 @@ impl Database {
 fn template_from_row(row: &Row<'_>) -> sql::Result<MessageTemplate> {
     let subject: Option<String> = row.get("subject")?;
     let body: String = row.get("body")?;
-    let named = [subject.as_deref(), Some(body.as_str())].into_iter().flatten().collect::<Vec<_>>().join("\n");
+    let named = [subject.as_deref(), Some(body.as_str())]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n");
     Ok(MessageTemplate {
         name: row.get("name")?,
         placeholders: crate::mail::placeholders::placeholders(&named),

@@ -8,7 +8,15 @@ use super::{
 
 /// The table's header, the field names `message followup list` prints.
 const HEADER: &[&str] = &[
-    "outbound_id", "mailbox_id", "recipients", "subject", "sent_at", "due_at", "state", "answer", "answered_at",
+    "outbound_id",
+    "mailbox_id",
+    "recipients",
+    "subject",
+    "sent_at",
+    "due_at",
+    "state",
+    "answer",
+    "answered_at",
 ];
 
 /// Every follow-up as one row under the header, in the order given; an

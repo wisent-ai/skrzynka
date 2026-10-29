@@ -25,10 +25,22 @@ impl AppState {
     /// fills is the template's own refusal, naming the follow-up; a
     /// recipient a send would refuse is `FOLLOW_UP_INVALID` naming every
     /// such address. None of them keeps a draft.
-    pub fn nudge_follow_ups(&self, organization_id: &str, filter: &FollowUpFilter, template: &str) -> Result<Vec<Draft>, AppError> {
-        let invalid = |message: String| AppError::invalid("FOLLOW_UP_INVALID", format!("{message}; nothing was drafted"));
+    pub fn nudge_follow_ups(
+        &self,
+        organization_id: &str,
+        filter: &FollowUpFilter,
+        template: &str,
+    ) -> Result<Vec<Draft>, AppError> {
+        let invalid = |message: String| {
+            AppError::invalid(
+                "FOLLOW_UP_INVALID",
+                format!("{message}; nothing was drafted"),
+            )
+        };
         if filter.state == Some(FollowUpState::Answered) {
-            return Err(invalid("an answered follow-up is owed nothing; nudge those waiting or due".to_string()));
+            return Err(invalid(
+                "an answered follow-up is owed nothing; nudge those waiting or due".to_string(),
+            ));
         }
         let named = self.template(organization_id, template)?.placeholders;
         let owed: Vec<_> = self
@@ -37,18 +49,25 @@ impl AppState {
             .filter(|follow_up| follow_up.state != FollowUpState::Answered)
             .collect();
         if owed.is_empty() {
-            return Err(invalid("no follow-up the filter keeps is owed an answer".to_string()));
+            return Err(invalid(
+                "no follow-up the filter keeps is owed an answer".to_string(),
+            ));
         }
         let mut drafts = Vec::new();
         let mut addressed = Vec::new();
         for follow_up in owed {
             let sent = self.get_outbound(organization_id, follow_up.outbound_id)?;
             let about = |error: AppError| AppError {
-                message: format!("the follow-up of {} ({:?}): {}", sent.id, sent.subject, error.message),
+                message: format!(
+                    "the follow-up of {} ({:?}): {}",
+                    sent.id, sent.subject, error.message
+                ),
                 ..error
             };
             let values = stated(&sent, &follow_up.due_at, &named);
-            let filled = self.render_template(organization_id, template, &values, None).map_err(about)?;
+            let filled = self
+                .render_template(organization_id, template, &values, None)
+                .map_err(about)?;
             let to = stored_addresses(&sent.recipients);
             let cc = sent.cc.as_deref().map(stored_addresses);
             addressed.extend(to.iter().cloned());
@@ -57,14 +76,30 @@ impl AppState {
                 Some(written) => written,
                 None => replied(&sent.subject),
             };
-            let change = DraftChange { to: Some(to), cc, bcc: None, subject: Some(subject), body: Some(filled.body), attachments: None };
+            let change = DraftChange {
+                to: Some(to),
+                cc,
+                bcc: None,
+                subject: Some(subject),
+                body: Some(filled.body),
+                attachments: None,
+            };
             drafts.push(drafted(sent.mailbox_id, change)?);
         }
         let refused = self.unsendable(organization_id, &addressed)?;
         if !refused.is_empty() {
-            return Err(invalid(format!("a send would refuse {}; narrow the follow-ups or clear them", refused.join(", "))));
+            return Err(invalid(format!(
+                "a send would refuse {}; narrow the follow-ups or clear them",
+                refused.join(", ")
+            )));
         }
-        drafts.iter().map(|draft| self.database.create_draft(organization_id, draft.mailbox_id, draft)).collect()
+        drafts
+            .iter()
+            .map(|draft| {
+                self.database
+                    .create_draft(organization_id, draft.mailbox_id, draft)
+            })
+            .collect()
     }
 }
 

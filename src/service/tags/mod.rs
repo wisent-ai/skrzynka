@@ -102,20 +102,34 @@ impl AppState {
     /// belongs to, as `message thread` lists it, and answer which messages
     /// they were: a label on a whole conversation. Later mail of it is not
     /// tagged by this; a tag rule tags arriving mail.
-    pub fn retag_thread(&self, organization_id: &str, id: Uuid, request: RetagRequest) -> Result<RetaggedThread, AppError> {
+    pub fn retag_thread(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        request: RetagRequest,
+    ) -> Result<RetaggedThread, AppError> {
         let (add, remove) = validated(&request)?;
         let mut messages = Vec::new();
         for message in self.message_thread(organization_id, id)? {
-            self.database.retag_message(organization_id, message.id, &add, &remove)?;
+            self.database
+                .retag_message(organization_id, message.id, &add, &remove)?;
             messages.push(message.id);
         }
-        Ok(RetaggedThread { thread: id, messages })
+        Ok(RetaggedThread {
+            thread: id,
+            messages,
+        })
     }
 
     /// Rename a tag everywhere the organization uses it: on its messages
     /// (merged into `to` where a message carries both), in its tag rules and
     /// in its saved views. A tag none of them uses is `MESSAGE_TAG_NOT_FOUND`.
-    pub fn rename_tag(&self, organization_id: &str, from: &str, to: &str) -> Result<TagChange, AppError> {
+    pub fn rename_tag(
+        &self,
+        organization_id: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<TagChange, AppError> {
         let (from, to) = (normalized_tag(from)?, normalized_tag(to)?);
         if from == to {
             return Err(AppError::invalid(
@@ -123,13 +137,26 @@ impl AppState {
                 format!("{from:?} is already the tag's name; name another"),
             ));
         }
-        let ruled = self.database.tag_rules(organization_id)?.iter().any(|rule| rule.tag == from);
-        let viewed = self.views(organization_id, None)?.iter().any(|view| view.filters.tag.as_deref() == Some(from.as_str()));
+        let ruled = self
+            .database
+            .tag_rules(organization_id)?
+            .iter()
+            .any(|rule| rule.tag == from);
+        let viewed = self
+            .views(organization_id, None)?
+            .iter()
+            .any(|view| view.filters.tag.as_deref() == Some(from.as_str()));
         if !ruled && !viewed && !self.tag_in_use(organization_id, &from)? {
             return Err(unused(&from));
         }
         let (messages, rules, views) = self.database.rename_tag(organization_id, &from, &to)?;
-        Ok(TagChange { tag: from, to: Some(to), messages, rules: Some(rules), views: Some(views) })
+        Ok(TagChange {
+            tag: from,
+            to: Some(to),
+            messages,
+            rules: Some(rules),
+            views: Some(views),
+        })
     }
 
     /// Take a tag off every message of the organization. Tag rules and saved
@@ -140,11 +167,21 @@ impl AppState {
             return Err(unused(&tag));
         }
         let messages = self.database.remove_tag(organization_id, &tag)?;
-        Ok(TagChange { tag, to: None, messages, rules: None, views: None })
+        Ok(TagChange {
+            tag,
+            to: None,
+            messages,
+            rules: None,
+            views: None,
+        })
     }
 
     fn tag_in_use(&self, organization_id: &str, tag: &str) -> Result<bool, AppError> {
-        Ok(self.database.list_tags(organization_id, None)?.iter().any(|(used, _)| used == tag))
+        Ok(self
+            .database
+            .list_tags(organization_id, None)?
+            .iter()
+            .any(|(used, _)| used == tag))
     }
 }
 

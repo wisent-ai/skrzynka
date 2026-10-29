@@ -28,8 +28,13 @@ impl AppState {
     /// address order. Reports not imported yet, those that state no
     /// recipient, and those received before the address was cleared name
     /// nobody.
-    pub fn bounced_addresses(&self, organization_id: &str) -> Result<Vec<BouncedAddress>, AppError> {
-        let messages = self.database.list_messages(organization_id, None, None, None)?;
+    pub fn bounced_addresses(
+        &self,
+        organization_id: &str,
+    ) -> Result<Vec<BouncedAddress>, AppError> {
+        let messages = self
+            .database
+            .list_messages(organization_id, None, None, None)?;
         let cleared = self.database.bounce_clearances(organization_id)?;
         // Each address's reports, newest first, as the stored mail is listed.
         // Both instants are stored by Skrzynka as RFC 3339 in UTC, so their
@@ -37,10 +42,16 @@ impl AppState {
         let mut reported: BTreeMap<String, Vec<(&Message, &RecipientOutcome)>> = BTreeMap::new();
         for message in &messages {
             for (address, outcome) in failed_recipients(message) {
-                if cleared.get(&address).is_some_and(|at| message.received_at <= *at) {
+                if cleared
+                    .get(&address)
+                    .is_some_and(|at| message.received_at <= *at)
+                {
                     continue;
                 }
-                reported.entry(address).or_default().push((message, outcome));
+                reported
+                    .entry(address)
+                    .or_default()
+                    .push((message, outcome));
             }
         }
         Ok(reported
@@ -62,12 +73,21 @@ impl AppState {
     /// `OUTBOUND_RECIPIENT_BOUNCED` when a stored bounce report says delivery
     /// to an address of `addressed` (lower case) failed for good, naming each
     /// one and the report; nothing is claimed. `allow_bounced` sends anyway.
-    pub(in crate::service) fn refuse_bounced(&self, organization_id: &str, addressed: &[String]) -> Result<(), AppError> {
+    pub(in crate::service) fn refuse_bounced(
+        &self,
+        organization_id: &str,
+        addressed: &[String],
+    ) -> Result<(), AppError> {
         let bounced: Vec<String> = self
             .bounced_addresses(organization_id)?
             .into_iter()
             .filter(|bounced| addressed.contains(&bounced.address))
-            .map(|bounced| format!("{} (report {}, {})", bounced.address, bounced.last_report_id, bounced.last_reported_at))
+            .map(|bounced| {
+                format!(
+                    "{} (report {}, {})",
+                    bounced.address, bounced.last_report_id, bounced.last_reported_at
+                )
+            })
             .collect();
         if bounced.is_empty() {
             return Ok(());
@@ -109,7 +129,11 @@ impl AppState {
         let listed: Vec<BouncedAddress> = self
             .bounced_addresses(organization_id)?
             .into_iter()
-            .filter(|entry| contains.as_deref().is_none_or(|part| entry.address.contains(part)))
+            .filter(|entry| {
+                contains
+                    .as_deref()
+                    .is_none_or(|part| entry.address.contains(part))
+            })
             .collect();
         if from.is_none() && to.is_none() {
             return Ok(listed);
@@ -133,7 +157,11 @@ impl AppState {
     /// count, so sends to it are no longer refused; a later report counts
     /// again. An address `message bounced` does not list is
     /// `BOUNCE_NOT_FOUND`, naming the ones it does.
-    pub fn clear_bounced(&self, organization_id: &str, address: &str) -> Result<ClearedBounce, AppError> {
+    pub fn clear_bounced(
+        &self,
+        organization_id: &str,
+        address: &str,
+    ) -> Result<ClearedBounce, AppError> {
         let address = address.trim().to_lowercase();
         let listed = self.bounced_addresses(organization_id)?;
         if !listed.iter().any(|entry| entry.address == address) {
@@ -149,8 +177,12 @@ impl AppState {
             ));
         }
         let cleared_at = chrono::Utc::now().to_rfc3339();
-        self.database.clear_bounced(organization_id, &address, &cleared_at)?;
-        Ok(ClearedBounce { address, cleared_at })
+        self.database
+            .clear_bounced(organization_id, &address, &cleared_at)?;
+        Ok(ClearedBounce {
+            address,
+            cleared_at,
+        })
     }
 
     /// Say every address `find_bounced` keeps for `since`, `until` and
@@ -184,8 +216,12 @@ impl AppState {
         listed
             .into_iter()
             .map(|entry| {
-                self.database.clear_bounced(organization_id, &entry.address, &cleared_at)?;
-                Ok(ClearedBounce { address: entry.address, cleared_at: cleared_at.clone() })
+                self.database
+                    .clear_bounced(organization_id, &entry.address, &cleared_at)?;
+                Ok(ClearedBounce {
+                    address: entry.address,
+                    cleared_at: cleared_at.clone(),
+                })
             })
             .collect()
     }
@@ -207,7 +243,12 @@ fn failed_recipients(message: &Message) -> Vec<(String, &RecipientOutcome)> {
     report
         .recipients
         .iter()
-        .filter(|outcome| outcome.action.as_deref().is_some_and(|action| action.trim().eq_ignore_ascii_case("failed")))
+        .filter(|outcome| {
+            outcome
+                .action
+                .as_deref()
+                .is_some_and(|action| action.trim().eq_ignore_ascii_case("failed"))
+        })
         .filter_map(|outcome| {
             let written = outcome.recipient.as_deref()?;
             let address = written.rsplit(';').next()?.trim().to_lowercase();

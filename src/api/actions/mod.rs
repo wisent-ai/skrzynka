@@ -35,7 +35,12 @@ pub(super) async fn move_message(
     auth.require_role(OrganizationRole::Member)?;
     Ok(Json(json!(
         state
-            .move_message(&auth.organization_id, parse_uuid(&id)?, request.folder, request.to)
+            .move_message(
+                &auth.organization_id,
+                parse_uuid(&id)?,
+                request.folder,
+                request.to
+            )
             .await?
     )))
 }
@@ -55,9 +60,10 @@ pub(super) async fn list_message_actions(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(
-        state.list_message_actions(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.list_message_actions(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// Changing mail at the provider is a member's act, as sending is.
@@ -117,7 +123,11 @@ pub(super) async fn mark_thread(
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
     let id = parse_uuid(&id)?;
-    Ok(Json(json!(state.act_on_thread(&auth.organization_id, id, request.mark_as.action()).await?)))
+    Ok(Json(json!(
+        state
+            .act_on_thread(&auth.organization_id, id, request.mark_as.action())
+            .await?
+    )))
 }
 
 /// `POST /v1/messages/:id/thread/move` with `{"folder": …}` or `{"to": …}`:
@@ -130,5 +140,9 @@ pub(super) async fn move_thread(
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
     let id = parse_uuid(&id)?;
-    Ok(Json(json!(state.move_thread(&auth.organization_id, id, request.folder, request.to).await?)))
+    Ok(Json(json!(
+        state
+            .move_thread(&auth.organization_id, id, request.folder, request.to)
+            .await?
+    )))
 }

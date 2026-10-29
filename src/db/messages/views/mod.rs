@@ -45,7 +45,9 @@ impl Database {
         filters: &SavedFilters,
     ) -> Result<SavedView, AppError> {
         let written = serde_json::to_string(filters).map_err(|error| {
-            AppError::internal(format!("view {name:?} could not be written as JSON: {error}"))
+            AppError::internal(format!(
+                "view {name:?} could not be written as JSON: {error}"
+            ))
         })?;
         let row = self.lock()?.query_row(
             "INSERT INTO saved_views (organization_id, name, filters, updated_at)
@@ -101,14 +103,22 @@ impl Database {
 
 /// A view row as stored: name, filters JSON, and when it was saved.
 fn stored(row: &Row<'_>) -> sql::Result<(String, String, String)> {
-    Ok((row.get("name")?, row.get("filters")?, row.get("updated_at")?))
+    Ok((
+        row.get("name")?,
+        row.get("filters")?,
+        row.get("updated_at")?,
+    ))
 }
 
 /// A stored view read back; filters that no longer read are refused with
 /// the view's name and the cause, never read as no filter.
-fn view_from_stored((name, filters, updated_at): (String, String, String)) -> Result<SavedView, AppError> {
+fn view_from_stored(
+    (name, filters, updated_at): (String, String, String),
+) -> Result<SavedView, AppError> {
     let filters = serde_json::from_str(&filters).map_err(|error| {
-        AppError::internal(format!("view {name:?} holds filters that do not read: {error}"))
+        AppError::internal(format!(
+            "view {name:?} holds filters that do not read: {error}"
+        ))
     })?;
     Ok(SavedView {
         name,

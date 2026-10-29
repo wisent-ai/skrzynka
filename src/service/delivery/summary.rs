@@ -79,8 +79,13 @@ impl AppState {
         let blocked = self.database.blocked_senders(organization_id)?;
         let muted = self.database.muted_identities(organization_id)?;
         let now = snoozes::instant(chrono::Utc::now());
-        let count = |kept: &dyn Fn(&Message) -> bool| messages.iter().filter(|message| kept(message)).count();
-        let senders: HashSet<String> = messages.iter().map(|message| message.sender.to_lowercase()).collect();
+        let count = |kept: &dyn Fn(&Message) -> bool| {
+            messages.iter().filter(|message| kept(message)).count()
+        };
+        let senders: HashSet<String> = messages
+            .iter()
+            .map(|message| message.sender.to_lowercase())
+            .collect();
         let mut first: Option<(chrono::DateTime<chrono::Utc>, &Message)> = None;
         let mut last: Option<(chrono::DateTime<chrono::Utc>, &Message)> = None;
         let mut days: BTreeMap<chrono::NaiveDate, Vec<&Message>> = BTreeMap::new();
@@ -118,7 +123,10 @@ impl AppState {
             last_received_at: last.map(|(_, message)| message.received_at.clone()),
             days: days
                 .into_iter()
-                .map(|(day, received)| ReceivedDay { day: day.to_string(), received: received.len() })
+                .map(|(day, received)| ReceivedDay {
+                    day: day.to_string(),
+                    received: received.len(),
+                })
                 .collect(),
         })
     }

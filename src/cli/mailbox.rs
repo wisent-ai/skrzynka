@@ -162,32 +162,58 @@ pub(super) async fn run_mailbox(
         MailboxCommand::List(ListArgs { inbound: true, .. }) => {
             print_json(&state.list_inbound_domains(organization)?)
         }
-        MailboxCommand::List(ListArgs { inbound: false, state: wanted, csv: None }) => {
-            print_json(&state.list_mailboxes(organization, wanted).await?)
-        }
-        MailboxCommand::List(ListArgs { inbound: false, state: wanted, csv: Some(path) }) => {
-            let file = NewFile { path: &path, exists: "MAILBOX_OUTPUT_EXISTS", invalid: "MAILBOX_OUTPUT_INVALID" };
+        MailboxCommand::List(ListArgs {
+            inbound: false,
+            state: wanted,
+            csv: None,
+        }) => print_json(&state.list_mailboxes(organization, wanted).await?),
+        MailboxCommand::List(ListArgs {
+            inbound: false,
+            state: wanted,
+            csv: Some(path),
+        }) => {
+            let file = NewFile {
+                path: &path,
+                exists: "MAILBOX_OUTPUT_EXISTS",
+                invalid: "MAILBOX_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
             let mailboxes = state.list_mailboxes(organization, wanted).await?;
             let table = Mailbox::table(&mailboxes);
             file.write(table.as_bytes())?;
-            print_json(&json!({ "path": path, "mailboxes": mailboxes.len(), "size_bytes": table.len() }))
+            print_json(
+                &json!({ "path": path, "mailboxes": mailboxes.len(), "size_bytes": table.len() }),
+            )
         }
         MailboxCommand::Show(MailboxRef { id }) => {
             print_json(&state.get_mailbox(organization, id).await?)
         }
-        MailboxCommand::Delivery(DeliveryArgs { window: WindowArgs { id, since, until }, days_csv, domains_csv }) => {
+        MailboxCommand::Delivery(DeliveryArgs {
+            window: WindowArgs { id, since, until },
+            days_csv,
+            domains_csv,
+        }) => {
             let written = match (days_csv, domains_csv) {
                 (Some(path), _) => Some((path, true)),
                 (None, Some(path)) => Some((path, false)),
                 (None, None) => None,
             };
             let Some((path, days)) = written else {
-                return print_json(&state.mailbox_delivery(organization, id, since.as_deref(), until.as_deref())?);
+                return print_json(&state.mailbox_delivery(
+                    organization,
+                    id,
+                    since.as_deref(),
+                    until.as_deref(),
+                )?);
             };
-            let file = NewFile { path: &path, exists: "DELIVERY_OUTPUT_EXISTS", invalid: "DELIVERY_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &path,
+                exists: "DELIVERY_OUTPUT_EXISTS",
+                invalid: "DELIVERY_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
-            let report = state.mailbox_delivery(organization, id, since.as_deref(), until.as_deref())?;
+            let report =
+                state.mailbox_delivery(organization, id, since.as_deref(), until.as_deref())?;
             let (table, rows) = match days {
                 true => (report.day_table(), report.days.len()),
                 false => (report.domain_table(), report.domains.len()),
@@ -195,16 +221,31 @@ pub(super) async fn run_mailbox(
             file.write(table.as_bytes())?;
             print_json(&json!({ "path": path, "rows": rows, "size_bytes": table.len() }))
         }
-        MailboxCommand::Summary(SummaryArgs { window: WindowArgs { id, since, until }, days_csv }) => {
+        MailboxCommand::Summary(SummaryArgs {
+            window: WindowArgs { id, since, until },
+            days_csv,
+        }) => {
             let Some(path) = days_csv else {
-                return print_json(&state.mailbox_summary(organization, id, since.as_deref(), until.as_deref())?);
+                return print_json(&state.mailbox_summary(
+                    organization,
+                    id,
+                    since.as_deref(),
+                    until.as_deref(),
+                )?);
             };
-            let file = NewFile { path: &path, exists: "SUMMARY_OUTPUT_EXISTS", invalid: "SUMMARY_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &path,
+                exists: "SUMMARY_OUTPUT_EXISTS",
+                invalid: "SUMMARY_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
-            let summary = state.mailbox_summary(organization, id, since.as_deref(), until.as_deref())?;
+            let summary =
+                state.mailbox_summary(organization, id, since.as_deref(), until.as_deref())?;
             let table = summary.day_table();
             file.write(table.as_bytes())?;
-            print_json(&json!({ "path": path, "rows": summary.days.len(), "size_bytes": table.len() }))
+            print_json(
+                &json!({ "path": path, "rows": summary.days.len(), "size_bytes": table.len() }),
+            )
         }
         MailboxCommand::Folders(MailboxRef { id }) => {
             print_json(&state.mailbox_folders(organization, id).await?)
@@ -216,7 +257,9 @@ pub(super) async fn run_mailbox(
             up_to,
             clear: false,
         }) => {
-            let warm_up = grow_by.zip(up_to).map(|(grow_by, up_to)| WarmUpRequest { grow_by, up_to });
+            let warm_up = grow_by
+                .zip(up_to)
+                .map(|(grow_by, up_to)| WarmUpRequest { grow_by, up_to });
             print_json(&state.set_mailbox_send_limit(organization, id, Some(per_day), warm_up)?)
         }
         MailboxCommand::Limit(LimitArgs {
@@ -233,13 +276,15 @@ pub(super) async fn run_mailbox(
             let text = super::message::read_body_file(&file, "SIGNATURE_INVALID")?;
             print_json(&state.set_mailbox_signature(organization, id, Some(&text))?)
         }
-        MailboxCommand::Signature(SignatureArgs { id, clear: true, .. }) => {
-            print_json(&state.set_mailbox_signature(organization, id, None)?)
-        }
+        MailboxCommand::Signature(SignatureArgs {
+            id, clear: true, ..
+        }) => print_json(&state.set_mailbox_signature(organization, id, None)?),
         MailboxCommand::Signature(SignatureArgs { id, .. }) => {
             print_json(&state.mailbox_signature(organization, id)?)
         }
-        MailboxCommand::Responder(args) => super::auto_replies::run_auto_reply(&state, organization, args).await,
+        MailboxCommand::Responder(args) => {
+            super::auto_replies::run_auto_reply(&state, organization, args).await
+        }
         MailboxCommand::Remove(RemoveArgs {
             id,
             inbound: true,

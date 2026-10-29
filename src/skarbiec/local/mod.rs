@@ -65,7 +65,8 @@ fn read(path: &Path) -> Result<Map<String, Value>, AppError> {
         Err(error) => return Err(unavailable(path, error)),
     };
     let owner = u32::from(libc::S_IRWXU);
-    let mode = metadata.permissions().mode() & u32::from(libc::S_IRWXU | libc::S_IRWXG | libc::S_IRWXO);
+    let mode =
+        metadata.permissions().mode() & u32::from(libc::S_IRWXU | libc::S_IRWXG | libc::S_IRWXO);
     if mode | owner != owner {
         return Err(unavailable(
             path,
@@ -89,8 +90,11 @@ fn write(path: &Path, items: &Map<String, Value>) -> Result<(), AppError> {
     })?;
     let staged = path.with_extension("tmp");
     std::fs::write(&staged, text).map_err(|error| unavailable(path, error))?;
-    std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(u32::from(libc::S_IRUSR | libc::S_IWUSR)))
-        .map_err(|error| unavailable(path, error))?;
+    std::fs::set_permissions(
+        &staged,
+        std::fs::Permissions::from_mode(u32::from(libc::S_IRUSR | libc::S_IWUSR)),
+    )
+    .map_err(|error| unavailable(path, error))?;
     std::fs::rename(&staged, path).map_err(|error| unavailable(path, error))
 }
 

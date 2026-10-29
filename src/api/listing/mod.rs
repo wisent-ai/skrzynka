@@ -69,7 +69,10 @@ pub(in crate::api) async fn messages_csv(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<MessageQuery>,
 ) -> Result<axum::response::Response, AppError> {
-    Ok(csv_file("messages.csv", crate::service::message_table(&listed(&state, &auth, query)?)))
+    Ok(csv_file(
+        "messages.csv",
+        crate::service::message_table(&listed(&state, &auth, query)?),
+    ))
 }
 
 /// A CSV table answered as a download: typed `text/csv` in UTF-8 and
@@ -81,7 +84,10 @@ pub(in crate::api) fn csv_file(name: &str, table: String) -> axum::response::Res
     };
     let headers = [
         (CONTENT_TYPE, "text/csv; charset=utf-8".to_string()),
-        (CONTENT_DISPOSITION, format!("attachment; filename=\"{name}\"")),
+        (
+            CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{name}\""),
+        ),
     ];
     (headers, table).into_response()
 }
@@ -118,7 +124,14 @@ fn listed(
         answered: query.answered,
         files_over: query.files_over,
     };
-    state.list_listing(&auth.organization_id, &filters, query.view.as_deref(), None, query.limit, query.offset)
+    state.list_listing(
+        &auth.organization_id,
+        &filters,
+        query.view.as_deref(),
+        None,
+        query.limit,
+        query.offset,
+    )
 }
 
 /// `GET /v1/replies?mailbox_id=&status=&since=&until=&contains=&attachment=&oldest_first=`,
@@ -143,7 +156,9 @@ pub(in crate::api) async fn list_all_replies(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<RepliesQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.all_replies(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(
+        state.all_replies(&auth.organization_id, &query.filter()?)?
+    )))
 }
 
 /// `GET /v1/replies/csv` with the same parameters: the replies kept as the
@@ -154,7 +169,10 @@ pub(in crate::api) async fn replies_csv(
     Query(query): Query<RepliesQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let replies = state.all_replies(&auth.organization_id, &query.filter()?)?;
-    Ok(csv_file("replies.csv", crate::service::reply_table(&replies)))
+    Ok(csv_file(
+        "replies.csv",
+        crate::service::reply_table(&replies),
+    ))
 }
 
 /// `POST /v1/replies/resend` with the listing's parameters and
@@ -173,7 +191,11 @@ pub(in crate::api) async fn resend_failed_replies(
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
     let filter = query.filter()?;
-    Ok(Json(json!(state.resend_failed_replies(&auth.organization_id, &filter, &request.idempotency_key).await?)))
+    Ok(Json(json!(
+        state
+            .resend_failed_replies(&auth.organization_id, &filter, &request.idempotency_key)
+            .await?
+    )))
 }
 
 impl RepliesQuery {
@@ -208,8 +230,17 @@ pub(in crate::api) async fn list_bounced(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<BouncedQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let (since, until, contains) = (query.since.as_deref(), query.until.as_deref(), query.contains.as_deref());
-    Ok(Json(json!(state.find_bounced(&auth.organization_id, since, until, contains)?)))
+    let (since, until, contains) = (
+        query.since.as_deref(),
+        query.until.as_deref(),
+        query.contains.as_deref(),
+    );
+    Ok(Json(json!(state.find_bounced(
+        &auth.organization_id,
+        since,
+        until,
+        contains
+    )?)))
 }
 
 /// `GET /v1/bounced/csv` with the listing's parameters: the addresses it
@@ -220,9 +251,16 @@ pub(in crate::api) async fn bounced_csv(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<BouncedQuery>,
 ) -> Result<axum::response::Response, AppError> {
-    let (since, until, contains) = (query.since.as_deref(), query.until.as_deref(), query.contains.as_deref());
+    let (since, until, contains) = (
+        query.since.as_deref(),
+        query.until.as_deref(),
+        query.contains.as_deref(),
+    );
     let addresses = state.find_bounced(&auth.organization_id, since, until, contains)?;
-    Ok(csv_file("bounced.csv", crate::service::bounced_table(&addresses)))
+    Ok(csv_file(
+        "bounced.csv",
+        crate::service::bounced_table(&addresses),
+    ))
 }
 
 /// `DELETE /v1/bounced/:address`: the address works again, as `message
@@ -233,7 +271,9 @@ pub(in crate::api) async fn clear_bounced(
     Path(address): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.clear_bounced(&auth.organization_id, &address)?)))
+    Ok(Json(json!(
+        state.clear_bounced(&auth.organization_id, &address)?
+    )))
 }
 
 /// `DELETE /v1/bounced?since=&until=&contains=` (at least one of them): every
@@ -245,6 +285,15 @@ pub(in crate::api) async fn clear_bounced_listed(
     Query(query): Query<BouncedQuery>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    let (since, until, contains) = (query.since.as_deref(), query.until.as_deref(), query.contains.as_deref());
-    Ok(Json(json!(state.clear_bounced_listed(&auth.organization_id, since, until, contains)?)))
+    let (since, until, contains) = (
+        query.since.as_deref(),
+        query.until.as_deref(),
+        query.contains.as_deref(),
+    );
+    Ok(Json(json!(state.clear_bounced_listed(
+        &auth.organization_id,
+        since,
+        until,
+        contains
+    )?)))
 }

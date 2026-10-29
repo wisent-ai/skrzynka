@@ -7,11 +7,7 @@ use super::{
     super::{outbound::checked_key, templates::PerMessage},
     AppState, ForwardRequest,
 };
-use crate::{
-    error::AppError,
-    mail::OutgoingAttachment,
-    models::OutboundMessage,
-};
+use crate::{error::AppError, mail::OutgoingAttachment, models::OutboundMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -70,15 +66,36 @@ impl AppState {
     /// view are refused before anything is sent; a message whose forward is
     /// refused (its original no longer at the provider, a recipient
     /// suppressed or bounced, the send limit reached) is named in `refused`.
-    pub async fn forward_view(&self, organization_id: &str, view: &str, request: ForwardViewRequest) -> Result<ForwardedView, AppError> {
+    pub async fn forward_view(
+        &self,
+        organization_id: &str,
+        view: &str,
+        request: ForwardViewRequest,
+    ) -> Result<ForwardedView, AppError> {
         let key = checked_key(&request.idempotency_key)?.to_string();
-        let text = PerMessage::chosen(&request.body, &request.template, &request.values, "FORWARD_BODY_INVALID")?;
+        let text = PerMessage::chosen(
+            &request.body,
+            &request.template,
+            &request.values,
+            "FORWARD_BODY_INVALID",
+        )?;
         let messages = self.list_view(organization_id, view, None, None)?;
-        let mut outcome = ForwardedView { view: view.trim().to_string(), forwarded: Vec::new(), refused: Vec::new() };
+        let mut outcome = ForwardedView {
+            view: view.trim().to_string(),
+            forwarded: Vec::new(),
+            refused: Vec::new(),
+        };
         for message in messages {
-            match self.forward_listed(organization_id, message.id, &key, &text, &request).await {
+            match self
+                .forward_listed(organization_id, message.id, &key, &text, &request)
+                .await
+            {
                 Ok(sent) => outcome.forwarded.push(sent),
-                Err(error) => outcome.refused.push(RefusedMessage { message_id: message.id, code: error.code, message: error.message }),
+                Err(error) => outcome.refused.push(RefusedMessage {
+                    message_id: message.id,
+                    code: error.code,
+                    message: error.message,
+                }),
             }
         }
         Ok(outcome)

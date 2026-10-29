@@ -77,10 +77,19 @@ pub fn machine_sent(source: &[u8]) -> Result<Option<String>, String> {
         return Ok(Some(format!("it states Precedence: {}", value.trim())));
     }
     if let Some(value) = headers.get_first_value("List-Id") {
-        return Ok(Some(format!("it came through the mailing list {}", value.trim())));
+        return Ok(Some(format!(
+            "it came through the mailing list {}",
+            value.trim()
+        )));
     }
-    if parsed.ctype.mimetype.eq_ignore_ascii_case("multipart/report") {
-        return Ok(Some("it is a delivery report (multipart/report)".to_string()));
+    if parsed
+        .ctype
+        .mimetype
+        .eq_ignore_ascii_case("multipart/report")
+    {
+        return Ok(Some(
+            "it is a delivery report (multipart/report)".to_string(),
+        ));
     }
     Ok(None)
 }

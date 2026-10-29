@@ -37,8 +37,24 @@ pub(super) struct AddArgs {
 
 impl AddArgs {
     fn rule(self) -> NewTagRule {
-        let AddArgs { tag, sender, list, contains, recipient, attachment, mailbox } = self;
-        NewTagRule { tag, sender, list, contains, recipient, attachment, mailbox }
+        let AddArgs {
+            tag,
+            sender,
+            list,
+            contains,
+            recipient,
+            attachment,
+            mailbox,
+        } = self;
+        NewTagRule {
+            tag,
+            sender,
+            list,
+            contains,
+            recipient,
+            attachment,
+            mailbox,
+        }
     }
 }
 
@@ -116,13 +132,20 @@ pub(super) struct ImportArgs {
 }
 
 /// The paused state and mailbox `rule list` and `rule export` keep.
-fn listing_filters(state: &AppState, organization: &str, listing: &ListArgs) -> Result<(Option<bool>, Option<Uuid>), AppError> {
+fn listing_filters(
+    state: &AppState,
+    organization: &str,
+    listing: &ListArgs,
+) -> Result<(Option<bool>, Option<Uuid>), AppError> {
     let wanted = match (listing.paused, listing.active) {
         (true, _) => Some(true),
         (_, true) => Some(false),
         _ => None,
     };
-    Ok((wanted, super::reading::chosen_mailbox(state, organization, listing.mailbox.clone())?))
+    Ok((
+        wanted,
+        super::reading::chosen_mailbox(state, organization, listing.mailbox.clone())?,
+    ))
 }
 
 pub(super) fn run_rule(
@@ -132,37 +155,58 @@ pub(super) fn run_rule(
 ) -> Result<(), AppError> {
     match command {
         RuleCommand::Add(rule) => print_json(&state.add_tag_rule(organization, rule.rule())?),
-        RuleCommand::Matches(RuleRef { id }) => print_json(&state.tag_rule_matches(organization, id)?),
+        RuleCommand::Matches(RuleRef { id }) => {
+            print_json(&state.tag_rule_matches(organization, id)?)
+        }
         RuleCommand::Update(UpdateArgs { id, rule }) => {
             print_json(&state.replace_tag_rule(organization, id, rule.rule())?)
         }
         RuleCommand::List(listing) => {
             let (wanted, mailbox_id) = listing_filters(state, organization, &listing)?;
-            print_json(&state.tag_rules(organization, listing.contains.as_deref(), wanted, mailbox_id)?)
+            print_json(&state.tag_rules(
+                organization,
+                listing.contains.as_deref(),
+                wanted,
+                mailbox_id,
+            )?)
         }
         RuleCommand::Export(ExportArgs { output, listing }) => {
-            let file = NewFile { path: &output, exists: "TAG_RULE_OUTPUT_EXISTS", invalid: "TAG_RULE_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &output,
+                exists: "TAG_RULE_OUTPUT_EXISTS",
+                invalid: "TAG_RULE_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
             let (wanted, mailbox_id) = listing_filters(state, organization, &listing)?;
             let contains = listing.contains.as_deref();
-            let rules = state.tag_rules(organization, contains, wanted, mailbox_id)?.len();
+            let rules = state
+                .tag_rules(organization, contains, wanted, mailbox_id)?
+                .len();
             let document = state.tag_rule_document(organization, contains, wanted, mailbox_id)?;
             file.write(document.as_bytes())?;
-            print_json(&serde_json::json!({ "path": output, "rules": rules, "size_bytes": document.len() }))
+            print_json(
+                &serde_json::json!({ "path": output, "rules": rules, "size_bytes": document.len() }),
+            )
         }
-        RuleCommand::Import(ImportArgs { input }) => {
-            print_json(&state.import_tag_rules(organization, &read_body_file(&input, "TAG_RULE_INVALID")?)?)
-        }
+        RuleCommand::Import(ImportArgs { input }) => print_json(
+            &state.import_tag_rules(organization, &read_body_file(&input, "TAG_RULE_INVALID")?)?,
+        ),
         RuleCommand::Show(RuleRef { id }) => print_json(&state.tag_rule(organization, id)?),
         RuleCommand::Copy(CopyArgs { id, tag, mailbox }) => {
             print_json(&state.copy_tag_rule(organization, id, &tag, mailbox.as_deref())?)
         }
-        RuleCommand::Pause(RuleRef { id }) => print_json(&state.pause_tag_rule(organization, id, true)?),
-        RuleCommand::Resume(RuleRef { id }) => print_json(&state.pause_tag_rule(organization, id, false)?),
+        RuleCommand::Pause(RuleRef { id }) => {
+            print_json(&state.pause_tag_rule(organization, id, true)?)
+        }
+        RuleCommand::Resume(RuleRef { id }) => {
+            print_json(&state.pause_tag_rule(organization, id, false)?)
+        }
         RuleCommand::Remove(RuleRef { id }) => {
             state.remove_tag_rule(organization, id)?;
             print_json(&serde_json::json!({ "removed": id }))
         }
-        RuleCommand::Apply(ApplyArgs { rule }) => print_json(&state.apply_tag_rules(organization, rule)?),
+        RuleCommand::Apply(ApplyArgs { rule }) => {
+            print_json(&state.apply_tag_rules(organization, rule)?)
+        }
     }
 }

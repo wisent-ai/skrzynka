@@ -30,7 +30,10 @@ impl AppState {
     ) -> Result<Mailbox, AppError> {
         let email = email.trim();
         Address::from_str(email).map_err(|cause| {
-            AppError::invalid("GMAIL_PROFILE_INVALID", format!("'{email}' is not a valid address: {cause}"))
+            AppError::invalid(
+                "GMAIL_PROFILE_INVALID",
+                format!("'{email}' is not a valid address: {cause}"),
+            )
         })?;
         let probe_key = format!("delegation-probe:{email}");
         self.resolver

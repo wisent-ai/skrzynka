@@ -16,12 +16,25 @@ pub struct CountedView {
 impl AppState {
     /// The views `views` keeps, each with how many stored messages it lists
     /// now, counted exactly as `message list --view` lists them.
-    pub fn counted_views(&self, organization_id: &str, contains: Option<&str>) -> Result<Vec<CountedView>, AppError> {
+    pub fn counted_views(
+        &self,
+        organization_id: &str,
+        contains: Option<&str>,
+    ) -> Result<Vec<CountedView>, AppError> {
         self.views(organization_id, contains)?
             .into_iter()
             .map(|view| {
-                let messages = self.list_messages(organization_id, view.filters.mailbox_id, view.filters.filters(), None, None)?;
-                Ok(CountedView { messages: messages.len(), view })
+                let messages = self.list_messages(
+                    organization_id,
+                    view.filters.mailbox_id,
+                    view.filters.filters(),
+                    None,
+                    None,
+                )?;
+                Ok(CountedView {
+                    messages: messages.len(),
+                    view,
+                })
             })
             .collect()
     }

@@ -12,7 +12,10 @@ use uuid::Uuid;
 /// for that message.
 pub(in crate::service) enum PerMessage<'a> {
     Body(&'a str),
-    Template { name: &'a str, values: &'a BTreeMap<String, String> },
+    Template {
+        name: &'a str,
+        values: &'a BTreeMap<String, String>,
+    },
 }
 
 impl<'a> PerMessage<'a> {
@@ -33,10 +36,17 @@ impl<'a> PerMessage<'a> {
 
     /// The text for stored message `message_id`; a template's own refusal
     /// (a placeholder nothing fills) is that message's.
-    pub(in crate::service) fn for_message(&self, state: &AppState, organization_id: &str, message_id: Uuid) -> Result<String, AppError> {
+    pub(in crate::service) fn for_message(
+        &self,
+        state: &AppState,
+        organization_id: &str,
+        message_id: Uuid,
+    ) -> Result<String, AppError> {
         match self {
             Self::Body(body) => Ok(body.to_string()),
-            Self::Template { name, values } => Ok(state.render_template(organization_id, name, values, Some(message_id))?.body),
+            Self::Template { name, values } => Ok(state
+                .render_template(organization_id, name, values, Some(message_id))?
+                .body),
         }
     }
 }

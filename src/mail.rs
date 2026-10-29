@@ -31,16 +31,16 @@ pub use authentication::AuthenticationVerdict;
 // What Skrzynka changes about one INBOX message at its provider.
 mod actions;
 pub use actions::{
-    act_on_message, ActionStatus, MarkMessageRequest, MarkState, MessageAction,
-    MoveMessageRequest, ProviderAction, SpecialUse,
+    act_on_message, ActionStatus, MarkMessageRequest, MarkState, MessageAction, MoveMessageRequest,
+    ProviderAction, SpecialUse,
 };
 // Files originated mail carries: checked, recorded and attached.
 mod outgoing;
+use outgoing::{parse_recipient, split_addresses};
 pub use outgoing::{
     prepare_attachments, quoted, signed, OutboundAttachment, OutgoingAttachment,
     PreparedAttachment, ReplyCopies,
 };
-use outgoing::{parse_recipient, split_addresses};
 // Messages being written, kept in Skrzynka until they are sent.
 mod drafts;
 pub use drafts::{placeholders, Draft, DraftChange, MessageTemplate};
@@ -50,8 +50,8 @@ pub use rules::{RuleSubject, TagRule};
 // Recipients no originated mail may be sent to.
 mod suppressions;
 pub use suppressions::{suppression_entry, Suppression};
-mod folders;
 mod automation;
+mod folders;
 pub use automation::{machine_sent, AutoReply, AutoReplyDecision};
 pub use folders::{append_message, list_folders, AppendOutcome, ProviderFolder};
 
@@ -115,9 +115,16 @@ pub fn send_reply(
         }
     }
     for (addresses, blind) in [(&copies.cc, false), (&copies.bcc, true)] {
-        for address in addresses.iter().filter(|address| !copied.contains(&address.to_lowercase())) {
+        for address in addresses
+            .iter()
+            .filter(|address| !copied.contains(&address.to_lowercase()))
+        {
             let recipient = parse_recipient(address)?;
-            builder = if blind { builder.bcc(recipient) } else { builder.cc(recipient) };
+            builder = if blind {
+                builder.bcc(recipient)
+            } else {
+                builder.cc(recipient)
+            };
         }
     }
     // A message that states no subject is answered with none: the reply
@@ -194,10 +201,17 @@ pub fn send_outbound(
     for recipient in recipients {
         builder = builder.to(parse_recipient(recipient)?);
     }
-    for (copies, blind) in [(outbound.cc.as_deref(), false), (outbound.bcc.as_deref(), true)] {
+    for (copies, blind) in [
+        (outbound.cc.as_deref(), false),
+        (outbound.bcc.as_deref(), true),
+    ] {
         for recipient in copies.map(split_addresses).into_iter().flatten() {
             let recipient = parse_recipient(recipient)?;
-            builder = if blind { builder.bcc(recipient) } else { builder.cc(recipient) };
+            builder = if blind {
+                builder.bcc(recipient)
+            } else {
+                builder.cc(recipient)
+            };
         }
     }
     let built = if attachments.is_empty() {

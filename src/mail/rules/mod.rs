@@ -63,13 +63,16 @@ impl TagRule {
             holds(message.body, part) || message.subject.is_some_and(|subject| holds(subject, part))
         });
         let addressed = self.recipient.as_deref().is_none_or(|part| {
-            message.to.is_some_and(|to| holds(to, part)) || message.cc.is_some_and(|cc| holds(cc, part))
+            message.to.is_some_and(|to| holds(to, part))
+                || message.cc.is_some_and(|cc| holds(cc, part))
         });
         let carried = self
             .attachment
             .as_deref()
             .is_none_or(|part| message.files.iter().any(|name| holds(name, part)));
-        let kept = self.mailbox_id.is_none_or(|mailbox_id| mailbox_id == message.mailbox_id);
+        let kept = self
+            .mailbox_id
+            .is_none_or(|mailbox_id| mailbox_id == message.mailbox_id);
         kept && from && listed && mentions && addressed && carried
     }
 }

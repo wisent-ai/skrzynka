@@ -19,7 +19,12 @@ impl Database {
 
     /// Store the entry with its reason, replacing the reason of one already
     /// there, and answer it.
-    pub fn suppress(&self, organization_id: &str, entry: &str, reason: Option<&str>) -> Result<Suppression, AppError> {
+    pub fn suppress(
+        &self,
+        organization_id: &str,
+        entry: &str,
+        reason: Option<&str>,
+    ) -> Result<Suppression, AppError> {
         self.lock()?
             .query_row(
                 "INSERT INTO suppressed_recipients (organization_id, entry, reason, added_at)
@@ -32,7 +37,11 @@ impl Database {
     }
 
     /// Remove the entry and answer what it was; absent when there was none.
-    pub fn unsuppress(&self, organization_id: &str, entry: &str) -> Result<Option<Suppression>, AppError> {
+    pub fn unsuppress(
+        &self,
+        organization_id: &str,
+        entry: &str,
+    ) -> Result<Option<Suppression>, AppError> {
         self.lock()?
             .query_row(
                 "DELETE FROM suppressed_recipients WHERE organization_id=$1 AND entry=$2

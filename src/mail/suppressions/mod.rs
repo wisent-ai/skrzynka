@@ -18,7 +18,8 @@ impl Suppression {
     /// Whether this entry suppresses `address` (lower case): it is the
     /// address, or the `@domain` the address ends with.
     pub fn covers(&self, address: &str) -> bool {
-        self.entry == address || (self.entry.starts_with('@') && address.ends_with(self.entry.as_str()))
+        self.entry == address
+            || (self.entry.starts_with('@') && address.ends_with(self.entry.as_str()))
     }
 }
 
@@ -30,7 +31,9 @@ pub fn suppression_entry(written: &str) -> Result<String, AppError> {
         Some((_, domain)) => {
             !domain.is_empty()
                 && !domain.contains('@')
-                && !entry.chars().any(|character| character.is_whitespace() || character == ',' || character == '<')
+                && !entry.chars().any(|character| {
+                    character.is_whitespace() || character == ',' || character == '<'
+                })
         }
         None => false,
     };

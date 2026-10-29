@@ -133,12 +133,32 @@ pub(super) fn list(state: &AppState, organization: &str, list: ListArgs) -> Resu
     };
     let (view, save_view) = (list.view.as_deref(), list.save_view.as_deref());
     let Some(path) = list.csv else {
-        return print_json(&state.list_listing(organization, &saved, view, save_view, list.limit, list.offset)?);
+        return print_json(&state.list_listing(
+            organization,
+            &saved,
+            view,
+            save_view,
+            list.limit,
+            list.offset,
+        )?);
     };
-    let file = NewFile { path: &path, exists: "MESSAGE_OUTPUT_EXISTS", invalid: "MESSAGE_OUTPUT_INVALID" };
+    let file = NewFile {
+        path: &path,
+        exists: "MESSAGE_OUTPUT_EXISTS",
+        invalid: "MESSAGE_OUTPUT_INVALID",
+    };
     file.refuse_occupied()?;
-    let messages = state.list_listing(organization, &saved, view, save_view, list.limit, list.offset)?;
+    let messages = state.list_listing(
+        organization,
+        &saved,
+        view,
+        save_view,
+        list.limit,
+        list.offset,
+    )?;
     let table = message_table(&messages);
     file.write(table.as_bytes())?;
-    print_json(&serde_json::json!({ "path": path, "messages": messages.len(), "size_bytes": table.len() }))
+    print_json(
+        &serde_json::json!({ "path": path, "messages": messages.len(), "size_bytes": table.len() }),
+    )
 }

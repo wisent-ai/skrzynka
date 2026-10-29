@@ -52,7 +52,11 @@ struct RestoreReport {
 pub(in crate::cli) async fn restore(
     state: &AppState,
     organization: &str,
-    RestoreArgs { mailbox, input, folder }: RestoreArgs,
+    RestoreArgs {
+        mailbox,
+        input,
+        folder,
+    }: RestoreArgs,
 ) -> Result<(), AppError> {
     let mailbox = state.resolve_mailbox(organization, &mailbox)?.id;
     let manifest = read_manifest(&input, "RESTORE_INPUT_INVALID")?;
@@ -63,7 +67,11 @@ pub(in crate::cli) async fn restore(
         refused: Vec::new(),
     };
     for entry in manifest.exported {
-        let refuse = |code: &'static str, message: String| NotRestored { file: entry.file.clone(), code, message };
+        let refuse = |code: &'static str, message: String| NotRestored {
+            file: entry.file.clone(),
+            code,
+            message,
+        };
         let source = match checked_file(&input, &entry) {
             Ok(source) => source,
             Err(FileFault::Unreadable(message)) => {
@@ -75,7 +83,10 @@ pub(in crate::cli) async fn restore(
                 continue;
             }
         };
-        match state.append_message(organization, mailbox, &folder, source).await {
+        match state
+            .append_message(organization, mailbox, &folder, source)
+            .await
+        {
             Ok(outcome) => report.restored.push(Restored {
                 file: entry.file.clone(),
                 message_id: outcome.message_id,
@@ -90,6 +101,9 @@ pub(in crate::cli) async fn restore(
     }
     Err(AppError::invalid(
         "RESTORE_INCOMPLETE",
-        format!("{} of the export's files were not restored; each is listed under refused", report.refused.len()),
+        format!(
+            "{} of the export's files were not restored; each is listed under refused",
+            report.refused.len()
+        ),
     ))
 }

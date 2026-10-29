@@ -35,7 +35,10 @@ fn pieces(body: &str) -> Vec<Piece<'_>> {
 }
 
 fn is_key(text: &str) -> bool {
-    !text.is_empty() && text.chars().all(|character| character.is_alphanumeric() || character == '_' || character == '-')
+    !text.is_empty()
+        && text
+            .chars()
+            .all(|character| character.is_alphanumeric() || character == '_' || character == '-')
 }
 
 /// Each key the text's placeholders name, in order of first appearance, once.
@@ -56,14 +59,21 @@ pub fn placeholders(body: &str) -> Vec<String> {
 /// across all of them together. A key with no value is
 /// `TEMPLATE_VALUE_MISSING`; a value for a key no text names is
 /// `TEMPLATE_VALUE_UNUSED`, so a misspelt key is never silently left out.
-pub fn fill<const N: usize>(name: &str, texts: [&str; N], values: &BTreeMap<String, String>) -> Result<[String; N], AppError> {
+pub fn fill<const N: usize>(
+    name: &str,
+    texts: [&str; N],
+    values: &BTreeMap<String, String>,
+) -> Result<[String; N], AppError> {
     let mut keys: Vec<String> = Vec::new();
     for key in texts.iter().flat_map(|text| placeholders(text)) {
         if !keys.contains(&key) {
             keys.push(key);
         }
     }
-    let missing: Vec<&String> = keys.iter().filter(|key| !values.contains_key(*key)).collect();
+    let missing: Vec<&String> = keys
+        .iter()
+        .filter(|key| !values.contains_key(*key))
+        .collect();
     if !missing.is_empty() {
         return Err(AppError::invalid(
             "TEMPLATE_VALUE_MISSING",

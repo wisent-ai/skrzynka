@@ -28,7 +28,11 @@ pub struct ImportedViews {
 impl AppState {
     /// The views `views` keeps for `contains` as the JSON document
     /// `import_views` reads: `[{name, mailbox, filters}]` in name order.
-    pub fn view_document(&self, organization_id: &str, contains: Option<&str>) -> Result<String, AppError> {
+    pub fn view_document(
+        &self,
+        organization_id: &str,
+        contains: Option<&str>,
+    ) -> Result<String, AppError> {
         let mut carried = Vec::new();
         for view in self.views(organization_id, contains)? {
             let mut filters = view.filters;
@@ -36,10 +40,15 @@ impl AppState {
                 Some(id) => Some(self.database.get_mailbox(organization_id, id)?.email),
                 None => None,
             };
-            carried.push(CarriedView { name: view.name, mailbox, filters });
+            carried.push(CarriedView {
+                name: view.name,
+                mailbox,
+                filters,
+            });
         }
-        serde_json::to_string_pretty(&carried)
-            .map_err(|error| AppError::internal(format!("the views could not be written as JSON: {error}")))
+        serde_json::to_string_pretty(&carried).map_err(|error| {
+            AppError::internal(format!("the views could not be written as JSON: {error}"))
+        })
     }
 
     /// Keep every view of a document `view_document` wrote. The whole
@@ -49,7 +58,11 @@ impl AppState {
     /// sets `filters.mailbox_id` or holds a view a save refuses is
     /// refused with that code (`VIEW_INVALID` for the document itself) and
     /// nothing changes.
-    pub fn import_views(&self, organization_id: &str, text: &str) -> Result<ImportedViews, AppError> {
+    pub fn import_views(
+        &self,
+        organization_id: &str,
+        text: &str,
+    ) -> Result<ImportedViews, AppError> {
         let carried: Vec<CarriedView> = serde_json::from_str(text).map_err(|error| {
             AppError::invalid(
                 "VIEW_INVALID",
@@ -57,7 +70,10 @@ impl AppState {
             )
         })?;
         if carried.is_empty() {
-            return Err(AppError::invalid("VIEW_INVALID", "the import holds no view; export some with message view export"));
+            return Err(AppError::invalid(
+                "VIEW_INVALID",
+                "the import holds no view; export some with message view export",
+            ));
         }
         let mut seen = BTreeSet::new();
         let mut checked = Vec::new();
@@ -66,7 +82,10 @@ impl AppState {
                 AppError::new(
                     refusal.status,
                     refusal.code,
-                    format!("the view {:?}: {}; nothing was imported", view.name, refusal.message),
+                    format!(
+                        "the view {:?}: {}; nothing was imported",
+                        view.name, refusal.message
+                    ),
                     refusal.retryable,
                 )
             };
@@ -78,7 +97,11 @@ impl AppState {
             }
             let mut filters = view.filters.clone();
             filters.mailbox_id = match view.mailbox.as_deref() {
-                Some(selector) => Some(self.resolve_mailbox(organization_id, selector).map_err(refused)?.id),
+                Some(selector) => Some(
+                    self.resolve_mailbox(organization_id, selector)
+                        .map_err(refused)?
+                        .id,
+                ),
                 None => None,
             };
             let name = checked_view(&view.name, &filters).map_err(refused)?;

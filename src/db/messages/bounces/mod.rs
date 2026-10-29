@@ -15,8 +15,7 @@ mod clearances;
 /// Every report of the given messages, with each recipient row; a report
 /// that names no recipient comes back as one row with every recipient column
 /// absent and is read as no recipient. Recipients come in address order.
-const SELECT_FOR_MESSAGES: &str =
-    "SELECT message_bounces.message_id AS message_id,
+const SELECT_FOR_MESSAGES: &str = "SELECT message_bounces.message_id AS message_id,
             message_bounces.original_message_id AS original_message_id,
             message_bounces.unreadable AS unreadable,
             outcomes.message_id IS NOT NULL AS has_recipient,
@@ -58,11 +57,13 @@ pub(super) fn attach(client: &Client, messages: &mut [Message]) -> Result<(), Ap
     })?;
     for row in rows {
         let (message_id, original_message_id, unreadable, outcome) = row?;
-        let report = by_message.entry(message_id).or_insert_with(|| BounceReport {
-            original_message_id,
-            recipients: Vec::new(),
-            unreadable,
-        });
+        let report = by_message
+            .entry(message_id)
+            .or_insert_with(|| BounceReport {
+                original_message_id,
+                recipients: Vec::new(),
+                unreadable,
+            });
         report.recipients.extend(outcome);
     }
     for message in messages.iter_mut() {

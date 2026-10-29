@@ -27,10 +27,17 @@ impl AppState {
     /// `contains`, only the tags holding the text. Blocked senders', snoozed
     /// and muted mail is counted as the stored tags are. A blank text, an
     /// unreadable instant or a backwards window is `MESSAGE_FILTER_INVALID`.
-    pub fn list_tags(&self, organization_id: &str, filter: &TagFilter) -> Result<Vec<TagCount>, AppError> {
-        let contains = super::super::messages::filter_value(filter.contains.as_deref(), "contains")?;
+    pub fn list_tags(
+        &self,
+        organization_id: &str,
+        filter: &TagFilter,
+    ) -> Result<Vec<TagCount>, AppError> {
+        let contains =
+            super::super::messages::filter_value(filter.contains.as_deref(), "contains")?;
         let counted = match filter.since.is_some() || filter.until.is_some() {
-            false => self.database.list_tags(organization_id, filter.mailbox_id)?,
+            false => self
+                .database
+                .list_tags(organization_id, filter.mailbox_id)?,
             true => {
                 let window = MessageFilters {
                     include_blocked: true,
@@ -42,13 +49,17 @@ impl AppState {
                 };
                 // Each tag with the messages in the window carrying it.
                 let mut carriers: BTreeMap<String, Vec<Uuid>> = BTreeMap::new();
-                for message in self.list_messages(organization_id, filter.mailbox_id, window, None, None)? {
+                for message in
+                    self.list_messages(organization_id, filter.mailbox_id, window, None, None)?
+                {
                     for tag in message.tags {
                         carriers.entry(tag).or_default().push(message.id);
                     }
                 }
-                let mut counted: Vec<(String, i64)> =
-                    carriers.into_iter().map(|(tag, messages)| (tag, messages.len() as i64)).collect();
+                let mut counted: Vec<(String, i64)> = carriers
+                    .into_iter()
+                    .map(|(tag, messages)| (tag, messages.len() as i64))
+                    .collect();
                 // Most used first; a stable sort keeps tags of one count in name order.
                 counted.sort_by(|first, second| second.1.cmp(&first.1));
                 counted
@@ -56,7 +67,11 @@ impl AppState {
         };
         Ok(counted
             .into_iter()
-            .filter(|(tag, _)| contains.as_deref().is_none_or(|part| tag.to_lowercase().contains(part)))
+            .filter(|(tag, _)| {
+                contains
+                    .as_deref()
+                    .is_none_or(|part| tag.to_lowercase().contains(part))
+            })
             .map(|(tag, messages)| TagCount { tag, messages })
             .collect())
     }
@@ -67,7 +82,10 @@ impl AppState {
 pub fn tag_table(tags: &[TagCount]) -> String {
     let mut table = super::super::tables::header(&["tag", "messages"]);
     for counted in tags {
-        table.push_str(&super::super::tables::row(&[counted.tag.clone(), counted.messages.to_string()]));
+        table.push_str(&super::super::tables::row(&[
+            counted.tag.clone(),
+            counted.messages.to_string(),
+        ]));
     }
     table
 }

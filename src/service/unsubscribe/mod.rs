@@ -27,11 +27,15 @@ impl AppState {
     /// before list headers were recorded are counted, not guessed into a
     /// list. A blank `contains` or an unreadable or backwards window is
     /// `MESSAGE_FILTER_INVALID`, before any mail is read.
-    pub fn list_subscriptions(&self, organization_id: &str, filter: &SubscriptionFilter) -> Result<Subscriptions, AppError> {
+    pub fn list_subscriptions(
+        &self,
+        organization_id: &str,
+        filter: &SubscriptionFilter,
+    ) -> Result<Subscriptions, AppError> {
         let narrowing = filter.checked()?;
-        let messages = self
-            .database
-            .list_messages(organization_id, filter.mailbox_id, None, None)?;
+        let messages =
+            self.database
+                .list_messages(organization_id, filter.mailbox_id, None, None)?;
         let attempts = self.database.list_unsubscribes(organization_id)?;
         let mut messages_not_read = Vec::new();
         // Each list's messages, newest first, in the order lists are first seen.
@@ -118,9 +122,13 @@ impl AppState {
         if !created {
             return Ok(attempt);
         }
-        let attempt =
-            self.database
-                .update_unsubscribe(attempt.id, DeliveryStatus::Sending, None, None, None)?;
+        let attempt = self.database.update_unsubscribe(
+            attempt.id,
+            DeliveryStatus::Sending,
+            None,
+            None,
+            None,
+        )?;
         let outcome = match chosen {
             UnsubscribeTarget::Mailto {
                 address,
@@ -206,7 +214,9 @@ impl AppState {
                 None,
                 None,
             ),
-            Err(error) if error.code == "SMTP_UNCERTAIN" || error.code == "UNSUBSCRIBE_UNCERTAIN" => {
+            Err(error)
+                if error.code == "SMTP_UNCERTAIN" || error.code == "UNSUBSCRIBE_UNCERTAIN" =>
+            {
                 self.database
                     .update_unsubscribe(
                         id,

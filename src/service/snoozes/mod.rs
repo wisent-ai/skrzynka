@@ -69,7 +69,11 @@ fn snooze_instant(until: &str) -> Result<String, AppError> {
 /// A span such as `2h`: a whole number and one unit letter, written after
 /// `sign` (`+` ahead of now, `-` back from it). A span that does not read so
 /// is refused with `code`, the refusal of the command that took it.
-pub(super) fn span_from_now(span: &str, sign: char, code: &'static str) -> Result<chrono::TimeDelta, AppError> {
+pub(super) fn span_from_now(
+    span: &str,
+    sign: char,
+    code: &'static str,
+) -> Result<chrono::TimeDelta, AppError> {
     let invalid = |why: String| {
         AppError::invalid(
             code,
@@ -81,7 +85,11 @@ pub(super) fn span_from_now(span: &str, sign: char, code: &'static str) -> Resul
     };
     let count: i64 = span[..span.len() - unit.len_utf8()]
         .parse()
-        .map_err(|error| invalid(format!("its count does not read as a whole number ({error})")))?;
+        .map_err(|error| {
+            invalid(format!(
+                "its count does not read as a whole number ({error})"
+            ))
+        })?;
     let delta = match unit {
         'm' => chrono::TimeDelta::try_minutes(count),
         'h' => chrono::TimeDelta::try_hours(count),
@@ -129,8 +137,13 @@ impl AppState {
     }
 
     /// Show the message in listings again now.
-    pub fn wake_message(&self, organization_id: &str, message_id: Uuid) -> Result<Message, AppError> {
-        self.database.snooze_message(organization_id, message_id, None)
+    pub fn wake_message(
+        &self,
+        organization_id: &str,
+        message_id: Uuid,
+    ) -> Result<Message, AppError> {
+        self.database
+            .snooze_message(organization_id, message_id, None)
     }
 
     /// Show every message the saved view `view` keeps that is snoozed now:
@@ -138,29 +151,52 @@ impl AppState {
     /// leaves it out. An unknown view is `VIEW_NOT_FOUND`.
     pub fn wake_view(&self, organization_id: &str, view: &str) -> Result<WokenView, AppError> {
         let saved = self.view(organization_id, view)?;
-        let filters = super::MessageFilters { include_snoozed: true, ..saved.filters.filters() };
+        let filters = super::MessageFilters {
+            include_snoozed: true,
+            ..saved.filters.filters()
+        };
         let now = instant(Utc::now());
         let mut messages = Vec::new();
-        for message in self.list_messages(organization_id, saved.filters.mailbox_id, filters, None, None)? {
+        for message in self.list_messages(
+            organization_id,
+            saved.filters.mailbox_id,
+            filters,
+            None,
+            None,
+        )? {
             if is_snoozed(&message, &now) {
-                self.database.snooze_message(organization_id, message.id, None)?;
+                self.database
+                    .snooze_message(organization_id, message.id, None)?;
                 messages.push(message.id);
             }
         }
-        Ok(WokenView { view: saved.name, messages })
+        Ok(WokenView {
+            view: saved.name,
+            messages,
+        })
     }
 
     /// Snooze every message of the conversation `id` belongs to, as
     /// `message thread` lists it, until `until`; the instant is checked once
     /// first. A reply arriving later is not snoozed by this.
-    pub fn snooze_thread(&self, organization_id: &str, id: Uuid, until: &str) -> Result<SnoozedThread, AppError> {
+    pub fn snooze_thread(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        until: &str,
+    ) -> Result<SnoozedThread, AppError> {
         let at = snooze_instant(until)?;
         let mut messages = Vec::new();
         for message in self.message_thread(organization_id, id)? {
-            self.database.snooze_message(organization_id, message.id, Some(at.as_str()))?;
+            self.database
+                .snooze_message(organization_id, message.id, Some(at.as_str()))?;
             messages.push(message.id);
         }
-        Ok(SnoozedThread { thread: id, until: Some(at), messages })
+        Ok(SnoozedThread {
+            thread: id,
+            until: Some(at),
+            messages,
+        })
     }
 
     /// Show every snoozed message of the conversation `id` belongs to again now.
@@ -169,11 +205,16 @@ impl AppState {
         let mut messages = Vec::new();
         for message in self.message_thread(organization_id, id)? {
             if is_snoozed(&message, &now) {
-                self.database.snooze_message(organization_id, message.id, None)?;
+                self.database
+                    .snooze_message(organization_id, message.id, None)?;
                 messages.push(message.id);
             }
         }
-        Ok(SnoozedThread { thread: id, until: None, messages })
+        Ok(SnoozedThread {
+            thread: id,
+            until: None,
+            messages,
+        })
     }
 }
 
@@ -194,7 +235,8 @@ impl AppState {
                 "the note holds no visible text; write one, or remove the note",
             ));
         }
-        self.database.set_message_note(organization_id, message_id, note)
+        self.database
+            .set_message_note(organization_id, message_id, note)
     }
 
     /// Add `text` to the message's note on a line of its own, or start the

@@ -251,5 +251,6 @@ pub struct CreateOutboundRequest {
 
 /// What a sync and the service report live with the mailbox they describe.
 pub use super::mailbox::{
-    HealthResponse, MailboxSyncResult, SkarbiecItemMetadata, StatusResponse, SyncAllSummary, SyncSummary,
+    HealthResponse, MailboxSyncResult, SkarbiecItemMetadata, StatusResponse, SyncAllSummary,
+    SyncSummary,
 };

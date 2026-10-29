@@ -97,13 +97,21 @@ impl AppState {
             if from >= to {
                 return Err(AppError::invalid(
                     "MESSAGE_FILTER_INVALID",
-                    format!("since {from} is not before until {to}; nothing could be sent between them"),
+                    format!(
+                        "since {from} is not before until {to}; nothing could be sent between them"
+                    ),
                 ));
             }
         }
-        let window = (since.map(|at| at.to_rfc3339()), until.map(|at| at.to_rfc3339()));
+        let window = (
+            since.map(|at| at.to_rfc3339()),
+            until.map(|at| at.to_rfc3339()),
+        );
         let mut kinds: Vec<DeliveryKind> = Vec::new();
-        for (kind, status, code, count) in self.database.delivery_counts(organization_id, mailbox_id, window.clone())? {
+        for (kind, status, code, count) in
+            self.database
+                .delivery_counts(organization_id, mailbox_id, window.clone())?
+        {
             let place = match kinds.iter().position(|entry| entry.kind == kind) {
                 Some(place) => place,
                 None => {
@@ -125,7 +133,11 @@ impl AppState {
                 DeliveryStatus::Uncertain => entry.uncertain += count,
             }
             if let Some(code) = code {
-                match entry.refusals.iter_mut().find(|refusal| refusal.code == code) {
+                match entry
+                    .refusals
+                    .iter_mut()
+                    .find(|refusal| refusal.code == code)
+                {
                     Some(refusal) => refusal.count += count,
                     None => entry.refusals.push(RefusalCount { code, count }),
                 }
@@ -136,7 +148,9 @@ impl AppState {
                 .refusals
                 .sort_by(|left, right| right.count.cmp(&left.count));
         }
-        let bounces = self.database.mailbox_bounces(organization_id, mailbox_id, window.clone())?;
+        let bounces = self
+            .database
+            .mailbox_bounces(organization_id, mailbox_id, window.clone())?;
         for entry in &mut kinds {
             let returned: BTreeSet<&str> = bounces
                 .iter()
@@ -146,8 +160,14 @@ impl AppState {
             entry.bounced = returned.len() as u64;
         }
         let mut days: BTreeMap<String, DeliveryDay> = BTreeMap::new();
-        for (day, status, count) in self.database.delivery_days(organization_id, mailbox_id, window.clone())? {
-            let entry = days.entry(day.clone()).or_insert_with(|| DeliveryDay { day, ..DeliveryDay::default() });
+        for (day, status, count) in
+            self.database
+                .delivery_days(organization_id, mailbox_id, window.clone())?
+        {
+            let entry = days.entry(day.clone()).or_insert_with(|| DeliveryDay {
+                day,
+                ..DeliveryDay::default()
+            });
             entry.total += count;
             match status {
                 DeliveryStatus::Sent => entry.sent += count,
@@ -170,10 +190,16 @@ impl AppState {
                 .with_timezone(&chrono::Utc)
                 .date_naive()
                 .to_string();
-            returned.entry(day).or_default().insert((bounce.kind.as_str(), bounce.send_id.as_str()));
+            returned
+                .entry(day)
+                .or_default()
+                .insert((bounce.kind.as_str(), bounce.send_id.as_str()));
         }
         for (day, sends) in returned {
-            let entry = days.entry(day.clone()).or_insert_with(|| DeliveryDay { day, ..DeliveryDay::default() });
+            let entry = days.entry(day.clone()).or_insert_with(|| DeliveryDay {
+                day,
+                ..DeliveryDay::default()
+            });
             entry.bounced = sends.len() as u64;
         }
         let domains = self.delivery_domains(organization_id, mailbox_id, since, until, &bounces)?;

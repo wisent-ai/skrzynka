@@ -2,10 +2,7 @@
 //! and on demand the mail already stored.
 
 use super::{tags::normalized_tag, AppState};
-use crate::{
-    error::AppError,
-    mail::TagRule,
-};
+use crate::{error::AppError, mail::TagRule};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -61,13 +58,22 @@ impl AppState {
             .tag_rules(organization_id)?
             .into_iter()
             .filter(|rule| paused.is_none_or(|wanted| rule.paused_at.is_some() == wanted))
-            .filter(|rule| mailbox_id.is_none_or(|wanted| rule.mailbox_id.is_none_or(|kept| kept == wanted)))
+            .filter(|rule| {
+                mailbox_id.is_none_or(|wanted| rule.mailbox_id.is_none_or(|kept| kept == wanted))
+            })
             .filter(|rule| {
                 contains.as_deref().is_none_or(|part| {
-                    [Some(&rule.tag), rule.sender.as_ref(), rule.list.as_ref(), rule.contains.as_ref(), rule.recipient.as_ref(), rule.attachment.as_ref()]
-                        .into_iter()
-                        .flatten()
-                        .any(|field| field.to_lowercase().contains(part))
+                    [
+                        Some(&rule.tag),
+                        rule.sender.as_ref(),
+                        rule.list.as_ref(),
+                        rule.contains.as_ref(),
+                        rule.recipient.as_ref(),
+                        rule.attachment.as_ref(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .any(|field| field.to_lowercase().contains(part))
                 })
             })
             .collect())
@@ -87,7 +93,12 @@ impl AppState {
     /// Replace a rule's tag, conditions and mailbox with `rule`, checked as
     /// a new one is, keeping its ID; the tags it already gave stay, and
     /// later imports tag by the new conditions.
-    pub fn replace_tag_rule(&self, organization_id: &str, id: Uuid, rule: NewTagRule) -> Result<TagRule, AppError> {
+    pub fn replace_tag_rule(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        rule: NewTagRule,
+    ) -> Result<TagRule, AppError> {
         let stored = self.checked_rule(organization_id, rule)?;
         self.database.replace_tag_rule(organization_id, id, &stored)
     }
@@ -95,7 +106,9 @@ impl AppState {
     /// The rule as it is stored: tag normalized, conditions trimmed and in
     /// lower case, mailbox resolved; a blank condition or none is refused.
     fn checked_rule(&self, organization_id: &str, rule: NewTagRule) -> Result<TagRule, AppError> {
-        let condition = |value: Option<String>, name: &str| match value.map(|text| text.trim().to_lowercase()) {
+        let condition = |value: Option<String>, name: &str| match value
+            .map(|text| text.trim().to_lowercase())
+        {
             Some(text) if text.is_empty() => Err(AppError::invalid(
                 "TAG_RULE_INVALID",
                 format!("the {name} condition is empty; name what it must contain or leave it out"),
@@ -118,7 +131,13 @@ impl AppState {
             created_at: String::new(),
             paused_at: None,
         };
-        let conditions = [&stored.sender, &stored.list, &stored.contains, &stored.recipient, &stored.attachment];
+        let conditions = [
+            &stored.sender,
+            &stored.list,
+            &stored.contains,
+            &stored.recipient,
+            &stored.attachment,
+        ];
         if conditions.iter().all(|condition| condition.is_none()) {
             return Err(AppError::invalid(
                 "TAG_RULE_INVALID",
@@ -131,7 +150,12 @@ impl AppState {
     /// One rule the organization holds, as `rule list` prints it; an ID it
     /// does not hold is `NOT_FOUND`.
     pub fn tag_rule(&self, organization_id: &str, id: Uuid) -> Result<TagRule, AppError> {
-        match self.database.tag_rules(organization_id)?.into_iter().find(|rule| rule.id == id) {
+        match self
+            .database
+            .tag_rules(organization_id)?
+            .into_iter()
+            .find(|rule| rule.id == id)
+        {
             Some(rule) => Ok(rule),
             None => Err(AppError::not_found("tag rule")),
         }
@@ -142,7 +166,13 @@ impl AppState {
     /// every mailbox as the rule is; checked as `rule add` checks a new rule.
     /// The rule copied is left as it was; an ID the organization does not
     /// hold is `NOT_FOUND`.
-    pub fn copy_tag_rule(&self, organization_id: &str, id: Uuid, tag: &str, mailbox: Option<&str>) -> Result<TagRule, AppError> {
+    pub fn copy_tag_rule(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        tag: &str,
+        mailbox: Option<&str>,
+    ) -> Result<TagRule, AppError> {
         let rule = self.tag_rule(organization_id, id)?;
         let mailbox = match mailbox {
             Some(selector) => Some(selector.to_string()),
@@ -169,7 +199,12 @@ impl AppState {
     /// Stop the rule tagging imported mail without losing it, or with
     /// `paused: false` let it tag again; the tags it already gave stay. Mail
     /// imported while it was paused is tagged by `rule apply --rule <ID>`.
-    pub fn pause_tag_rule(&self, organization_id: &str, id: Uuid, paused: bool) -> Result<TagRule, AppError> {
+    pub fn pause_tag_rule(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        paused: bool,
+    ) -> Result<TagRule, AppError> {
         self.database.pause_tag_rule(organization_id, id, paused)
     }
 
@@ -178,7 +213,11 @@ impl AppState {
     /// blocked senders' mail included, and answer the matches; paused rules
     /// are skipped. With `only`, by that one rule alone, paused or not, which
     /// the organization must hold.
-    pub fn apply_tag_rules(&self, organization_id: &str, only: Option<Uuid>) -> Result<RulesApplied, AppError> {
+    pub fn apply_tag_rules(
+        &self,
+        organization_id: &str,
+        only: Option<Uuid>,
+    ) -> Result<RulesApplied, AppError> {
         let rules: Vec<TagRule> = self
             .database
             .tag_rules(organization_id)?

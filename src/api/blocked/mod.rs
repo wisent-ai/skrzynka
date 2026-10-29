@@ -14,7 +14,8 @@ use serde_json::{json, Value};
 
 mod suppressed;
 pub(in crate::api) use suppressed::{
-    check_recipients, export_suppressed, import_suppressed, list_suppressed, suppress, suppressed_csv, unsuppress,
+    check_recipients, export_suppressed, import_suppressed, list_suppressed, suppress,
+    suppressed_csv, unsuppress,
 };
 
 /// `POST /v1/blocked` with `{address}`: an address, or `@domain`.
@@ -75,7 +76,10 @@ pub(in crate::api) async fn blocked_csv(
     Query(query): Query<BlockedQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let counts = state.blocked_counts(&auth.organization_id, query.contains.as_deref())?;
-    Ok(super::listing::csv_file("blocked.csv", crate::service::blocked_table(&counts)))
+    Ok(super::listing::csv_file(
+        "blocked.csv",
+        crate::service::blocked_table(&counts),
+    ))
 }
 
 pub(in crate::api) async fn block_sender(
@@ -102,7 +106,9 @@ pub(in crate::api) async fn import_blocked(
     Json(request): Json<ImportBlocked>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.import_blocked(&auth.organization_id, &request.text)?)))
+    Ok(Json(json!(
+        state.import_blocked(&auth.organization_id, &request.text)?
+    )))
 }
 
 /// `DELETE /v1/blocked/:address`: the address or `@domain`, URL-encoded.

@@ -179,7 +179,9 @@ fn attempt_from_row(row: &Row<'_>) -> sql::Result<UnsubscribeAttempt> {
         message_id: parse_uuid(row.get::<_, String>("message_id")?)?,
         idempotency_key: row.get("idempotency_key")?,
         method: UnsubscribeMethod::parse(&row.get::<_, String>("method")?).map_err(|error| {
-            sql::Error::Conversion(format!("column method holds no unsubscribe method: {error}"))
+            sql::Error::Conversion(format!(
+                "column method holds no unsubscribe method: {error}"
+            ))
         })?,
         target: row.get("target")?,
         status: row

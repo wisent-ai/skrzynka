@@ -32,7 +32,9 @@ fn starting_point(query: &WatchQuery, headers: &HeaderMap) -> Result<Option<i64>
     if query.after.is_some() {
         return Ok(query.after);
     }
-    let Some(header) = headers.get("last-event-id") else { return Ok(None) };
+    let Some(header) = headers.get("last-event-id") else {
+        return Ok(None);
+    };
     let refused = |cause: String| {
         AppError::new(
             StatusCode::BAD_REQUEST,
@@ -41,8 +43,13 @@ fn starting_point(query: &WatchQuery, headers: &HeaderMap) -> Result<Option<i64>
             false,
         )
     };
-    let text = header.to_str().map_err(|error| refused(format!("it is not text: {error}")))?;
-    text.trim().parse::<i64>().map(Some).map_err(|error| refused(format!("{text:?} is not a whole number: {error}")))
+    let text = header
+        .to_str()
+        .map_err(|error| refused(format!("it is not text: {error}")))?;
+    text.trim()
+        .parse::<i64>()
+        .map(Some)
+        .map_err(|error| refused(format!("{text:?} is not a whole number: {error}")))
 }
 
 pub(super) async fn watch_messages(
@@ -63,9 +70,18 @@ pub(super) async fn watch_messages(
             let events = match batch {
                 Ok(batch) => batch
                     .iter()
-                    .map(|each| Event::default().event("message").id(each.stored_order.to_string()).json_data(each))
+                    .map(|each| {
+                        Event::default()
+                            .event("message")
+                            .id(each.stored_order.to_string())
+                            .json_data(each)
+                    })
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(|error| AppError::internal(format!("a watched message could not be written as JSON: {error}"))),
+                    .map_err(|error| {
+                        AppError::internal(format!(
+                            "a watched message could not be written as JSON: {error}"
+                        ))
+                    }),
                 Err(error) => Err(error),
             };
             match events {
@@ -78,7 +94,9 @@ pub(super) async fn watch_messages(
                 }
                 Err(error) => {
                     let refusal = json!({"code": error.code, "message": error.message, "retryable": error.retryable});
-                    let _client_may_be_gone = sender.send(Ok(Event::default().event("refused").data(refusal.to_string())));
+                    let _client_may_be_gone = sender.send(Ok(Event::default()
+                        .event("refused")
+                        .data(refusal.to_string())));
                     return;
                 }
             }

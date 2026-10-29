@@ -99,7 +99,11 @@ impl Database {
         let session = self.lock()?;
         let count = |sql: &str| -> Result<usize, AppError> {
             let value = session.query_row(sql, [organization_id], |row| row.get::<_, i64>(0))?;
-            usize::try_from(value).map_err(|cause| AppError::internal(format!("the fleet database counted {value}, which is no count: {cause}")))
+            usize::try_from(value).map_err(|cause| {
+                AppError::internal(format!(
+                    "the fleet database counted {value}, which is no count: {cause}"
+                ))
+            })
         };
         let mailboxes = count("SELECT COUNT(*) FROM mailboxes WHERE organization_id=$1")?;
         let enabled = count("SELECT COUNT(*) FROM mailboxes WHERE organization_id=$1 AND enabled")?;

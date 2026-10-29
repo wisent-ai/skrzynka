@@ -59,7 +59,11 @@ impl AppState {
     ) -> Result<OutboundMessage, AppError> {
         prepare_attachments(&request.attachments)?;
         // An unreadable follow-up is refused before the provider is read.
-        request.follow_up.as_deref().map(super::follow_ups::due_instant).transpose()?;
+        request
+            .follow_up
+            .as_deref()
+            .map(super::follow_ups::due_instant)
+            .transpose()?;
         let message = self.database.get_message(organization_id, message_id)?;
         let source = self.message_source(organization_id, message_id).await?;
         let subject = match message.subject.as_deref().map(str::trim) {
@@ -81,7 +85,9 @@ impl AppState {
                 bcc: request.bcc,
                 subject,
                 body: request.body,
-                attachments: std::iter::once(original).chain(request.attachments).collect(),
+                attachments: std::iter::once(original)
+                    .chain(request.attachments)
+                    .collect(),
                 allow_bounced: request.allow_bounced,
                 follow_up: request.follow_up,
             },

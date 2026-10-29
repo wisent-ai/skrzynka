@@ -48,7 +48,10 @@ impl AppState {
             let entry = suppression_entry(written).map_err(|refusal| {
                 AppError::invalid(
                     "SUPPRESSION_INVALID",
-                    format!("the import line {line:?}: {}; nothing was imported", refusal.message),
+                    format!(
+                        "the import line {line:?}: {}; nothing was imported",
+                        refusal.message
+                    ),
                 )
             })?;
             read.push((entry, own.filter(|own| !own.is_empty()).or(reason)));
@@ -69,8 +72,14 @@ impl AppState {
     /// The entries `filter` keeps as the text `import_suppressions` reads:
     /// one entry per line in entry order, its reason after a space when it
     /// has one, under a `#` line saying what the file is.
-    pub fn suppression_text(&self, organization_id: &str, filter: &SuppressionFilter) -> Result<String, AppError> {
-        let mut text = String::from("# Skrzynka suppression list: an address or @domain per line, its reason after it\n");
+    pub fn suppression_text(
+        &self,
+        organization_id: &str,
+        filter: &SuppressionFilter,
+    ) -> Result<String, AppError> {
+        let mut text = String::from(
+            "# Skrzynka suppression list: an address or @domain per line, its reason after it\n",
+        );
         for kept in self.find_suppressions(organization_id, filter)? {
             text.push_str(&kept.entry);
             if let Some(reason) = kept.reason.as_deref() {

@@ -36,7 +36,9 @@ pub(in crate::api) async fn find_files(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<FileQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.find_files(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(
+        state.find_files(&auth.organization_id, &query.filter()?)?
+    )))
 }
 
 /// `GET /v1/attachments/csv` with the same parameters: the files found as
@@ -48,7 +50,10 @@ pub(in crate::api) async fn files_csv(
     Query(query): Query<FileQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let files = state.find_files(&auth.organization_id, &query.filter()?)?;
-    Ok(super::csv_file("attachments.csv", crate::service::file_table(&files)))
+    Ok(super::csv_file(
+        "attachments.csv",
+        crate::service::file_table(&files),
+    ))
 }
 
 impl FileQuery {

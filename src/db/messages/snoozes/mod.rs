@@ -26,8 +26,10 @@ impl Database {
                 )?;
             }
             None => {
-                self.lock()?
-                    .execute("DELETE FROM message_snoozes WHERE message_id=$1", params![id])?;
+                self.lock()?.execute(
+                    "DELETE FROM message_snoozes WHERE message_id=$1",
+                    params![id],
+                )?;
             }
         }
         self.get_message(organization_id, message_id)
@@ -52,7 +54,10 @@ impl Database {
 
 /// Fill in `snoozed_until` for every message in `messages` that is snoozed.
 pub(super) fn attach(client: &Client, messages: &mut [Message]) -> Result<(), AppError> {
-    let ids: Vec<String> = messages.iter().map(|message| message.id.to_string()).collect();
+    let ids: Vec<String> = messages
+        .iter()
+        .map(|message| message.id.to_string())
+        .collect();
     if ids.is_empty() {
         return Ok(());
     }
@@ -61,7 +66,10 @@ pub(super) fn attach(client: &Client, messages: &mut [Message]) -> Result<(), Ap
     )?;
     let mut by_message: HashMap<String, String> = HashMap::new();
     for row in statement.query_map(params![ids], |row| {
-        Ok((row.get::<_, String>("message_id")?, row.get::<_, String>("until")?))
+        Ok((
+            row.get::<_, String>("message_id")?,
+            row.get::<_, String>("until")?,
+        ))
     })? {
         let (message_id, until) = row?;
         by_message.insert(message_id, until);

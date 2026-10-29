@@ -66,13 +66,24 @@ impl MessageWatch {
     /// stored and being read is passed over, as it is no longer stored.
     pub async fn next(&mut self) -> Result<Vec<WatchedMessage>, AppError> {
         loop {
-            let stored = self.state.database.stored_after(&self.organization_id, self.mailbox_id, self.after)?;
+            let stored = self.state.database.stored_after(
+                &self.organization_id,
+                self.mailbox_id,
+                self.after,
+            )?;
             if let Some(last) = stored.last() {
                 self.after = Some(last.stored_order);
                 let mut watched = Vec::with_capacity(stored.len());
                 for each in stored {
-                    match self.state.database.get_message(&self.organization_id, each.message_id) {
-                        Ok(message) => watched.push(WatchedMessage { stored_order: each.stored_order, message }),
+                    match self
+                        .state
+                        .database
+                        .get_message(&self.organization_id, each.message_id)
+                    {
+                        Ok(message) => watched.push(WatchedMessage {
+                            stored_order: each.stored_order,
+                            message,
+                        }),
                         Err(error) if error.status == StatusCode::NOT_FOUND => {}
                         Err(error) => return Err(error),
                     }
@@ -89,14 +100,19 @@ impl MessageWatch {
     /// The fleet database's next announcement of stored mail, heard through
     /// `next_received`, which reports what it listens for while it does.
     async fn hear_announcement(&mut self) -> Result<(), AppError> {
-        let subscription = self
-            .subscription
-            .take()
-            .ok_or_else(|| AppError::internal("the watch lost its announcement subscription after an earlier failure"))?;
+        let subscription = self.subscription.take().ok_or_else(|| {
+            AppError::internal(
+                "the watch lost its announcement subscription after an earlier failure",
+            )
+        })?;
         let database = self.state.database.clone();
         let heard = tokio::task::spawn_blocking(move || database.next_received(subscription))
             .await
-            .map_err(|stopped| AppError::internal(format!("the watch's listening for stored mail stopped: {stopped}")))??;
+            .map_err(|stopped| {
+                AppError::internal(format!(
+                    "the watch's listening for stored mail stopped: {stopped}"
+                ))
+            })??;
         self.subscription = Some(heard);
         Ok(())
     }

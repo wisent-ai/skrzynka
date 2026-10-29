@@ -34,7 +34,11 @@ pub(super) struct ForwardArgs {
     #[arg(long = "bcc")]
     bcc: Vec<String>,
     /// File holding the text sent above the attached original.
-    #[arg(long, required_unless_present = "template", conflicts_with = "template")]
+    #[arg(
+        long,
+        required_unless_present = "template",
+        conflicts_with = "template"
+    )]
     body_file: Option<PathBuf>,
     /// A template whose text is sent above the original, as `message template list` names it.
     #[arg(long)]
@@ -69,7 +73,11 @@ pub(super) async fn forward(
             to: args.to,
             cc: args.cc,
             bcc: args.bcc,
-            body: args.body_file.as_deref().map(|path| read_body_file(path, "OUTBOUND_FILE_INVALID")).transpose()?,
+            body: args
+                .body_file
+                .as_deref()
+                .map(|path| read_body_file(path, "OUTBOUND_FILE_INVALID"))
+                .transpose()?,
             template: args.template,
             values: values(&args.set)?,
             attachments,
@@ -79,7 +87,10 @@ pub(super) async fn forward(
         return print_json(&state.forward_view(organization, &view, request).await?);
     }
     let Some(id) = args.id else {
-        return Err(AppError::invalid("FORWARD_TARGET_INVALID", "name the message to forward, or a view with --view"));
+        return Err(AppError::invalid(
+            "FORWARD_TARGET_INVALID",
+            "name the message to forward, or a view with --view",
+        ));
     };
     let body = written(
         state,

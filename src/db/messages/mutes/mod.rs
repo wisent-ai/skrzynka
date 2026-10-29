@@ -12,7 +12,11 @@ use uuid::Uuid;
 impl Database {
     /// Keep each of `identities` as muted in `mailbox_id`; one kept already
     /// is no change. Answers how many were new.
-    pub fn mute_identities(&self, mailbox_id: Uuid, identities: &[String]) -> Result<u64, AppError> {
+    pub fn mute_identities(
+        &self,
+        mailbox_id: Uuid,
+        identities: &[String],
+    ) -> Result<u64, AppError> {
         let connection = self.lock()?;
         let transaction = connection.transaction()?;
         let now = Utc::now().to_rfc3339();
@@ -33,7 +37,11 @@ impl Database {
 
     /// Stop keeping each of `identities` as muted in `mailbox_id`; answers
     /// how many were kept.
-    pub fn unmute_identities(&self, mailbox_id: Uuid, identities: &[String]) -> Result<u64, AppError> {
+    pub fn unmute_identities(
+        &self,
+        mailbox_id: Uuid,
+        identities: &[String],
+    ) -> Result<u64, AppError> {
         self.lock()?
             .execute(
                 "DELETE FROM muted_conversations WHERE mailbox_id=$1 AND identity = ANY($2::text[])",
@@ -43,7 +51,10 @@ impl Database {
     }
 
     /// Every muted Message-ID of the organization's mailboxes, by mailbox.
-    pub fn muted_identities(&self, organization_id: &str) -> Result<HashMap<Uuid, HashSet<String>>, AppError> {
+    pub fn muted_identities(
+        &self,
+        organization_id: &str,
+    ) -> Result<HashMap<Uuid, HashSet<String>>, AppError> {
         let connection = self.lock()?;
         let mut statement = connection.prepare(
             "SELECT muted_conversations.mailbox_id AS mailbox_id, muted_conversations.identity AS identity
@@ -52,7 +63,10 @@ impl Database {
         )?;
         let mut muted: HashMap<Uuid, HashSet<String>> = HashMap::new();
         for row in statement.query_map(params![organization_id], |row| {
-            Ok((parse_uuid(row.get::<_, String>("mailbox_id")?)?, row.get::<_, String>("identity")?))
+            Ok((
+                parse_uuid(row.get::<_, String>("mailbox_id")?)?,
+                row.get::<_, String>("identity")?,
+            ))
         })? {
             let (mailbox_id, identity) = row?;
             muted.entry(mailbox_id).or_default().insert(identity);

@@ -29,12 +29,19 @@ impl AppState {
                 "the List-Id is blank; name it as message subscriptions prints it",
             ));
         }
-        let filter = SubscriptionFilter { mailbox_id, ..SubscriptionFilter::default() };
+        let filter = SubscriptionFilter {
+            mailbox_id,
+            ..SubscriptionFilter::default()
+        };
         let named: Vec<_> = self
             .list_subscriptions(organization_id, &filter)?
             .lists
             .into_iter()
-            .filter(|list| list.list_id.as_deref().is_some_and(|id| id.trim().to_ascii_lowercase() == wanted))
+            .filter(|list| {
+                list.list_id
+                    .as_deref()
+                    .is_some_and(|id| id.trim().to_ascii_lowercase() == wanted)
+            })
             .collect();
         let message_id = match named.as_slice() {
             [] => {

@@ -7,8 +7,19 @@ use crate::models::{OutboundMessage, ReplyAttempt};
 
 /// The table's header: the fields of a sent message a report reads.
 const HEADER: &[&str] = &[
-    "id", "mailbox_id", "recipients", "cc", "bcc", "subject", "status", "created_at", "sent_at",
-    "provider_message_id", "error_code", "error_message", "attachments",
+    "id",
+    "mailbox_id",
+    "recipients",
+    "cc",
+    "bcc",
+    "subject",
+    "status",
+    "created_at",
+    "sent_at",
+    "provider_message_id",
+    "error_code",
+    "error_message",
+    "attachments",
 ];
 
 /// Every outbound message as one row under the header, in the order given:
@@ -17,7 +28,11 @@ const HEADER: &[&str] = &[
 pub fn outbound_table(messages: &[OutboundMessage]) -> String {
     let mut table = header(HEADER);
     for message in messages {
-        let files: Vec<&str> = message.attachments.iter().map(|file| file.filename.as_str()).collect();
+        let files: Vec<&str> = message
+            .attachments
+            .iter()
+            .map(|file| file.filename.as_str())
+            .collect();
         table.push_str(&row(&[
             message.id.to_string(),
             message.mailbox_id.to_string(),
@@ -40,8 +55,17 @@ pub fn outbound_table(messages: &[OutboundMessage]) -> String {
 /// The reply table's header: the fields of a reply attempt a report reads,
 /// `message_id` the stored message it answers.
 const REPLY_HEADER: &[&str] = &[
-    "id", "message_id", "cc", "bcc", "status", "created_at", "sent_at", "provider_message_id", "error_code",
-    "error_message", "attachments",
+    "id",
+    "message_id",
+    "cc",
+    "bcc",
+    "status",
+    "created_at",
+    "sent_at",
+    "provider_message_id",
+    "error_code",
+    "error_message",
+    "attachments",
 ];
 
 /// Every reply attempt as one row under its header, in the order given: a
@@ -50,7 +74,11 @@ const REPLY_HEADER: &[&str] = &[
 pub fn reply_table(replies: &[ReplyAttempt]) -> String {
     let mut table = header(REPLY_HEADER);
     for reply in replies {
-        let files: Vec<&str> = reply.attachments.iter().map(|file| file.filename.as_str()).collect();
+        let files: Vec<&str> = reply
+            .attachments
+            .iter()
+            .map(|file| file.filename.as_str())
+            .collect();
         table.push_str(&row(&[
             reply.id.to_string(),
             reply.message_id.to_string(),

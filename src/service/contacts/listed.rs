@@ -44,7 +44,12 @@ impl AppState {
                 "the reason for the suppressed contacts is empty; say why, or leave the reason out",
             ));
         }
-        let addresses = self.listed(organization_id, filter, |contact| contact.suppressed, "contact not yet suppressed")?;
+        let addresses = self.listed(
+            organization_id,
+            filter,
+            |contact| contact.suppressed,
+            "contact not yet suppressed",
+        )?;
         let entries = addresses
             .iter()
             .map(|address| crate::mail::suppression_entry(address))
@@ -62,9 +67,18 @@ impl AppState {
     /// is read, so nothing hides all of a mailbox's mail at once; one keeping
     /// no correspondent not blocked yet is `NOT_FOUND`. Every entry is checked
     /// before any is kept.
-    pub fn block_contacts(&self, organization_id: &str, filter: &ContactFilter) -> Result<BlockedContacts, AppError> {
+    pub fn block_contacts(
+        &self,
+        organization_id: &str,
+        filter: &ContactFilter,
+    ) -> Result<BlockedContacts, AppError> {
         narrowed(filter, "BLOCKED_SENDER_INVALID", "blocks")?;
-        let addresses = self.listed(organization_id, filter, |contact| contact.blocked, "contact not yet blocked")?;
+        let addresses = self.listed(
+            organization_id,
+            filter,
+            |contact| contact.blocked,
+            "contact not yet blocked",
+        )?;
         let entries = addresses
             .iter()
             .map(|address| super::super::blocked::blocked_entry(address))
@@ -101,8 +115,11 @@ impl AppState {
 /// bounce or block: putting everyone a mailbox corresponds with on a list is
 /// never what was meant.
 fn narrowed(filter: &ContactFilter, code: &'static str, acts: &str) -> Result<(), AppError> {
-    let bounded = [&filter.contains, &filter.since, &filter.until].iter().any(|bound| bound.is_some());
-    if bounded || filter.never_written || filter.never_received || filter.bounced || filter.blocked {
+    let bounded = [&filter.contains, &filter.since, &filter.until]
+        .iter()
+        .any(|bound| bound.is_some());
+    if bounded || filter.never_written || filter.never_received || filter.bounced || filter.blocked
+    {
         return Ok(());
     }
     Err(AppError::invalid(

@@ -17,20 +17,20 @@ mod bounces;
 mod drafts;
 mod follow_ups;
 mod limits;
-mod reads;
 mod mutes;
 mod notes;
+mod reads;
 mod rules;
 mod signatures;
-mod views;
-mod statistics;
-mod suppressions;
 mod snoozes;
+mod statistics;
 mod stream;
+mod suppressions;
 mod tags;
 mod templates;
 mod unreadable;
 mod unsubscribes;
+mod views;
 pub(super) use reads::page_limit;
 
 impl Database {

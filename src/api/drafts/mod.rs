@@ -46,7 +46,9 @@ pub(in crate::api) async fn list_drafts(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<DraftQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.list_drafts(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(
+        state.list_drafts(&auth.organization_id, &query.filter()?)?
+    )))
 }
 
 /// `GET /v1/drafts/csv` with the listing's parameters: the drafts it keeps
@@ -57,7 +59,10 @@ pub(in crate::api) async fn drafts_csv(
     Query(query): Query<DraftQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let drafts = state.list_drafts(&auth.organization_id, &query.filter()?)?;
-    Ok(super::listing::csv_file("drafts.csv", crate::service::draft_table(&drafts)))
+    Ok(super::listing::csv_file(
+        "drafts.csv",
+        crate::service::draft_table(&drafts),
+    ))
 }
 
 impl DraftQuery {
@@ -106,7 +111,12 @@ pub(in crate::api) async fn merge_drafts(
     Json(request): Json<MergeRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    let drafts = state.merge_drafts(&auth.organization_id, &request.mailbox, &request.template, &request.table)?;
+    let drafts = state.merge_drafts(
+        &auth.organization_id,
+        &request.mailbox,
+        &request.template,
+        &request.table,
+    )?;
     Ok(Json(json!(drafts)))
 }
 
@@ -117,9 +127,10 @@ pub(in crate::api) async fn draft_from_outbound(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.draft_from_outbound(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.draft_from_outbound(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `POST /v1/drafts/:id/copy` with `{mailbox}` (optional): a new draft
@@ -137,7 +148,11 @@ pub(in crate::api) async fn copy_draft(
     Json(request): Json<CopyDraft>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.copy_draft(&auth.organization_id, parse_uuid(&id)?, request.mailbox.as_deref())?)))
+    Ok(Json(json!(state.copy_draft(
+        &auth.organization_id,
+        parse_uuid(&id)?,
+        request.mailbox.as_deref()
+    )?)))
 }
 
 pub(in crate::api) async fn get_draft(
@@ -183,7 +198,9 @@ pub(in crate::api) async fn delete_drafts(
     Query(query): Query<DraftQuery>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.delete_drafts(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(
+        state.delete_drafts(&auth.organization_id, &query.filter()?)?
+    )))
 }
 
 /// `DELETE /v1/drafts/schedule?contains=TEXT&mailbox_id=UUID` (the
@@ -196,7 +213,10 @@ pub(in crate::api) async fn unschedule_drafts(
     Query(query): Query<DraftQuery>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.unschedule_drafts(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(state.unschedule_drafts(
+        &auth.organization_id,
+        &query.filter()?
+    )?)))
 }
 
 pub(in crate::api) async fn send_draft(
@@ -206,7 +226,11 @@ pub(in crate::api) async fn send_draft(
     Json(request): Json<DraftSendRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.send_draft(&auth.organization_id, parse_uuid(&id)?, request).await?)))
+    Ok(Json(json!(
+        state
+            .send_draft(&auth.organization_id, parse_uuid(&id)?, request)
+            .await?
+    )))
 }
 
 /// `POST /v1/drafts/send?contains=TEXT&mailbox_id=UUID` (the listing's
@@ -221,8 +245,20 @@ pub(in crate::api) async fn send_drafts(
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
     let filter = query.filter()?;
-    let DraftSendRequest { idempotency_key, allow_bounced, follow_up } = request;
-    let sent = state.send_drafts(&auth.organization_id, &filter, &idempotency_key, allow_bounced, follow_up.as_deref()).await?;
+    let DraftSendRequest {
+        idempotency_key,
+        allow_bounced,
+        follow_up,
+    } = request;
+    let sent = state
+        .send_drafts(
+            &auth.organization_id,
+            &filter,
+            &idempotency_key,
+            allow_bounced,
+            follow_up.as_deref(),
+        )
+        .await?;
     Ok(Json(json!(sent)))
 }
 
@@ -255,9 +291,10 @@ pub(in crate::api) async fn unschedule_draft(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.unschedule_draft(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.unschedule_draft(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `POST /v1/drafts/schedule` with `{contains, mailbox_id, send_at, every,
@@ -285,5 +322,11 @@ pub(in crate::api) async fn schedule_drafts(
         ..DraftFilter::default()
     };
     let every = request.every.as_deref();
-    Ok(Json(json!(state.schedule_drafts(&auth.organization_id, &filter, &request.send_at, every, &request.idempotency_key)?)))
+    Ok(Json(json!(state.schedule_drafts(
+        &auth.organization_id,
+        &filter,
+        &request.send_at,
+        every,
+        &request.idempotency_key
+    )?)))
 }

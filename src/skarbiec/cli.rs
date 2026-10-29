@@ -96,8 +96,7 @@ impl SkarbiecResolver {
             ))
         })?;
         if let Some(path) = &self.local {
-            let output =
-                super::local::run(path, &["set", item_id, "--type", kind], Some(&bytes))?;
+            let output = super::local::run(path, &["set", item_id, "--type", kind], Some(&bytes))?;
             if !output.status.success() {
                 return Err(AppError::dependency(
                     "SKARBIEC_WRITE_FAILED",
@@ -139,10 +138,7 @@ impl SkarbiecResolver {
                 drop(stdin);
                 result
             },
-            stado_wait::child_output_async(
-                child,
-                format!("skarbiec set {item_id} --type {kind}"),
-            )
+            stado_wait::child_output_async(child, format!("skarbiec set {item_id} --type {kind}"),)
         );
         let output = output.map_err(|error| {
             AppError::dependency(
@@ -217,14 +213,13 @@ impl SkarbiecResolver {
 
     /// Invoke the explicitly configured credentials file or the selected
     /// Skarbiec executable. Skarbiec, not its consumer, selects the vault.
-    pub(super) async fn output(
-        &self,
-        arguments: &[&str],
-    ) -> Result<super::local::Reply, AppError> {
+    pub(super) async fn output(&self, arguments: &[&str]) -> Result<super::local::Reply, AppError> {
         if let Some(path) = &self.local {
             return super::local::run(path, arguments, None);
         }
-        self.run(&self.binary, arguments).await.map(super::local::Reply::from)
+        self.run(&self.binary, arguments)
+            .await
+            .map(super::local::Reply::from)
     }
 
     async fn run(

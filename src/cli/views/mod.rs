@@ -57,23 +57,37 @@ pub(super) fn run_view(
     command: ViewCommand,
 ) -> Result<(), AppError> {
     match command {
-        ViewCommand::List(ListArgs { count: true, contains }) => {
-            print_json(&state.counted_views(organization, contains.as_deref())?)
-        }
-        ViewCommand::List(ListArgs { count: false, contains }) => print_json(&state.views(organization, contains.as_deref())?),
+        ViewCommand::List(ListArgs {
+            count: true,
+            contains,
+        }) => print_json(&state.counted_views(organization, contains.as_deref())?),
+        ViewCommand::List(ListArgs {
+            count: false,
+            contains,
+        }) => print_json(&state.views(organization, contains.as_deref())?),
         ViewCommand::Show(NameArg { name }) => print_json(&state.view(organization, &name)?),
         ViewCommand::Rename(RenameArgs { name, to }) => {
             print_json(&state.rename_view(organization, &name, &to)?)
         }
-        ViewCommand::Copy(RenameArgs { name, to }) => print_json(&state.copy_view(organization, &name, &to)?),
-        ViewCommand::Delete(NameArg { name }) => print_json(&state.delete_view(organization, &name)?),
+        ViewCommand::Copy(RenameArgs { name, to }) => {
+            print_json(&state.copy_view(organization, &name, &to)?)
+        }
+        ViewCommand::Delete(NameArg { name }) => {
+            print_json(&state.delete_view(organization, &name)?)
+        }
         ViewCommand::Export(ExportArgs { output, contains }) => {
-            let file = NewFile { path: &output, exists: "VIEW_OUTPUT_EXISTS", invalid: "VIEW_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &output,
+                exists: "VIEW_OUTPUT_EXISTS",
+                invalid: "VIEW_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
             let views = state.views(organization, contains.as_deref())?.len();
             let document = state.view_document(organization, contains.as_deref())?;
             file.write(document.as_bytes())?;
-            print_json(&serde_json::json!({ "path": output, "views": views, "size_bytes": document.len() }))
+            print_json(
+                &serde_json::json!({ "path": output, "views": views, "size_bytes": document.len() }),
+            )
         }
         ViewCommand::Import(ImportArgs { input }) => {
             print_json(&state.import_views(organization, &read_body_file(&input, "VIEW_INVALID")?)?)

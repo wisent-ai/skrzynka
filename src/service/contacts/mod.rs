@@ -3,7 +3,10 @@
 //! mail went to. Nothing is kept apart from the mail; the list is derived on
 //! each read, so it always agrees with the messages and outbound rows.
 
-use super::{messages::{entry_address, filter_value}, AppState};
+use super::{
+    messages::{entry_address, filter_value},
+    AppState,
+};
 use crate::{error::AppError, models::DeliveryStatus};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -78,7 +81,11 @@ pub struct ContactFilter {
 impl AppState {
     /// The same correspondents as vCards (RFC 6350), in the listing's order,
     /// for an address book to import.
-    pub fn contacts_vcard(&self, organization_id: &str, filter: &ContactFilter) -> Result<String, AppError> {
+    pub fn contacts_vcard(
+        &self,
+        organization_id: &str,
+        filter: &ContactFilter,
+    ) -> Result<String, AppError> {
         Ok(vcard::vcards(&self.list_contacts(organization_id, filter)?))
     }
 
@@ -95,8 +102,14 @@ impl AppState {
     /// written to who never wrote. A blank `contains`, an unreadable instant,
     /// a window whose start is not before its end, or both one-way filters
     /// at once is refused with `MESSAGE_FILTER_INVALID`.
-    pub fn list_contacts(&self, organization_id: &str, filter: &ContactFilter) -> Result<Vec<Contact>, AppError> {
-        let ContactFilter { mailbox_id, recent, .. } = *filter;
+    pub fn list_contacts(
+        &self,
+        organization_id: &str,
+        filter: &ContactFilter,
+    ) -> Result<Vec<Contact>, AppError> {
+        let ContactFilter {
+            mailbox_id, recent, ..
+        } = *filter;
         if filter.never_written && filter.never_received {
             return Err(AppError::invalid(
                 "MESSAGE_FILTER_INVALID",
@@ -130,7 +143,11 @@ impl AppState {
             if outbound.status == DeliveryStatus::Failed {
                 continue;
             }
-            let addressed = [Some(outbound.recipients.as_str()), outbound.cc.as_deref(), outbound.bcc.as_deref()];
+            let addressed = [
+                Some(outbound.recipients.as_str()),
+                outbound.cc.as_deref(),
+                outbound.bcc.as_deref(),
+            ];
             for header in addressed.into_iter().flatten() {
                 for recipient in header.split(',').filter(|part| !part.trim().is_empty()) {
                     tally(&mut tallies, recipient)
@@ -151,9 +168,10 @@ impl AppState {
             .map(|(address, tally)| Contact {
                 bounced: bounced.contains(&address),
                 suppressed: suppressed.iter().any(|kept| kept.covers(&address)),
-                blocked: blocked
-                    .iter()
-                    .any(|entry| *entry == address || (entry.starts_with('@') && address.ends_with(entry.as_str()))),
+                blocked: blocked.iter().any(|entry| {
+                    *entry == address
+                        || (entry.starts_with('@') && address.ends_with(entry.as_str()))
+                }),
                 address,
                 names: tally.names,
                 received: tally.received.len(),
@@ -164,12 +182,21 @@ impl AppState {
             .filter(|contact| contact.bounced || !filter.bounced)
             .filter(|contact| contact.suppressed || !filter.suppressed)
             .filter(|contact| contact.blocked || !filter.blocked)
-            .filter(|contact| !filter.never_written || (contact.last_received_at.is_some() && contact.last_written_at.is_none()))
-            .filter(|contact| !filter.never_received || (contact.last_written_at.is_some() && contact.last_received_at.is_none()))
+            .filter(|contact| {
+                !filter.never_written
+                    || (contact.last_received_at.is_some() && contact.last_written_at.is_none())
+            })
+            .filter(|contact| {
+                !filter.never_received
+                    || (contact.last_written_at.is_some() && contact.last_received_at.is_none())
+            })
             .filter(|contact| {
                 contains.as_deref().is_none_or(|part| {
                     contact.address.contains(part)
-                        || contact.names.iter().any(|name| name.to_lowercase().contains(part))
+                        || contact
+                            .names
+                            .iter()
+                            .any(|name| name.to_lowercase().contains(part))
                 })
             })
             .collect();
@@ -199,9 +226,16 @@ impl AppState {
         }
         // Both instants are stored by Skrzynka as RFC 3339 in UTC, so their
         // text orders as their time does.
-        let latest = |contact: &Contact| contact.last_received_at.clone().max(contact.last_written_at.clone());
+        let latest = |contact: &Contact| {
+            contact
+                .last_received_at
+                .clone()
+                .max(contact.last_written_at.clone())
+        };
         contacts.sort_by(|left, right| match recent {
-            true => latest(right).cmp(&latest(left)).then_with(|| left.address.cmp(&right.address)),
+            true => latest(right)
+                .cmp(&latest(left))
+                .then_with(|| left.address.cmp(&right.address)),
             false => (right.received + right.written)
                 .cmp(&(left.received + left.written))
                 .then_with(|| left.address.cmp(&right.address)),

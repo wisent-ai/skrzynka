@@ -102,7 +102,8 @@ impl AuthVerifier {
 
     async fn verify(&self, headers: &HeaderMap) -> Result<AuthContext, AppError> {
         let bearer = bearer_token(headers).ok_or_else(unauthorized)?;
-        let stated = single_header_value(headers, ORGANIZATION_HEADER).ok_or_else(invalid_organization)?;
+        let stated =
+            single_header_value(headers, ORGANIZATION_HEADER).ok_or_else(invalid_organization)?;
         let target_organization_id = stated.parse::<Uuid>().map_err(|cause| {
             AppError::invalid(
                 "INVALID_ORGANIZATION",

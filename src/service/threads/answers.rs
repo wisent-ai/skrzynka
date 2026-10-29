@@ -4,7 +4,9 @@
 //! message that cannot be answered is named with its refusal while the
 //! others still are.
 
-use super::super::{forward::RefusedMessage, outbound::checked_key, templates::PerMessage, AppState};
+use super::super::{
+    forward::RefusedMessage, outbound::checked_key, templates::PerMessage, AppState,
+};
 use crate::{
     error::AppError,
     mail::OutgoingAttachment,
@@ -58,15 +60,36 @@ impl AppState {
     /// and an unknown view are refused before anything is sent; a message
     /// whose reply is refused (a placeholder nothing fills for it, a
     /// recipient suppressed, the send limit reached) is named in `refused`.
-    pub async fn reply_view(&self, organization_id: &str, view: &str, request: ReplyViewRequest) -> Result<RepliedView, AppError> {
+    pub async fn reply_view(
+        &self,
+        organization_id: &str,
+        view: &str,
+        request: ReplyViewRequest,
+    ) -> Result<RepliedView, AppError> {
         let key = checked_key(&request.idempotency_key)?.to_string();
-        let text = PerMessage::chosen(&request.body, &request.template, &request.values, "REPLY_BODY_INVALID")?;
+        let text = PerMessage::chosen(
+            &request.body,
+            &request.template,
+            &request.values,
+            "REPLY_BODY_INVALID",
+        )?;
         let messages = self.list_view(organization_id, view, None, None)?;
-        let mut outcome = RepliedView { view: view.trim().to_string(), replied: Vec::new(), refused: Vec::new() };
+        let mut outcome = RepliedView {
+            view: view.trim().to_string(),
+            replied: Vec::new(),
+            refused: Vec::new(),
+        };
         for message in messages {
-            match self.answer_listed(organization_id, message.id, &key, &text, &request).await {
+            match self
+                .answer_listed(organization_id, message.id, &key, &text, &request)
+                .await
+            {
                 Ok(attempt) => outcome.replied.push(attempt),
-                Err(error) => outcome.refused.push(RefusedMessage { message_id: message.id, code: error.code, message: error.message }),
+                Err(error) => outcome.refused.push(RefusedMessage {
+                    message_id: message.id,
+                    code: error.code,
+                    message: error.message,
+                }),
             }
         }
         Ok(outcome)

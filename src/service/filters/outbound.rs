@@ -88,7 +88,11 @@ impl AppState {
             }
         }
         let windowed = since.is_some() || until.is_some();
-        let given = to.is_some() || contains.is_some() || status.is_some() || attachment.is_some() || windowed;
+        let given = to.is_some()
+            || contains.is_some()
+            || status.is_some()
+            || attachment.is_some()
+            || windowed;
         if !given && !filters.bounced && filters.answered.is_none() && !filters.oldest_first {
             return self
                 .database
@@ -98,7 +102,9 @@ impl AppState {
         // the Message-IDs the stored reports returned, and those each
         // mailbox's stored mail answers.
         let stored = match filters.bounced || filters.answered.is_some() {
-            true => self.database.list_messages(organization_id, None, None, None)?,
+            true => self
+                .database
+                .list_messages(organization_id, None, None, None)?,
             false => Vec::new(),
         };
         let returned: BTreeSet<&str> = stored
@@ -108,26 +114,40 @@ impl AppState {
         // Each mailbox's answered Message-IDs: what its stored mail names.
         let mut answers: BTreeMap<Uuid, BTreeSet<&str>> = BTreeMap::new();
         for message in stored.iter().filter(|message| message.bounce.is_none()) {
-            let named = [message.in_reply_to.as_deref(), message.references.as_deref()]
-                .into_iter()
-                .flatten()
-                .flat_map(str::split_whitespace);
+            let named = [
+                message.in_reply_to.as_deref(),
+                message.references.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .flat_map(str::split_whitespace);
             answers.entry(message.mailbox_id).or_default().extend(named);
         }
         let mut kept: Vec<OutboundMessage> = Vec::new();
-        for message in self.database.list_outbound(organization_id, mailbox_id, None, None)? {
+        for message in self
+            .database
+            .list_outbound(organization_id, mailbox_id, None, None)?
+        {
             let addressed = to.as_deref().is_none_or(|part| {
-                [Some(message.recipients.as_str()), message.cc.as_deref(), message.bcc.as_deref()]
-                    .into_iter()
-                    .flatten()
-                    .any(|header| header.to_lowercase().contains(part))
+                [
+                    Some(message.recipients.as_str()),
+                    message.cc.as_deref(),
+                    message.bcc.as_deref(),
+                ]
+                .into_iter()
+                .flatten()
+                .any(|header| header.to_lowercase().contains(part))
             });
             let mentions = contains.as_deref().is_none_or(|part| {
-                message.subject.to_lowercase().contains(part) || message.body.to_lowercase().contains(part)
+                message.subject.to_lowercase().contains(part)
+                    || message.body.to_lowercase().contains(part)
             });
             let ended = status.is_none_or(|status| message.status == status);
             let carried = attachment.as_deref().is_none_or(|part| {
-                message.attachments.iter().any(|file| file.filename.to_lowercase().contains(part))
+                message
+                    .attachments
+                    .iter()
+                    .any(|file| file.filename.to_lowercase().contains(part))
             });
             let inside = match windowed {
                 true => {
@@ -139,7 +159,11 @@ impl AppState {
             let sent_as = message.provider_message_id.as_deref();
             let bounced = !filters.bounced || sent_as.is_some_and(|sent| returned.contains(sent));
             let answered = filters.answered.is_none_or(|wanted| {
-                sent_as.is_some_and(|sent| answers.get(&message.mailbox_id).is_some_and(|named| named.contains(sent))) == wanted
+                sent_as.is_some_and(|sent| {
+                    answers
+                        .get(&message.mailbox_id)
+                        .is_some_and(|named| named.contains(sent))
+                }) == wanted
             });
             if addressed && mentions && ended && carried && inside && bounced && answered {
                 kept.push(message);

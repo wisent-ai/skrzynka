@@ -35,10 +35,20 @@ pub(super) struct ExportArgs {
     #[arg(long)]
     thread: Option<Uuid>,
     /// Only the messages received at or after this RFC 3339 instant or UTC day: what came since the last export.
-    #[arg(long, conflicts_with = "view", conflicts_with = "thread", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        conflicts_with = "view",
+        conflicts_with = "thread",
+        allow_hyphen_values = true
+    )]
     since: Option<String>,
     /// Only the messages received before this RFC 3339 instant or UTC day: an export of one period.
-    #[arg(long, conflicts_with = "view", conflicts_with = "thread", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        conflicts_with = "view",
+        conflicts_with = "thread",
+        allow_hyphen_values = true
+    )]
     until: Option<String>,
     /// Only the messages carrying this tag, as `message list --tag` keeps them.
     #[arg(long, conflicts_with = "view", conflicts_with = "thread")]
@@ -99,7 +109,16 @@ struct Manifest {
 pub(super) async fn export(
     state: &AppState,
     organization: &str,
-    ExportArgs { mailbox, output, view, thread, since, until, tag, mbox }: ExportArgs,
+    ExportArgs {
+        mailbox,
+        output,
+        view,
+        thread,
+        since,
+        until,
+        tag,
+        mbox,
+    }: ExportArgs,
 ) -> Result<(), AppError> {
     let mailbox = state.resolve_mailbox(organization, &mailbox)?.id;
     // The window is read once, so a span such as -7d is one instant for the
@@ -214,7 +233,9 @@ pub(super) async fn export(
         });
     }
     let listing = serde_json::to_vec_pretty(&manifest).map_err(|error| {
-        AppError::internal(format!("the export manifest could not be written as JSON: {error}"))
+        AppError::internal(format!(
+            "the export manifest could not be written as JSON: {error}"
+        ))
     })?;
     NewFile {
         path: &output.join("manifest.json"),

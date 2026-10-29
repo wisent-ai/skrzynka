@@ -12,7 +12,11 @@ const HEADER: &[&str] = &["entry", "reason", "added_at"];
 pub fn suppression_table(entries: &[Suppression]) -> String {
     let mut table = header(HEADER);
     for entry in entries {
-        table.push_str(&row(&[entry.entry.clone(), optional(&entry.reason), entry.added_at.clone()]));
+        table.push_str(&row(&[
+            entry.entry.clone(),
+            optional(&entry.reason),
+            entry.added_at.clone(),
+        ]));
     }
     table
 }

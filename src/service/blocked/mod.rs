@@ -27,21 +27,36 @@ pub struct BlockedCount {
 impl AppState {
     /// Every blocked entry, or with `contains` those holding the text, case
     /// aside (a blank one is `MESSAGE_FILTER_INVALID`).
-    pub fn blocked_senders(&self, organization_id: &str, contains: Option<&str>) -> Result<BlockedSenders, AppError> {
-        Ok(BlockedSenders { blocked: self.blocked_entries(organization_id, contains)? })
+    pub fn blocked_senders(
+        &self,
+        organization_id: &str,
+        contains: Option<&str>,
+    ) -> Result<BlockedSenders, AppError> {
+        Ok(BlockedSenders {
+            blocked: self.blocked_entries(organization_id, contains)?,
+        })
     }
 
     /// Every blocked entry, or those `contains` keeps, with how many stored
     /// messages of the organization it leaves out of listings now; a message
     /// an address and its domain both block counts under each.
-    pub fn blocked_counts(&self, organization_id: &str, contains: Option<&str>) -> Result<Vec<BlockedCount>, AppError> {
+    pub fn blocked_counts(
+        &self,
+        organization_id: &str,
+        contains: Option<&str>,
+    ) -> Result<Vec<BlockedCount>, AppError> {
         let entries = self.blocked_entries(organization_id, contains)?;
-        let messages = self.database.list_messages(organization_id, None, None, None)?;
+        let messages = self
+            .database
+            .list_messages(organization_id, None, None, None)?;
         Ok(entries
             .into_iter()
             .map(|entry| {
                 let alone = [entry];
-                let messages = messages.iter().filter(|message| is_blocked(message, &alone)).count();
+                let messages = messages
+                    .iter()
+                    .filter(|message| is_blocked(message, &alone))
+                    .count();
                 let [entry] = alone;
                 BlockedCount { entry, messages }
             })
@@ -49,7 +64,11 @@ impl AppState {
     }
 
     /// The blocked entries holding `contains`, case aside, or every one.
-    fn blocked_entries(&self, organization_id: &str, contains: Option<&str>) -> Result<Vec<String>, AppError> {
+    fn blocked_entries(
+        &self,
+        organization_id: &str,
+        contains: Option<&str>,
+    ) -> Result<Vec<String>, AppError> {
         let contains = super::messages::filter_value(contains, "contains")?;
         Ok(self
             .database
@@ -82,7 +101,10 @@ impl AppState {
             return Err(AppError::new(
                 axum::http::StatusCode::NOT_FOUND,
                 "BLOCKED_SENDER_NOT_FOUND",
-                format!("{entry} is not blocked; blocked are: {}", blocked.join(", ")),
+                format!(
+                    "{entry} is not blocked; blocked are: {}",
+                    blocked.join(", ")
+                ),
                 false,
             ));
         }
@@ -98,7 +120,9 @@ pub(in crate::service) fn blocked_entry(written: &str) -> Result<String, AppErro
         Some((local, domain)) => {
             !domain.is_empty()
                 && !domain.contains('@')
-                && !entry.chars().any(|character| character.is_whitespace() || character == ',')
+                && !entry
+                    .chars()
+                    .any(|character| character.is_whitespace() || character == ',')
                 && (local.is_empty() || !local.contains('<'))
         }
         None => false,
@@ -116,7 +140,7 @@ pub(in crate::service) fn blocked_entry(written: &str) -> Result<String, AppErro
 /// entry, or ends with an `@domain` entry.
 pub(super) fn is_blocked(message: &Message, blocked: &[String]) -> bool {
     let address = entry_address(&message.sender).to_lowercase();
-    blocked
-        .iter()
-        .any(|entry| *entry == address || (entry.starts_with('@') && address.ends_with(entry.as_str())))
+    blocked.iter().any(|entry| {
+        *entry == address || (entry.starts_with('@') && address.ends_with(entry.as_str()))
+    })
 }

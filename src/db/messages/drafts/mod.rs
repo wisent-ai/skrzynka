@@ -13,7 +13,8 @@ use uuid::Uuid;
 mod schedule;
 
 /// The columns and organization scope every draft read uses.
-const SELECT: &str = "SELECT drafts.id, drafts.mailbox_id, drafts.recipients, drafts.cc, drafts.bcc,
+const SELECT: &str =
+    "SELECT drafts.id, drafts.mailbox_id, drafts.recipients, drafts.cc, drafts.bcc,
         drafts.subject, drafts.body, drafts.attachments, drafts.created_at, drafts.updated_at,
         drafts.send_at, drafts.send_key, drafts.schedule_error
      FROM drafts JOIN mailboxes ON mailboxes.id=drafts.mailbox_id";
@@ -109,7 +110,9 @@ impl Database {
 /// The draft's files as the `attachments` column keeps them.
 fn files_json(files: &[OutgoingAttachment]) -> Result<String, AppError> {
     serde_json::to_string(files).map_err(|cause| {
-        AppError::internal(format!("the draft's files could not be written as JSON: {cause}"))
+        AppError::internal(format!(
+            "the draft's files could not be written as JSON: {cause}"
+        ))
     })
 }
 

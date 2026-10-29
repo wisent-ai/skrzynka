@@ -83,7 +83,12 @@ fn read_report(parsed: &ParsedMail<'_>, report: &mut BounceReport) -> Result<(),
     // The returned message is read first, so a damaged status part still
     // leaves which send the report is about.
     for part in &parsed.subparts {
-        if !part.ctype.mimetype.to_ascii_lowercase().contains(RETURNED_PART) {
+        if !part
+            .ctype
+            .mimetype
+            .to_ascii_lowercase()
+            .contains(RETURNED_PART)
+        {
             continue;
         }
         let raw = part

@@ -19,24 +19,34 @@ pub(super) struct WatchArgs {
     after: Option<i64>,
 }
 
-pub(super) async fn watch(state: &AppState, organization: &str, args: WatchArgs) -> Result<(), AppError> {
+pub(super) async fn watch(
+    state: &AppState,
+    organization: &str,
+    args: WatchArgs,
+) -> Result<(), AppError> {
     let mut watch = state.watch_messages(organization, args.mailbox.as_deref(), args.after)?;
-    let text = super::TEXT
-        .get()
-        .copied()
-        .ok_or_else(|| AppError::internal("message watch started before the command chose JSON or --text"))?;
+    let text = super::TEXT.get().copied().ok_or_else(|| {
+        AppError::internal("message watch started before the command chose JSON or --text")
+    })?;
     loop {
         for each in watch.next().await? {
             if text {
                 super::print_json(&each)?;
                 continue;
             }
-            let line = serde_json::to_string(&each)
-                .map_err(|error| AppError::internal(format!("a watched message could not be written as JSON: {error}")))?;
+            let line = serde_json::to_string(&each).map_err(|error| {
+                AppError::internal(format!(
+                    "a watched message could not be written as JSON: {error}"
+                ))
+            })?;
             let mut out = std::io::stdout().lock();
             writeln!(out, "{line}")
                 .and_then(|()| out.flush())
-                .map_err(|error| AppError::internal(format!("standard output refused a watched message: {error}")))?;
+                .map_err(|error| {
+                    AppError::internal(format!(
+                        "standard output refused a watched message: {error}"
+                    ))
+                })?;
         }
     }
 }

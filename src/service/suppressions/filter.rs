@@ -38,7 +38,10 @@ impl SuppressionFilter {
         for entry in entries {
             if let Some(part) = contains.as_deref() {
                 let holds = entry.entry.contains(part)
-                    || entry.reason.as_deref().is_some_and(|reason| reason.to_lowercase().contains(part));
+                    || entry
+                        .reason
+                        .as_deref()
+                        .is_some_and(|reason| reason.to_lowercase().contains(part));
                 if !holds {
                     continue;
                 }

@@ -121,7 +121,10 @@ pub(super) async fn run_provider(
 /// Clap requires exactly one of <ID>, --view and --thread; reaching here
 /// with none is refused all the same.
 fn unnamed() -> AppError {
-    AppError::invalid("VIEW_ACTION_INVALID", "name a message ID, --view <NAME> or --thread <ID> to change")
+    AppError::invalid(
+        "VIEW_ACTION_INVALID",
+        "name a message ID, --view <NAME> or --thread <ID> to change",
+    )
 }
 
 /// A change of several messages is complete only when none of them was
@@ -132,6 +135,9 @@ fn outcome<T>(refused: &[T], code: &'static str, whose: &str) -> Result<(), AppE
     }
     Err(AppError::invalid(
         code,
-        format!("{} of {whose} messages were not changed; each is listed under refused", refused.len()),
+        format!(
+            "{} of {whose} messages were not changed; each is listed under refused",
+            refused.len()
+        ),
     ))
 }

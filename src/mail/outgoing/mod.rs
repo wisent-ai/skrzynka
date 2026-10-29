@@ -48,7 +48,11 @@ pub struct ReplyCopies {
 
 /// The addresses of a comma-separated header value, trimmed, blanks left out.
 pub(crate) fn split_addresses(value: &str) -> Vec<&str> {
-    value.split(',').map(str::trim).filter(|address| !address.is_empty()).collect()
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .collect()
 }
 
 /// One recipient as the mail builder takes it; one that does not read as an
@@ -191,13 +195,18 @@ pub fn everyone_else(
         })?;
     let mut skipped = vec![own.trim().to_lowercase(), target];
     let mut copied = Vec::new();
-    let headers = [("To", inbound.recipients.as_deref()), ("Cc", inbound.cc.as_deref())];
+    let headers = [
+        ("To", inbound.recipients.as_deref()),
+        ("Cc", inbound.cc.as_deref()),
+    ];
     for (name, header) in headers {
         let Some(header) = header else { continue };
         let listed = lettre::message::Mailboxes::from_str(header).map_err(|cause| {
             AppError::invalid(
                 "MESSAGE_REPLY_ALL_INVALID",
-                format!("the message's {name} header {header:?} is not a list of addresses: {cause}"),
+                format!(
+                    "the message's {name} header {header:?} is not a list of addresses: {cause}"
+                ),
             )
         })?;
         for mailbox in listed {

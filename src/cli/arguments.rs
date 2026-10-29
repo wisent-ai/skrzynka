@@ -1,6 +1,16 @@
 //! Every subcommand and argument the `skrzynka` binary accepts; the global
 //! options that carry them are `Cli`, beside `run`.
-use {clap::Subcommand, std::net::SocketAddr, super::{actions::{DeleteArgs, MarkArgs, MoveArgs}, gmail::MailProvider, mailbox::DeclareMailboxArgs, suppressed::{RecipientsArgs, SuppressedArgs}, ServeArgs}};
+use {
+    super::{
+        actions::{DeleteArgs, MarkArgs, MoveArgs},
+        gmail::MailProvider,
+        mailbox::DeclareMailboxArgs,
+        suppressed::{RecipientsArgs, SuppressedArgs},
+        ServeArgs,
+    },
+    clap::Subcommand,
+    std::net::SocketAddr,
+};
 #[derive(Subcommand)]
 pub(super) enum Command {
     /// Run the loopback HTTP API and read every declared mailbox as its provider reports new mail.
@@ -10,23 +20,28 @@ pub(super) enum Command {
     /// Walk through first use: declare a mailbox, sync it and read its mail.
     Onboarding {
         /// Discard the walkthrough's progress and start again.
-        #[arg(long)] reset: bool,
+        #[arg(long)]
+        reset: bool,
     },
     /// Print the binary's version.
     Version,
     /// Declare, list, show, undeclare and remove mailboxes.
     Mailbox {
-        #[command(subcommand)] command: MailboxCommand,
+        #[command(subcommand)]
+        command: MailboxCommand,
     },
     /// Connect mail accounts through a provider's paths and report which work; `--provider` names it.
     Account {
         /// Mail provider the account is held by. No provider is assumed.
-        #[arg(long, value_enum, global = true)] provider: MailProvider,
-        #[command(subcommand)] command: AccountCommand,
+        #[arg(long, value_enum, global = true)]
+        provider: MailProvider,
+        #[command(subcommand)]
+        command: AccountCommand,
     },
     /// Read, reply to, send and handle stored messages, and read back what went out.
     Message {
-        #[command(subcommand)] command: MessageCommand,
+        #[command(subcommand)]
+        command: MessageCommand,
     },
     /// Import each mailbox's INBOX past its cursor, one message per commit; --inbound-domain reads that domain's feed.
     Sync(super::mailbox::SyncArgs),
@@ -37,16 +52,20 @@ pub(super) enum AccountCommand {
     /// Report which connection paths this account can use, each verdict measured against the provider.
     Connection {
         /// The account to measure; without it, only each path's account-independent state.
-        #[arg(long)] email: Option<String>,
+        #[arg(long)]
+        email: Option<String>,
         /// Loopback address `account authorize` would listen on; its callback URI goes to Google.
-        #[arg(long)] bind: SocketAddr,
+        #[arg(long)]
+        bind: SocketAddr,
     },
     /// Authorize one Google identity through the loopback OAuth callback.
     Authorize {
         /// Skarbiec item that receives the authorized grant.
-        #[arg(long)] skarbiec_item: String,
+        #[arg(long)]
+        skarbiec_item: String,
         /// Loopback address the OAuth callback listens on; none is assumed: one the client accepts.
-        #[arg(long)] bind: SocketAddr,
+        #[arg(long)]
+        bind: SocketAddr,
     },
     /// Connect one Workspace mailbox through domain-wide delegation.
     Delegate(super::gmail::ConnectedAccount),
@@ -215,11 +234,13 @@ pub(super) enum MessageCommand {
     Watch(super::watch::WatchArgs),
     /// List a message's attachments, or save one to a new file.
     Attachment {
-        #[command(subcommand)] command: AttachmentCommand,
+        #[command(subcommand)]
+        command: AttachmentCommand,
     },
     /// Write messages over time and send them when ready.
     Draft {
-        #[command(subcommand)] command: DraftCommand,
+        #[command(subcommand)]
+        command: DraftCommand,
     },
     /// Every mailing list the stored mail came from, with its ways out; --subscribed keeps those not left.
     Subscriptions(super::reading::SubscriptionsArgs),
@@ -279,19 +300,23 @@ pub(super) enum MessageCommand {
     Wake(super::reading::WakeArgs),
     /// Your rules that tag mail as it arrives.
     Rule {
-        #[command(subcommand)] command: RuleCommand,
+        #[command(subcommand)]
+        command: RuleCommand,
     },
     /// Texts kept to reuse in replies and new messages.
     Template {
-        #[command(subcommand)] command: TemplateCommand,
+        #[command(subcommand)]
+        command: TemplateCommand,
     },
     /// Sent messages you expect an answer to, and which are owed one.
     Followup {
-        #[command(subcommand)] command: FollowupCommand,
+        #[command(subcommand)]
+        command: FollowupCommand,
     },
     /// Listing filters kept under a name.
     View {
-        #[command(subcommand)] command: ViewCommand,
+        #[command(subcommand)]
+        command: ViewCommand,
     },
     /// Send a new message, claimed by its idempotency key before the provider sees it.
     Send(super::sending::SendArgs),

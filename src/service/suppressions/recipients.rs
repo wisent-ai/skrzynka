@@ -26,7 +26,11 @@ impl AppState {
     /// once), in the order given, as a send would meet it; nothing is sent
     /// or claimed. An address a send would refuse as unreadable is
     /// `OUTBOUND_RECIPIENT_INVALID`, and so is naming none.
-    pub fn check_recipients(&self, organization_id: &str, written: &[String]) -> Result<Vec<RecipientCheck>, AppError> {
+    pub fn check_recipients(
+        &self,
+        organization_id: &str,
+        written: &[String],
+    ) -> Result<Vec<RecipientCheck>, AppError> {
         let addresses = normalize_addresses(written)?;
         if addresses.is_empty() {
             return Err(AppError::invalid(
@@ -42,7 +46,12 @@ impl AppState {
                 let lower = address.to_lowercase();
                 let suppressed = held.iter().find(|kept| kept.covers(&lower)).cloned();
                 let reported = bounced.iter().find(|entry| entry.address == lower).cloned();
-                RecipientCheck { sendable: suppressed.is_none() && reported.is_none(), address, suppressed, bounced: reported }
+                RecipientCheck {
+                    sendable: suppressed.is_none() && reported.is_none(),
+                    address,
+                    suppressed,
+                    bounced: reported,
+                }
             })
             .collect())
     }

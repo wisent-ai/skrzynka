@@ -56,7 +56,11 @@ impl AppState {
     /// muted mail included. A blank text filter, an unreadable instant or a
     /// backwards window is `MESSAGE_FILTER_INVALID`. A file whose name or
     /// size was not recorded passes no name or size filter.
-    pub fn find_files(&self, organization_id: &str, filter: &FileFilter) -> Result<Vec<StoredFile>, AppError> {
+    pub fn find_files(
+        &self,
+        organization_id: &str,
+        filter: &FileFilter,
+    ) -> Result<Vec<StoredFile>, AppError> {
         let name = filter_value(filter.name.as_deref(), "name")?;
         let content_type = filter_value(filter.content_type.as_deref(), "type")?;
         let sender = filter_value(filter.sender.as_deref(), "sender")?;
@@ -71,16 +75,27 @@ impl AppState {
             ..MessageFilters::default()
         };
         let mut found = Vec::new();
-        for message in self.list_messages(organization_id, filter.mailbox_id, carrying, None, None)? {
-            if !sender.as_deref().is_none_or(|part| message.sender.to_lowercase().contains(part)) {
+        for message in
+            self.list_messages(organization_id, filter.mailbox_id, carrying, None, None)?
+        {
+            if !sender
+                .as_deref()
+                .is_none_or(|part| message.sender.to_lowercase().contains(part))
+            {
                 continue;
             }
             for file in message.attachments.iter().flatten() {
                 let named = name.as_deref().is_none_or(|part| {
-                    file.filename.as_deref().is_some_and(|written| written.to_lowercase().contains(part))
+                    file.filename
+                        .as_deref()
+                        .is_some_and(|written| written.to_lowercase().contains(part))
                 });
-                let typed = content_type.as_deref().is_none_or(|part| file.content_type.to_lowercase().contains(part));
-                let large = filter.over.is_none_or(|least| file.size_bytes.is_some_and(|size| size >= least));
+                let typed = content_type
+                    .as_deref()
+                    .is_none_or(|part| file.content_type.to_lowercase().contains(part));
+                let large = filter
+                    .over
+                    .is_none_or(|least| file.size_bytes.is_some_and(|size| size >= least));
                 if named && typed && large {
                     found.push(StoredFile {
                         message_id: message.id,

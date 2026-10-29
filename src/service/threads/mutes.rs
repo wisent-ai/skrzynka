@@ -36,8 +36,13 @@ impl AppState {
     /// Mute the conversation message `id` belongs to. A conversation whose
     /// messages carry no Message-ID header could not be recognized again and
     /// is refused with `CONVERSATION_UNMUTABLE`.
-    pub fn mute_conversation(&self, organization_id: &str, id: Uuid) -> Result<MuteChange, AppError> {
-        let (mailbox_id, messages, identities) = self.conversation_identities(organization_id, id)?;
+    pub fn mute_conversation(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+    ) -> Result<MuteChange, AppError> {
+        let (mailbox_id, messages, identities) =
+            self.conversation_identities(organization_id, id)?;
         if identities.is_empty() {
             return Err(AppError::invalid(
                 "CONVERSATION_UNMUTABLE",
@@ -45,14 +50,25 @@ impl AppState {
             ));
         }
         let changed = self.database.mute_identities(mailbox_id, &identities)?;
-        Ok(MuteChange { message_id: id, mailbox_id, messages, identities: identities.len(), changed })
+        Ok(MuteChange {
+            message_id: id,
+            mailbox_id,
+            messages,
+            identities: identities.len(),
+            changed,
+        })
     }
 
     /// Show the conversation message `id` belongs to in listings again. One
     /// no Message-ID of which is muted is refused with
     /// `CONVERSATION_NOT_MUTED`.
-    pub fn unmute_conversation(&self, organization_id: &str, id: Uuid) -> Result<MuteChange, AppError> {
-        let (mailbox_id, messages, identities) = self.conversation_identities(organization_id, id)?;
+    pub fn unmute_conversation(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+    ) -> Result<MuteChange, AppError> {
+        let (mailbox_id, messages, identities) =
+            self.conversation_identities(organization_id, id)?;
         let muted = self.database.muted_identities(organization_id)?;
         let held = muted
             .get(&mailbox_id)
@@ -64,7 +80,13 @@ impl AppState {
             ));
         }
         let changed = self.database.unmute_identities(mailbox_id, &identities)?;
-        Ok(MuteChange { message_id: id, mailbox_id, messages, identities: identities.len(), changed })
+        Ok(MuteChange {
+            message_id: id,
+            mailbox_id,
+            messages,
+            identities: identities.len(),
+            changed,
+        })
     }
 
     /// Mute, or with `mute: false` unmute, the conversation of every message
@@ -73,33 +95,63 @@ impl AppState {
     /// conversation already as asked is passed over; one that cannot be
     /// muted is named in `refused` with its code and sentence. An unknown view
     /// is `VIEW_NOT_FOUND`.
-    pub fn mute_view(&self, organization_id: &str, view: &str, mute: bool) -> Result<MutedView, AppError> {
+    pub fn mute_view(
+        &self,
+        organization_id: &str,
+        view: &str,
+        mute: bool,
+    ) -> Result<MutedView, AppError> {
         let saved = self.view(organization_id, view)?;
-        let filters = super::super::MessageFilters { include_muted: true, ..saved.filters.filters() };
+        let filters = super::super::MessageFilters {
+            include_muted: true,
+            ..saved.filters.filters()
+        };
         let muted = self.database.muted_identities(organization_id)?;
         let mut handled: HashSet<Uuid> = HashSet::new();
         let mut conversations = Vec::new();
         let mut refused = Vec::new();
-        for message in self.list_messages(organization_id, saved.filters.mailbox_id, filters, None, None)? {
+        for message in self.list_messages(
+            organization_id,
+            saved.filters.mailbox_id,
+            filters,
+            None,
+            None,
+        )? {
             if handled.contains(&message.id) || is_muted(&message, &muted) == mute {
                 continue;
             }
-            handled.extend(self.message_thread(organization_id, message.id)?.iter().map(|member| member.id));
+            handled.extend(
+                self.message_thread(organization_id, message.id)?
+                    .iter()
+                    .map(|member| member.id),
+            );
             let changed = match mute {
                 true => self.mute_conversation(organization_id, message.id),
                 false => self.unmute_conversation(organization_id, message.id),
             };
             match changed {
                 Ok(change) => conversations.push(change),
-                Err(refusal) => refused.push(RefusedAction { message_id: message.id, code: refusal.code, message: refusal.message }),
+                Err(refusal) => refused.push(RefusedAction {
+                    message_id: message.id,
+                    code: refusal.code,
+                    message: refusal.message,
+                }),
             }
         }
-        Ok(MutedView { view: saved.name, conversations, refused })
+        Ok(MutedView {
+            view: saved.name,
+            conversations,
+            refused,
+        })
     }
 
     /// The mailbox of message `id`, how many stored messages its
     /// conversation holds, and every Message-ID they carry or name.
-    fn conversation_identities(&self, organization_id: &str, id: Uuid) -> Result<(Uuid, usize, Vec<String>), AppError> {
+    fn conversation_identities(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+    ) -> Result<(Uuid, usize, Vec<String>), AppError> {
         let thread = self.message_thread(organization_id, id)?;
         let mailbox_id = self.database.get_message(organization_id, id)?.mailbox_id;
         let found: HashSet<String> = thread.iter().flat_map(identities).collect();
@@ -108,7 +160,10 @@ impl AppState {
 }
 
 /// Whether `message` carries or names a Message-ID muted in its mailbox.
-pub(in crate::service) fn is_muted(message: &Message, muted: &HashMap<Uuid, HashSet<String>>) -> bool {
+pub(in crate::service) fn is_muted(
+    message: &Message,
+    muted: &HashMap<Uuid, HashSet<String>>,
+) -> bool {
     muted
         .get(&message.mailbox_id)
         .is_some_and(|kept| identities(message).any(|identity| kept.contains(&identity)))

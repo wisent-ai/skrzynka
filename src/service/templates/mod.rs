@@ -3,7 +3,10 @@
 //! every rule a send is.
 
 use super::AppState;
-use crate::{error::AppError, mail::{placeholders, MessageTemplate}};
+use crate::{
+    error::AppError,
+    mail::{placeholders, MessageTemplate},
+};
 use axum::http::StatusCode;
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -57,7 +60,9 @@ impl AppState {
                 ("subject", message.subject.clone()),
             ];
             for (key, value) in stated {
-                if let Some(value) = value.filter(|_| template.placeholders.iter().any(|named| named == key)) {
+                if let Some(value) =
+                    value.filter(|_| template.placeholders.iter().any(|named| named == key))
+                {
                     values.entry(key.to_string()).or_insert(value);
                 }
             }
@@ -65,7 +70,8 @@ impl AppState {
         let values = &values;
         let (subject, body) = match template.subject.as_deref() {
             Some(written) => {
-                let [subject, body] = placeholders::fill(&template.name, [written, &template.body], values)?;
+                let [subject, body] =
+                    placeholders::fill(&template.name, [written, &template.body], values)?;
                 (Some(subject), body)
             }
             None => {
@@ -73,7 +79,11 @@ impl AppState {
                 (None, body)
             }
         };
-        Ok(MessageTemplate { subject, body, ..template })
+        Ok(MessageTemplate {
+            subject,
+            body,
+            ..template
+        })
     }
 
     /// Store the template, replacing the subject and text of one of the
@@ -87,7 +97,8 @@ impl AppState {
         body: &str,
     ) -> Result<MessageTemplate, AppError> {
         let (name, subject) = checked_template(name, subject, body)?;
-        self.database.save_template(organization_id, &name, subject, body)
+        self.database
+            .save_template(organization_id, &name, subject, body)
     }
 
     /// Give a template another name, keeping its text. The new name is held to
@@ -125,7 +136,12 @@ impl AppState {
         let to = template_name(to)?;
         let source = self.template(organization_id, &from)?;
         self.refuse_taken(organization_id, &to)?;
-        self.database.save_template(organization_id, &to, source.subject.as_deref(), &source.body)
+        self.database.save_template(
+            organization_id,
+            &to,
+            source.subject.as_deref(),
+            &source.body,
+        )
     }
 
     /// `TEMPLATE_EXISTS` when a template carries `name` already.
@@ -178,7 +194,11 @@ impl AppState {
 /// A template as it will be kept: its name as stored and its subject
 /// trimmed. A text with nothing visible, or a subject that is blank or holds
 /// a line break, is `TEMPLATE_INVALID`, as is a name `template_name` refuses.
-fn checked_template<'a>(name: &str, subject: Option<&'a str>, body: &str) -> Result<(String, Option<&'a str>), AppError> {
+fn checked_template<'a>(
+    name: &str,
+    subject: Option<&'a str>,
+    body: &str,
+) -> Result<(String, Option<&'a str>), AppError> {
     let name = template_name(name)?;
     if body.trim().is_empty() {
         return Err(AppError::invalid(

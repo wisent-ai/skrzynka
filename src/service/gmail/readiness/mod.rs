@@ -116,8 +116,12 @@ impl AppState {
 /// an address at all.
 fn validated_account(email: &str) -> Result<String, AppError> {
     let email = email.trim();
-    Address::from_str(email)
-        .map_err(|cause| AppError::invalid("GMAIL_PROFILE_INVALID", format!("'{email}' is not a valid address: {cause}")))?;
+    Address::from_str(email).map_err(|cause| {
+        AppError::invalid(
+            "GMAIL_PROFILE_INVALID",
+            format!("'{email}' is not a valid address: {cause}"),
+        )
+    })?;
     Ok(email.to_string())
 }
 

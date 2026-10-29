@@ -120,10 +120,22 @@ impl AppState {
     }
 
     /// Every view of the organization, by name; with `contains` only those whose name holds it, case aside.
-    pub fn views(&self, organization_id: &str, contains: Option<&str>) -> Result<Vec<SavedView>, AppError> {
+    pub fn views(
+        &self,
+        organization_id: &str,
+        contains: Option<&str>,
+    ) -> Result<Vec<SavedView>, AppError> {
         let part = super::super::messages::filter_value(contains, "contains")?;
-        let named = |view: &SavedView| part.as_deref().is_none_or(|text| view.name.to_lowercase().contains(text));
-        Ok(self.database.views(organization_id)?.into_iter().filter(named).collect())
+        let named = |view: &SavedView| {
+            part.as_deref()
+                .is_none_or(|text| view.name.to_lowercase().contains(text))
+        };
+        Ok(self
+            .database
+            .views(organization_id)?
+            .into_iter()
+            .filter(named)
+            .collect())
     }
 
     /// One view by name; an unknown name is refused naming the ones there are.
@@ -159,11 +171,17 @@ impl AppState {
     /// one without the other. The new name is held to the rules a saved one
     /// is; a name another view carries, the view's own included, is
     /// `VIEW_EXISTS`, and an unknown view `VIEW_NOT_FOUND`.
-    pub fn copy_view(&self, organization_id: &str, name: &str, to: &str) -> Result<SavedView, AppError> {
+    pub fn copy_view(
+        &self,
+        organization_id: &str,
+        name: &str,
+        to: &str,
+    ) -> Result<SavedView, AppError> {
         let source = self.view(organization_id, name)?;
         let to = view_name(to)?;
         self.refuse_taken_view(organization_id, &to)?;
-        self.database.save_view(organization_id, &to, &source.filters)
+        self.database
+            .save_view(organization_id, &to, &source.filters)
     }
 
     /// `VIEW_EXISTS` when a view carries `name` already.
@@ -232,7 +250,13 @@ impl AppState {
         if let Some(name) = save_as {
             self.save_view(organization_id, name, filters)?;
         }
-        self.list_messages(organization_id, filters.mailbox_id, filters.filters(), limit, offset)
+        self.list_messages(
+            organization_id,
+            filters.mailbox_id,
+            filters.filters(),
+            limit,
+            offset,
+        )
     }
 
     fn unknown_view(&self, organization_id: &str, name: &str) -> Result<AppError, AppError> {
@@ -266,7 +290,10 @@ fn checked_view(name: &str, filters: &SavedFilters) -> Result<String, AppError> 
         || filters.answered
         || filters.snoozed
         || filters.muted;
-    let includes = filters.include_blocked || filters.include_snoozed || filters.include_muted || filters.oldest_first;
+    let includes = filters.include_blocked
+        || filters.include_snoozed
+        || filters.include_muted
+        || filters.oldest_first;
     if !narrows && !includes {
         return Err(AppError::invalid(
             "VIEW_INVALID",

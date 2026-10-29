@@ -28,7 +28,9 @@ pub(in crate::api) async fn list_suppressed(
     Extension(auth): Extension<AuthContext>,
     Query(filter): Query<SuppressionFilter>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.find_suppressions(&auth.organization_id, &filter)?)))
+    Ok(Json(json!(
+        state.find_suppressions(&auth.organization_id, &filter)?
+    )))
 }
 
 /// `POST /v1/recipients/check` with `{addresses}`: how a send would meet each
@@ -43,7 +45,10 @@ pub(in crate::api) async fn check_recipients(
     Extension(auth): Extension<AuthContext>,
     Json(request): Json<CheckRecipients>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.check_recipients(&auth.organization_id, &request.addresses)?)))
+    Ok(Json(json!(state.check_recipients(
+        &auth.organization_id,
+        &request.addresses
+    )?)))
 }
 
 /// `GET /v1/suppressed/export` with the same parameters: the entries kept as
@@ -62,7 +67,10 @@ pub(in crate::api) async fn export_suppressed(
     Ok((
         [
             (CONTENT_TYPE, "text/plain; charset=utf-8"),
-            (CONTENT_DISPOSITION, "attachment; filename=\"suppressed.txt\""),
+            (
+                CONTENT_DISPOSITION,
+                "attachment; filename=\"suppressed.txt\"",
+            ),
         ],
         text,
     )
@@ -78,7 +86,10 @@ pub(in crate::api) async fn suppressed_csv(
     Query(filter): Query<SuppressionFilter>,
 ) -> Result<axum::response::Response, AppError> {
     let entries = state.find_suppressions(&auth.organization_id, &filter)?;
-    Ok(super::super::listing::csv_file("suppressed.csv", crate::service::suppression_table(&entries)))
+    Ok(super::super::listing::csv_file(
+        "suppressed.csv",
+        crate::service::suppression_table(&entries),
+    ))
 }
 
 pub(in crate::api) async fn suppress(
@@ -87,7 +98,11 @@ pub(in crate::api) async fn suppress(
     Json(request): Json<SuppressRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.suppress(&auth.organization_id, &request.entry, request.reason.as_deref())?)))
+    Ok(Json(json!(state.suppress(
+        &auth.organization_id,
+        &request.entry,
+        request.reason.as_deref()
+    )?)))
 }
 
 /// `POST /v1/suppressed/import` with `{text, reason}`: one entry per line of
@@ -105,7 +120,11 @@ pub(in crate::api) async fn import_suppressed(
     Json(request): Json<ImportRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.import_suppressions(&auth.organization_id, &request.text, request.reason.as_deref())?)))
+    Ok(Json(json!(state.import_suppressions(
+        &auth.organization_id,
+        &request.text,
+        request.reason.as_deref()
+    )?)))
 }
 
 /// `DELETE /v1/suppressed/:entry` (URL-encoded): the entry taken off the list.
@@ -115,5 +134,7 @@ pub(in crate::api) async fn unsuppress(
     Path(entry): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.unsuppress(&auth.organization_id, &entry)?)))
+    Ok(Json(
+        json!(state.unsuppress(&auth.organization_id, &entry)?),
+    ))
 }

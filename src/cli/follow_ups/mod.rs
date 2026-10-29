@@ -106,29 +106,78 @@ pub(super) fn run_follow_up(
         FollowupCommand::Set(SetArgs { id, by }) => {
             print_json(&state.set_follow_up(organization, id, &by)?)
         }
-        FollowupCommand::List(ListArgs { state: standing, mailbox, to, contains, due_by, csv }) => {
+        FollowupCommand::List(ListArgs {
+            state: standing,
+            mailbox,
+            to,
+            contains,
+            due_by,
+            csv,
+        }) => {
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            let filter = FollowUpFilter { state: standing, mailbox_id, to, contains, due_by };
+            let filter = FollowUpFilter {
+                state: standing,
+                mailbox_id,
+                to,
+                contains,
+                due_by,
+            };
             let Some(path) = csv else {
                 return print_json(&state.follow_ups(organization, &filter)?);
             };
-            let file = NewFile { path: &path, exists: "FOLLOW_UP_OUTPUT_EXISTS", invalid: "FOLLOW_UP_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &path,
+                exists: "FOLLOW_UP_OUTPUT_EXISTS",
+                invalid: "FOLLOW_UP_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
             let follow_ups = state.follow_ups(organization, &filter)?;
             let table = follow_up_table(&follow_ups);
             file.write(table.as_bytes())?;
-            print_json(&serde_json::json!({ "path": path, "follow_ups": follow_ups.len(), "size_bytes": table.len() }))
+            print_json(
+                &serde_json::json!({ "path": path, "follow_ups": follow_ups.len(), "size_bytes": table.len() }),
+            )
         }
-        FollowupCommand::Show(OutboundRef { id }) => print_json(&state.get_follow_up(organization, id)?),
-        FollowupCommand::Clear(ClearArgs { id: Some(id), .. }) => print_json(&state.clear_follow_up(organization, id)?),
-        FollowupCommand::Clear(ClearArgs { id: None, state: standing, mailbox, to, contains, due_by }) => {
+        FollowupCommand::Show(OutboundRef { id }) => {
+            print_json(&state.get_follow_up(organization, id)?)
+        }
+        FollowupCommand::Clear(ClearArgs { id: Some(id), .. }) => {
+            print_json(&state.clear_follow_up(organization, id)?)
+        }
+        FollowupCommand::Clear(ClearArgs {
+            id: None,
+            state: standing,
+            mailbox,
+            to,
+            contains,
+            due_by,
+        }) => {
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            let filter = FollowUpFilter { state: standing, mailbox_id, to, contains, due_by };
+            let filter = FollowUpFilter {
+                state: standing,
+                mailbox_id,
+                to,
+                contains,
+                due_by,
+            };
             print_json(&state.clear_follow_ups(organization, &filter)?)
         }
-        FollowupCommand::Nudge(NudgeArgs { template, state: standing, mailbox, to, contains, due_by }) => {
+        FollowupCommand::Nudge(NudgeArgs {
+            template,
+            state: standing,
+            mailbox,
+            to,
+            contains,
+            due_by,
+        }) => {
             let mailbox_id = super::reading::chosen_mailbox(state, organization, mailbox)?;
-            let filter = FollowUpFilter { state: standing, mailbox_id, to, contains, due_by };
+            let filter = FollowUpFilter {
+                state: standing,
+                mailbox_id,
+                to,
+                contains,
+                due_by,
+            };
             print_json(&state.nudge_follow_ups(organization, &filter, &template)?)
         }
     }

@@ -34,22 +34,40 @@ pub(in crate::cli) struct BouncedArgs {
 
 /// Clear one address, print the addresses listed, or write them as a CSV
 /// table to a new file and print what was written.
-pub(in crate::cli) fn bounced(state: &AppState, organization: &str, args: BouncedArgs) -> Result<(), AppError> {
+pub(in crate::cli) fn bounced(
+    state: &AppState,
+    organization: &str,
+    args: BouncedArgs,
+) -> Result<(), AppError> {
     if let Some(address) = args.clear {
         return print_json(&state.clear_bounced(organization, &address)?);
     }
     if args.clear_listed {
-        let (since, until, contains) = (args.since.as_deref(), args.until.as_deref(), args.contains.as_deref());
+        let (since, until, contains) = (
+            args.since.as_deref(),
+            args.until.as_deref(),
+            args.contains.as_deref(),
+        );
         return print_json(&state.clear_bounced_listed(organization, since, until, contains)?);
     }
-    let (since, until, contains) = (args.since.as_deref(), args.until.as_deref(), args.contains.as_deref());
+    let (since, until, contains) = (
+        args.since.as_deref(),
+        args.until.as_deref(),
+        args.contains.as_deref(),
+    );
     let Some(path) = args.csv else {
         return print_json(&state.find_bounced(organization, since, until, contains)?);
     };
-    let file = NewFile { path: &path, exists: "BOUNCED_OUTPUT_EXISTS", invalid: "BOUNCED_OUTPUT_INVALID" };
+    let file = NewFile {
+        path: &path,
+        exists: "BOUNCED_OUTPUT_EXISTS",
+        invalid: "BOUNCED_OUTPUT_INVALID",
+    };
     file.refuse_occupied()?;
     let addresses = state.find_bounced(organization, since, until, contains)?;
     let table = bounced_table(&addresses);
     file.write(table.as_bytes())?;
-    print_json(&serde_json::json!({ "path": path, "addresses": addresses.len(), "size_bytes": table.len() }))
+    print_json(
+        &serde_json::json!({ "path": path, "addresses": addresses.len(), "size_bytes": table.len() }),
+    )
 }

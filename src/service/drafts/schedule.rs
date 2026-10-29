@@ -89,7 +89,8 @@ impl AppState {
 
     /// Take the draft off its schedule; it stays a draft.
     pub fn unschedule_draft(&self, organization_id: &str, id: Uuid) -> Result<Draft, AppError> {
-        self.database.schedule_draft(organization_id, id, None, None)
+        self.database
+            .schedule_draft(organization_id, id, None, None)
     }
 
     /// Take every scheduled draft mentioning `filter.contains` (of its
@@ -97,19 +98,29 @@ impl AppState {
     /// merge to hold back, and answer them unscheduled; they stay drafts.
     /// A filter naming no text is `MESSAGE_FILTER_INVALID`, so nothing
     /// unschedules every draft at once; none scheduled is `NOT_FOUND`.
-    pub fn unschedule_drafts(&self, organization_id: &str, filter: &DraftFilter) -> Result<Vec<Draft>, AppError> {
+    pub fn unschedule_drafts(
+        &self,
+        organization_id: &str,
+        filter: &DraftFilter,
+    ) -> Result<Vec<Draft>, AppError> {
         if filter.contains.is_none() {
             return Err(AppError::invalid(
                 "MESSAGE_FILTER_INVALID",
                 "name the text the scheduled drafts contain, or unschedule one draft by its ID",
             ));
         }
-        let scheduled = DraftFilter { scheduled: true, ..filter.clone() };
+        let scheduled = DraftFilter {
+            scheduled: true,
+            ..filter.clone()
+        };
         let listed = self.list_drafts(organization_id, &scheduled)?;
         if listed.is_empty() {
             return Err(AppError::not_found("scheduled draft"));
         }
-        listed.iter().map(|draft| self.unschedule_draft(organization_id, draft.id)).collect()
+        listed
+            .iter()
+            .map(|draft| self.unschedule_draft(organization_id, draft.id))
+            .collect()
     }
 
     /// Send every draft whose time has come. One that does not end `sent`
@@ -123,8 +134,7 @@ impl AppState {
                 allow_bounced: false,
                 follow_up: None,
             };
-            let failure = match self.send_draft(&due.organization_id, due.id, request).await
-            {
+            let failure = match self.send_draft(&due.organization_id, due.id, request).await {
                 Ok(sent) if sent.status == DeliveryStatus::Sent => continue,
                 Ok(sent) => not_sent(&sent),
                 Err(error) => format!("{}: {}", error.code, error.message),

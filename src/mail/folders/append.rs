@@ -26,10 +26,15 @@ pub fn append_message(
     source: &[u8],
 ) -> Result<AppendOutcome, AppError> {
     let invalid = |message: String| AppError::invalid("MESSAGE_APPEND_INVALID", message);
-    let (headers, _) = mailparse::parse_headers(source)
-        .map_err(|error| invalid(format!("the message does not read as RFC 5322 headers: {error}")))?;
+    let (headers, _) = mailparse::parse_headers(source).map_err(|error| {
+        invalid(format!(
+            "the message does not read as RFC 5322 headers: {error}"
+        ))
+    })?;
     if headers.is_empty() {
-        return Err(invalid("the message states no header; it is not a whole message".to_string()));
+        return Err(invalid(
+            "the message states no header; it is not a whole message".to_string(),
+        ));
     }
     let message_id = headers
         .iter()

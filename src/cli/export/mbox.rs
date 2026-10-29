@@ -8,13 +8,21 @@ use chrono::DateTime;
 
 /// The bytes of one message as an mbox entry, its `From ` line dated with
 /// `received_at` (the RFC 3339 instant Skrzynka stored).
-pub(super) fn entry(source: &[u8], received_at: &str, message_id: uuid::Uuid) -> Result<Vec<u8>, AppError> {
+pub(super) fn entry(
+    source: &[u8],
+    received_at: &str,
+    message_id: uuid::Uuid,
+) -> Result<Vec<u8>, AppError> {
     let received = DateTime::parse_from_rfc3339(received_at).map_err(|error| {
         AppError::internal(format!(
             "message {message_id} stores receive instant {received_at:?}, which is not RFC 3339: {error}"
         ))
     })?;
-    let mut written = format!("From MAILER-DAEMON {}\n", received.format("%a %b %e %H:%M:%S %Y")).into_bytes();
+    let mut written = format!(
+        "From MAILER-DAEMON {}\n",
+        received.format("%a %b %e %H:%M:%S %Y")
+    )
+    .into_bytes();
     for line in source.split(|byte| *byte == b'\n') {
         let line = match line.strip_suffix(b"\r") {
             Some(bare) => bare,

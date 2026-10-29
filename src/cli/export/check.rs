@@ -47,20 +47,34 @@ pub(super) enum FileFault {
 pub(super) fn read_manifest(input: &Path, code: &'static str) -> Result<ExportManifest, AppError> {
     let listing = input.join("manifest.json");
     let written = std::fs::read(&listing).map_err(|error| {
-        AppError::invalid(code, format!("{} could not be read: {error}; name a directory `message export` wrote", listing.display()))
+        AppError::invalid(
+            code,
+            format!(
+                "{} could not be read: {error}; name a directory `message export` wrote",
+                listing.display()
+            ),
+        )
     })?;
-    serde_json::from_slice(&written)
-        .map_err(|error| AppError::invalid(code, format!("{} is not an export manifest: {error}", listing.display())))
+    serde_json::from_slice(&written).map_err(|error| {
+        AppError::invalid(
+            code,
+            format!("{} is not an export manifest: {error}", listing.display()),
+        )
+    })
 }
 
 /// The bytes of one listed file, when they are still what the export wrote.
 pub(super) fn checked_file(input: &Path, entry: &ExportedFile) -> Result<Vec<u8>, FileFault> {
     // A name is one file of the export directory, never a path out of it.
     if entry.file.contains(['/', '\\']) || entry.file.starts_with('.') {
-        return Err(FileFault::Unreadable(format!("the manifest names {:?}, which is not a file of the export", entry.file)));
+        return Err(FileFault::Unreadable(format!(
+            "the manifest names {:?}, which is not a file of the export",
+            entry.file
+        )));
     }
-    let source = std::fs::read(input.join(&entry.file))
-        .map_err(|error| FileFault::Unreadable(format!("{} could not be read: {error}", entry.file)))?;
+    let source = std::fs::read(input.join(&entry.file)).map_err(|error| {
+        FileFault::Unreadable(format!("{} could not be read: {error}", entry.file))
+    })?;
     let digest = format!("{:x}", Sha256::digest(&source));
     if !digest.eq_ignore_ascii_case(&entry.sha256) {
         return Err(FileFault::Changed(format!(
@@ -92,16 +106,24 @@ struct VerifyReport {
 /// does not, so a script cannot take a damaged backup for a whole one.
 pub(in crate::cli) fn verify_export(VerifyArgs { input }: VerifyArgs) -> Result<(), AppError> {
     let manifest = read_manifest(&input, "EXPORT_INPUT_INVALID")?;
-    let mut report = VerifyReport { directory: input.clone(), verified: Vec::new(), damaged: Vec::new() };
+    let mut report = VerifyReport {
+        directory: input.clone(),
+        verified: Vec::new(),
+        damaged: Vec::new(),
+    };
     for entry in manifest.exported.iter().chain(manifest.mbox.as_ref()) {
         match checked_file(&input, entry) {
             Ok(_) => report.verified.push(entry.file.clone()),
-            Err(FileFault::Unreadable(message)) => {
-                report.damaged.push(Damaged { file: entry.file.clone(), code: "EXPORT_FILE_MISSING", message })
-            }
-            Err(FileFault::Changed(message)) => {
-                report.damaged.push(Damaged { file: entry.file.clone(), code: "EXPORT_FILE_CHANGED", message })
-            }
+            Err(FileFault::Unreadable(message)) => report.damaged.push(Damaged {
+                file: entry.file.clone(),
+                code: "EXPORT_FILE_MISSING",
+                message,
+            }),
+            Err(FileFault::Changed(message)) => report.damaged.push(Damaged {
+                file: entry.file.clone(),
+                code: "EXPORT_FILE_CHANGED",
+                message,
+            }),
         }
     }
     print_json(&report)?;

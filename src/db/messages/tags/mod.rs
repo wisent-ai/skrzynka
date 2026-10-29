@@ -106,7 +106,9 @@ impl Database {
     /// Take `tag` off every message of the organization; answers how many
     /// carried it. Rules and views naming it are left as they are.
     pub fn remove_tag(&self, organization_id: &str, tag: &str) -> Result<u64, AppError> {
-        Ok(self.lock()?.execute(REMOVE_TAG, params![organization_id, tag])?)
+        Ok(self
+            .lock()?
+            .execute(REMOVE_TAG, params![organization_id, tag])?)
     }
 }
 
@@ -117,7 +119,10 @@ const REMOVE_TAG: &str = "DELETE FROM message_tags WHERE tag=$2 AND message_id I
 
 /// Fill in `tags` for every message in `messages`, in tag order.
 pub(super) fn attach(client: &Client, messages: &mut [Message]) -> Result<(), AppError> {
-    let ids: Vec<String> = messages.iter().map(|message| message.id.to_string()).collect();
+    let ids: Vec<String> = messages
+        .iter()
+        .map(|message| message.id.to_string())
+        .collect();
     if ids.is_empty() {
         return Ok(());
     }
@@ -127,7 +132,10 @@ pub(super) fn attach(client: &Client, messages: &mut [Message]) -> Result<(), Ap
     )?;
     let mut by_message: HashMap<String, Vec<String>> = HashMap::new();
     for row in statement.query_map(params![ids], |row| {
-        Ok((row.get::<_, String>("message_id")?, row.get::<_, String>("tag")?))
+        Ok((
+            row.get::<_, String>("message_id")?,
+            row.get::<_, String>("tag")?,
+        ))
     })? {
         let (message_id, tag) = row?;
         by_message.entry(message_id).or_default().push(tag);

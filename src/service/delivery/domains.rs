@@ -49,7 +49,9 @@ impl AppState {
         to: Option<DateTime<Utc>>,
         bounces: &[StoredBounce],
     ) -> Result<Vec<DomainDelivery>, AppError> {
-        let rows = self.database.list_outbound(organization_id, Some(mailbox_id), None, None)?;
+        let rows = self
+            .database
+            .list_outbound(organization_id, Some(mailbox_id), None, None)?;
         let mut tallies: BTreeMap<String, Tally<'_>> = BTreeMap::new();
         for row in &rows {
             let claimed = DateTime::parse_from_rfc3339(&row.created_at)
@@ -63,23 +65,37 @@ impl AppState {
             if from.is_some_and(|start| claimed < start) || to.is_some_and(|end| claimed >= end) {
                 continue;
             }
-            let addressed = [Some(row.recipients.as_str()), row.cc.as_deref(), row.bcc.as_deref()]
-                .into_iter()
-                .flatten()
-                .flat_map(|header| header.split(','));
+            let addressed = [
+                Some(row.recipients.as_str()),
+                row.cc.as_deref(),
+                row.bcc.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .flat_map(|header| header.split(','));
             for written in addressed {
-                let Some(domain) = domain_of(written) else { continue };
+                let Some(domain) = domain_of(written) else {
+                    continue;
+                };
                 let tally = tallies.entry(domain).or_default();
                 match row.status {
                     DeliveryStatus::Sent => tally.sent.push(written),
                     DeliveryStatus::Failed => tally.failed.push(written),
-                    DeliveryStatus::Pending | DeliveryStatus::Sending | DeliveryStatus::Uncertain => {}
+                    DeliveryStatus::Pending
+                    | DeliveryStatus::Sending
+                    | DeliveryStatus::Uncertain => {}
                 }
             }
         }
         for bounce in bounces.iter().filter(|bounce| bounce.kind == "outbound") {
-            let failed = bounce.action.as_deref().is_some_and(|action| action.trim().eq_ignore_ascii_case("failed"));
-            let named = bounce.recipient.as_deref().and_then(|written| written.rsplit(';').next());
+            let failed = bounce
+                .action
+                .as_deref()
+                .is_some_and(|action| action.trim().eq_ignore_ascii_case("failed"));
+            let named = bounce
+                .recipient
+                .as_deref()
+                .and_then(|written| written.rsplit(';').next());
             if let (true, Some(address)) = (failed, named) {
                 if let Some(domain) = domain_of(address) {
                     tallies.entry(domain).or_default().bounced.push(address);
@@ -95,7 +111,12 @@ impl AppState {
                 bounced: tally.bounced.len() as u64,
             })
             .collect();
-        listed.sort_by(|left, right| right.sent.cmp(&left.sent).then_with(|| left.domain.cmp(&right.domain)));
+        listed.sort_by(|left, right| {
+            right
+                .sent
+                .cmp(&left.sent)
+                .then_with(|| left.domain.cmp(&right.domain))
+        });
         Ok(listed)
     }
 }
@@ -114,9 +135,24 @@ impl DeliveryReport {
     /// total, sent, failed, uncertain, in_flight, bounced`, oldest first: a
     /// warm-up read in a spreadsheet.
     pub fn day_table(&self) -> String {
-        let mut table = header(&["day", "total", "sent", "failed", "uncertain", "in_flight", "bounced"]);
+        let mut table = header(&[
+            "day",
+            "total",
+            "sent",
+            "failed",
+            "uncertain",
+            "in_flight",
+            "bounced",
+        ]);
         for day in &self.days {
-            let counts = [day.total, day.sent, day.failed, day.uncertain, day.in_flight, day.bounced];
+            let counts = [
+                day.total,
+                day.sent,
+                day.failed,
+                day.uncertain,
+                day.in_flight,
+                day.bounced,
+            ];
             let mut fields = vec![day.day.clone()];
             fields.extend(counts.iter().map(u64::to_string));
             table.push_str(&row(&fields));
@@ -129,7 +165,12 @@ impl DeliveryReport {
     pub fn domain_table(&self) -> String {
         let mut table = header(&["domain", "sent", "failed", "bounced"]);
         for domain in &self.domains {
-            table.push_str(&row(&[domain.domain.clone(), domain.sent.to_string(), domain.failed.to_string(), domain.bounced.to_string()]));
+            table.push_str(&row(&[
+                domain.domain.clone(),
+                domain.sent.to_string(),
+                domain.failed.to_string(),
+                domain.bounced.to_string(),
+            ]));
         }
         table
     }

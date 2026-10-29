@@ -15,8 +15,8 @@ use imap::types::Flag;
 
 mod model;
 pub use model::{
-    ActionStatus, MarkMessageRequest, MarkState, MessageAction, MoveMessageRequest,
-    ProviderAction, SpecialUse,
+    ActionStatus, MarkMessageRequest, MarkState, MessageAction, MoveMessageRequest, ProviderAction,
+    SpecialUse,
 };
 
 type Session = imap::Session<imap::Connection>;
@@ -151,7 +151,11 @@ fn set_flag(
     flag: MarkedFlag,
     on: bool,
 ) -> Result<(), AppError> {
-    let query = format!("{}FLAGS.SILENT ({})", if on { "+" } else { "-" }, flag.imap());
+    let query = format!(
+        "{}FLAGS.SILENT ({})",
+        if on { "+" } else { "-" },
+        flag.imap()
+    );
     session
         .uid_store(uid.to_string(), &query)
         .map_err(|error| command_failed(mailbox, &format!("UID STORE {uid} {query}"), &error))?;
@@ -174,7 +178,12 @@ fn set_flag(
     }
 }
 
-fn move_to(session: &mut Session, mailbox: &Mailbox, uid: u32, folder: &str) -> Result<(), AppError> {
+fn move_to(
+    session: &mut Session,
+    mailbox: &Mailbox,
+    uid: u32,
+    folder: &str,
+) -> Result<(), AppError> {
     require_capability(session, mailbox, "MOVE", "RFC 6851")?;
     session
         .uid_mv(uid.to_string(), folder)

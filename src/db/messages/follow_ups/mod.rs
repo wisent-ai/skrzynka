@@ -26,7 +26,11 @@ impl Database {
     }
 
     /// Stop expecting an answer; whether a follow-up was set.
-    pub fn clear_follow_up(&self, organization_id: &str, outbound_id: Uuid) -> Result<bool, AppError> {
+    pub fn clear_follow_up(
+        &self,
+        organization_id: &str,
+        outbound_id: Uuid,
+    ) -> Result<bool, AppError> {
         self.get_outbound(organization_id, outbound_id)?;
         let cleared = self
             .lock()?
@@ -51,7 +55,10 @@ impl Database {
              ORDER BY follow_ups.due_at, follow_ups.outbound_id",
         )?;
         let rows = statement.query_map(params![organization_id], |row| {
-            Ok((parse_uuid(row.get("outbound_id")?)?, row.get::<_, String>("due_at")?))
+            Ok((
+                parse_uuid(row.get("outbound_id")?)?,
+                row.get::<_, String>("due_at")?,
+            ))
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }

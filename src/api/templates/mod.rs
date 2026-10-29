@@ -27,7 +27,9 @@ pub(in crate::api) async fn list_templates(
     Extension(auth): Extension<AuthContext>,
     Query(filter): Query<TemplateFilter>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.templates(&auth.organization_id, &filter)?)))
+    Ok(Json(
+        json!(state.templates(&auth.organization_id, &filter)?),
+    ))
 }
 
 /// `GET /v1/template-document?contains=&placeholder=`: the templates the
@@ -46,7 +48,10 @@ pub(in crate::api) async fn export_templates(
     Ok((
         [
             (CONTENT_TYPE, "application/json; charset=utf-8"),
-            (CONTENT_DISPOSITION, "attachment; filename=\"templates.json\""),
+            (
+                CONTENT_DISPOSITION,
+                "attachment; filename=\"templates.json\"",
+            ),
         ],
         document,
     )
@@ -66,7 +71,9 @@ pub(in crate::api) async fn import_templates(
     Json(request): Json<ImportTemplates>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.import_templates(&auth.organization_id, &request.text)?)))
+    Ok(Json(json!(
+        state.import_templates(&auth.organization_id, &request.text)?
+    )))
 }
 
 /// `GET /v1/templates/:name`: the name URL-encoded.
@@ -85,9 +92,12 @@ pub(in crate::api) async fn save_template(
     Json(request): Json<SaveTemplate>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.save_template(&auth.organization_id, &name, request.subject.as_deref(), &request.body)?
-    )))
+    Ok(Json(json!(state.save_template(
+        &auth.organization_id,
+        &name,
+        request.subject.as_deref(),
+        &request.body
+    )?)))
 }
 
 pub(in crate::api) async fn delete_template(
@@ -114,9 +124,11 @@ pub(in crate::api) async fn rename_template(
     Json(request): Json<RenameTemplate>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.rename_template(&auth.organization_id, &name, &request.to)?
-    )))
+    Ok(Json(json!(state.rename_template(
+        &auth.organization_id,
+        &name,
+        &request.to
+    )?)))
 }
 
 pub(in crate::api) async fn copy_template(
@@ -126,9 +138,11 @@ pub(in crate::api) async fn copy_template(
     Json(request): Json<RenameTemplate>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.copy_template(&auth.organization_id, &name, &request.to)?
-    )))
+    Ok(Json(json!(state.copy_template(
+        &auth.organization_id,
+        &name,
+        &request.to
+    )?)))
 }
 
 /// `POST /v1/templates/:name/render` with `{"values": [{"key", "value"}],
@@ -165,8 +179,15 @@ pub(in crate::api) async fn render_template(
             ));
         }
     }
-    let message = request.message_id.as_deref().map(super::parse_uuid).transpose()?;
-    Ok(Json(json!(
-        state.render_template(&auth.organization_id, &name, &values, message)?
-    )))
+    let message = request
+        .message_id
+        .as_deref()
+        .map(super::parse_uuid)
+        .transpose()?;
+    Ok(Json(json!(state.render_template(
+        &auth.organization_id,
+        &name,
+        &values,
+        message
+    )?)))
 }

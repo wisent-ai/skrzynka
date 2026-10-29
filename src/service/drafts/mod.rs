@@ -62,7 +62,11 @@ impl AppState {
     /// subject and body, whatever the message's status. The row keeps only
     /// the names and digests of the files it carried, not their bytes, so
     /// the draft carries none; they are attached again with `update`.
-    pub fn draft_from_outbound(&self, organization_id: &str, outbound_id: Uuid) -> Result<Draft, AppError> {
+    pub fn draft_from_outbound(
+        &self,
+        organization_id: &str,
+        outbound_id: Uuid,
+    ) -> Result<Draft, AppError> {
         let sent = self.get_outbound(organization_id, outbound_id)?;
         let addresses = super::outbound::stored_addresses;
         let change = DraftChange {
@@ -80,13 +84,19 @@ impl AppState {
     /// draft `id`, written from the mailbox `mailbox` names (its ID or
     /// address) or from the same mailbox; the copy is not scheduled, and the
     /// original is left as it was.
-    pub fn copy_draft(&self, organization_id: &str, id: Uuid, mailbox: Option<&str>) -> Result<Draft, AppError> {
+    pub fn copy_draft(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        mailbox: Option<&str>,
+    ) -> Result<Draft, AppError> {
         let draft = self.database.get_draft(organization_id, id)?;
         let mailbox_id = match mailbox {
             Some(selector) => self.resolve_mailbox(organization_id, selector)?.id,
             None => draft.mailbox_id,
         };
-        self.database.create_draft(organization_id, mailbox_id, &draft)
+        self.database
+            .create_draft(organization_id, mailbox_id, &draft)
     }
 
     pub fn get_draft(&self, organization_id: &str, id: Uuid) -> Result<Draft, AppError> {
@@ -102,7 +112,11 @@ impl AppState {
     /// drafts removed as they stood. A filter naming no text is
     /// `MESSAGE_FILTER_INVALID`, so nothing removes every draft at once;
     /// none listed is `NOT_FOUND`.
-    pub fn delete_drafts(&self, organization_id: &str, filter: &DraftFilter) -> Result<Vec<Draft>, AppError> {
+    pub fn delete_drafts(
+        &self,
+        organization_id: &str,
+        filter: &DraftFilter,
+    ) -> Result<Vec<Draft>, AppError> {
         if filter.contains.is_none() {
             return Err(AppError::invalid(
                 "MESSAGE_FILTER_INVALID",
@@ -179,14 +193,24 @@ impl AppState {
     /// covers or a stored bounce report says failed for good, as `message
     /// recipients` reads them — written with why, for a refusal that
     /// drafts many at once to name them all.
-    pub(in crate::service) fn unsendable(&self, organization_id: &str, addresses: &[String]) -> Result<Vec<String>, AppError> {
+    pub(in crate::service) fn unsendable(
+        &self,
+        organization_id: &str,
+        addresses: &[String],
+    ) -> Result<Vec<String>, AppError> {
         Ok(self
             .check_recipients(organization_id, addresses)?
             .into_iter()
             .filter(|check| !check.sendable)
             .map(|check| match check.suppressed {
-                Some(entry) => format!("{} (the suppression list holds {})", check.address, entry.entry),
-                None => format!("{} (a stored bounce report says delivery to it failed for good)", check.address),
+                Some(entry) => format!(
+                    "{} (the suppression list holds {})",
+                    check.address, entry.entry
+                ),
+                None => format!(
+                    "{} (a stored bounce report says delivery to it failed for good)",
+                    check.address
+                ),
             })
             .collect())
     }
@@ -194,7 +218,10 @@ impl AppState {
 
 /// A new draft from mailbox `mailbox_id` holding what `change` names and
 /// nothing else, not yet kept.
-pub(in crate::service) fn drafted(mailbox_id: Uuid, change: DraftChange) -> Result<Draft, AppError> {
+pub(in crate::service) fn drafted(
+    mailbox_id: Uuid,
+    change: DraftChange,
+) -> Result<Draft, AppError> {
     let mut draft = Draft {
         id: Uuid::nil(),
         mailbox_id,

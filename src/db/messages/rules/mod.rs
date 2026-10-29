@@ -12,7 +12,8 @@ use chrono::Utc;
 use stado_database::sync::Tx;
 use uuid::Uuid;
 
-const COLUMNS: &str = "id, tag, sender, list, contains, recipient, attachment, mailbox_id, created_at, paused_at";
+const COLUMNS: &str =
+    "id, tag, sender, list, contains, recipient, attachment, mailbox_id, created_at, paused_at";
 
 impl Database {
     /// Every rule of the organization, oldest first.
@@ -26,11 +27,7 @@ impl Database {
     }
 
     /// Store a rule and answer it.
-    pub fn add_tag_rule(
-        &self,
-        organization_id: &str,
-        rule: &TagRule,
-    ) -> Result<TagRule, AppError> {
+    pub fn add_tag_rule(&self, organization_id: &str, rule: &TagRule) -> Result<TagRule, AppError> {
         let id = Uuid::new_v4();
         let created_at = Utc::now().to_rfc3339();
         self.lock()?.execute(
@@ -60,8 +57,17 @@ impl Database {
     /// Replace the rule's tag, conditions and mailbox, keeping its ID and
     /// when it was added, and answer it; one the organization does not hold
     /// is not found. The tags it already gave stay.
-    pub fn replace_tag_rule(&self, organization_id: &str, id: Uuid, rule: &TagRule) -> Result<TagRule, AppError> {
-        let Some(held) = self.tag_rules(organization_id)?.into_iter().find(|held| held.id == id) else {
+    pub fn replace_tag_rule(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        rule: &TagRule,
+    ) -> Result<TagRule, AppError> {
+        let Some(held) = self
+            .tag_rules(organization_id)?
+            .into_iter()
+            .find(|held| held.id == id)
+        else {
             return Err(AppError::not_found("tag rule"));
         };
         self.lock()?.execute(
@@ -90,8 +96,17 @@ impl Database {
     /// Pause the rule from now, or let it tag again with `false`, and answer
     /// it; one the organization does not hold is not found. Pausing a paused
     /// rule keeps when it was first paused.
-    pub fn pause_tag_rule(&self, organization_id: &str, id: Uuid, paused: bool) -> Result<TagRule, AppError> {
-        let Some(held) = self.tag_rules(organization_id)?.into_iter().find(|held| held.id == id) else {
+    pub fn pause_tag_rule(
+        &self,
+        organization_id: &str,
+        id: Uuid,
+        paused: bool,
+    ) -> Result<TagRule, AppError> {
+        let Some(held) = self
+            .tag_rules(organization_id)?
+            .into_iter()
+            .find(|held| held.id == id)
+        else {
             return Err(AppError::not_found("tag rule"));
         };
         let paused_at = match (paused, held.paused_at.clone()) {
@@ -137,7 +152,10 @@ impl Database {
 /// The rules that apply to `mailbox_id`'s mail: its organization's rules for
 /// every mailbox and those kept to it, paused ones left out, read inside an
 /// import's transaction.
-pub(super) fn for_mailbox(transaction: &Tx<'_>, mailbox_id: &str) -> Result<Vec<TagRule>, AppError> {
+pub(super) fn for_mailbox(
+    transaction: &Tx<'_>,
+    mailbox_id: &str,
+) -> Result<Vec<TagRule>, AppError> {
     let mut statement = transaction.prepare(
         "SELECT tag_rules.id, tag_rules.tag, tag_rules.sender, tag_rules.list, tag_rules.contains,
                 tag_rules.recipient, tag_rules.attachment, tag_rules.mailbox_id, tag_rules.created_at,
@@ -166,7 +184,11 @@ pub(super) fn tag_imported(
         cc: message.cc.as_deref(),
         subject: message.subject.as_deref(),
         body: &message.body_text,
-        files: message.attachments.iter().filter_map(|file| file.filename.as_deref()).collect(),
+        files: message
+            .attachments
+            .iter()
+            .filter_map(|file| file.filename.as_deref())
+            .collect(),
     };
     let now = Utc::now().to_rfc3339();
     for rule in rules.iter().filter(|rule| rule.matches(&subject)) {
@@ -175,7 +197,12 @@ pub(super) fn tag_imported(
     Ok(())
 }
 
-fn insert_tag(transaction: &Tx<'_>, message_id: &str, tag: &str, now: &str) -> Result<(), AppError> {
+fn insert_tag(
+    transaction: &Tx<'_>,
+    message_id: &str,
+    tag: &str,
+    now: &str,
+) -> Result<(), AppError> {
     transaction.execute(
         "INSERT INTO message_tags (message_id, tag, tagged_at) VALUES ($1, $2, $3)
          ON CONFLICT (message_id, tag) DO NOTHING",

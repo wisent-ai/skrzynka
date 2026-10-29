@@ -15,9 +15,13 @@ pub struct StoredMessage {
 
 fn stored_row(row: &Row<'_>) -> crate::db::sql::Result<StoredMessage> {
     let id: String = row.get("id")?;
-    let message_id = Uuid::parse_str(&id)
-        .map_err(|error| crate::db::sql::Error::Conversion(format!("{id:?} is not a UUID: {error}")))?;
-    Ok(StoredMessage { stored_order: row.get("stored_order")?, message_id })
+    let message_id = Uuid::parse_str(&id).map_err(|error| {
+        crate::db::sql::Error::Conversion(format!("{id:?} is not a UUID: {error}"))
+    })?;
+    Ok(StoredMessage {
+        stored_order: row.get("stored_order")?,
+        message_id,
+    })
 }
 
 impl Database {

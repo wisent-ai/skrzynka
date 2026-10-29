@@ -29,13 +29,18 @@ fn auto_reply_row(row: &Row<'_>) -> crate::db::sql::Result<AutoReply> {
 }
 
 fn uuid(value: String) -> crate::db::sql::Result<Uuid> {
-    Uuid::parse_str(&value)
-        .map_err(|error| crate::db::sql::Error::Conversion(format!("{value:?} is not a UUID: {error}")))
+    Uuid::parse_str(&value).map_err(|error| {
+        crate::db::sql::Error::Conversion(format!("{value:?} is not a UUID: {error}"))
+    })
 }
 
 impl Database {
     /// The mailbox's automatic reply, absent when it answers nothing.
-    pub fn auto_reply(&self, organization_id: &str, mailbox_id: Uuid) -> Result<Option<AutoReply>, AppError> {
+    pub fn auto_reply(
+        &self,
+        organization_id: &str,
+        mailbox_id: Uuid,
+    ) -> Result<Option<AutoReply>, AppError> {
         self.get_mailbox(organization_id, mailbox_id)?;
         self.auto_reply_internal(mailbox_id)
     }
@@ -75,8 +80,10 @@ impl Database {
                 )?;
             }
             None => {
-                self.lock()?
-                    .execute("DELETE FROM mailbox_auto_replies WHERE mailbox_id=$1", params![id])?;
+                self.lock()?.execute(
+                    "DELETE FROM mailbox_auto_replies WHERE mailbox_id=$1",
+                    params![id],
+                )?;
             }
         }
         self.auto_reply(organization_id, mailbox_id)
@@ -84,7 +91,10 @@ impl Database {
 
     /// The mailbox's messages received inside the reply's window that the
     /// responder has not decided on, oldest first.
-    pub fn auto_reply_candidates(&self, reply: &AutoReply) -> Result<Vec<AutoReplyCandidate>, AppError> {
+    pub fn auto_reply_candidates(
+        &self,
+        reply: &AutoReply,
+    ) -> Result<Vec<AutoReplyCandidate>, AppError> {
         let client = self.lock()?;
         let mut statement = client.prepare(
             "SELECT messages.id AS id, messages.sender AS sender, messages.reply_to AS reply_to
@@ -110,14 +120,24 @@ impl Database {
 
     /// Claim the decision on one message before anything is sent; false when
     /// another pass already claimed it.
-    pub fn claim_auto_reply(&self, mailbox_id: Uuid, message_id: Uuid, sender: &str) -> Result<bool, AppError> {
+    pub fn claim_auto_reply(
+        &self,
+        mailbox_id: Uuid,
+        message_id: Uuid,
+        sender: &str,
+    ) -> Result<bool, AppError> {
         let claimed = self
             .lock()?
             .query_row(
                 "INSERT INTO auto_reply_decisions (message_id, mailbox_id, sender, decided_at)
                  VALUES ($1, $2, $3, $4) ON CONFLICT (message_id) DO NOTHING
                  RETURNING message_id",
-                params![message_id.to_string(), mailbox_id.to_string(), sender, Utc::now().to_rfc3339()],
+                params![
+                    message_id.to_string(),
+                    mailbox_id.to_string(),
+                    sender,
+                    Utc::now().to_rfc3339()
+                ],
                 |row| row.get::<_, String>("message_id"),
             )
             .optional()?;
@@ -126,7 +146,12 @@ impl Database {
 
     /// When the responder last answered `sender` from the mailbox at or after
     /// `since`, if it did.
-    pub fn answered_since(&self, mailbox_id: Uuid, sender: &str, since: &str) -> Result<Option<String>, AppError> {
+    pub fn answered_since(
+        &self,
+        mailbox_id: Uuid,
+        sender: &str,
+        since: &str,
+    ) -> Result<Option<String>, AppError> {
         self.lock()?
             .query_row(
                 "SELECT decided_at FROM auto_reply_decisions
@@ -227,7 +252,9 @@ fn received_unavailable(error: stado_database::Error) -> AppError {
     AppError::new(
         axum::http::StatusCode::SERVICE_UNAVAILABLE,
         "RECEIVED_ANNOUNCEMENTS_UNAVAILABLE",
-        format!("received-mail announcements on the fleet database channel {RECEIVED_CHANNEL}: {error}"),
+        format!(
+            "received-mail announcements on the fleet database channel {RECEIVED_CHANNEL}: {error}"
+        ),
         true,
     )
 }

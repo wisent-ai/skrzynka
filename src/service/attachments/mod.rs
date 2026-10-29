@@ -35,7 +35,9 @@ impl AppState {
         if let Some(attachments) = message.attachments {
             return Ok(attachments);
         }
-        let (provider, _) = self.read_provider_message(organization_id, &message).await?;
+        let (provider, _) = self
+            .read_provider_message(organization_id, &message)
+            .await?;
         self.database
             .record_message_details(organization_id, message_id, &provider)?
             .attachments
@@ -61,7 +63,9 @@ impl AppState {
                 return Err(attachment_not_found(message_id, index, recorded));
             }
         }
-        let (provider, parts) = self.read_provider_message(organization_id, &message).await?;
+        let (provider, parts) = self
+            .read_provider_message(organization_id, &message)
+            .await?;
         let described: Vec<MessageAttachment> =
             parts.iter().map(|part| part.attachment.clone()).collect();
         if message.attachments.is_none() {

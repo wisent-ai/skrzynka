@@ -13,7 +13,12 @@ use std::path::PathBuf;
 #[derive(clap::Args)]
 pub(super) struct SuppressedArgs {
     /// An address, or @domain for every address of a domain, no originated mail may be sent to.
-    #[arg(long, group = "adding", conflicts_with = "remove", conflicts_with = "import")]
+    #[arg(
+        long,
+        group = "adding",
+        conflicts_with = "remove",
+        conflicts_with = "import"
+    )]
     add: Option<String>,
     /// UTF-8 file of entries, one address or @domain per line with its own reason after it; blank and # lines are skipped.
     #[arg(long, group = "adding", conflicts_with = "remove")]
@@ -28,35 +33,85 @@ pub(super) struct SuppressedArgs {
     #[arg(long, conflicts_with = "adding", conflicts_with = "remove")]
     contains: Option<String>,
     /// Without --add, --import or --remove: list only the entries added at or after an RFC 3339 instant, YYYY-MM-DD day or span back such as -7d.
-    #[arg(long, conflicts_with = "adding", conflicts_with = "remove", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        conflicts_with = "adding",
+        conflicts_with = "remove",
+        allow_hyphen_values = true
+    )]
     since: Option<String>,
     /// Without --add, --import or --remove: list only the entries added before this.
-    #[arg(long, conflicts_with = "adding", conflicts_with = "remove", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        conflicts_with = "adding",
+        conflicts_with = "remove",
+        allow_hyphen_values = true
+    )]
     until: Option<String>,
     /// Without --add, --import or --remove: write the entries kept to this new file, as --import reads them.
     #[arg(long, conflicts_with = "adding", conflicts_with = "remove")]
     export: Option<PathBuf>,
     /// Without --add, --import or --remove: write the entries kept to this new file as a CSV table (entry, reason, added_at).
-    #[arg(long, conflicts_with = "adding", conflicts_with = "remove", conflicts_with = "export")]
+    #[arg(
+        long,
+        conflicts_with = "adding",
+        conflicts_with = "remove",
+        conflicts_with = "export"
+    )]
     csv: Option<PathBuf>,
 }
 
-pub(super) fn suppressed(state: &AppState, organization: &str, args: SuppressedArgs) -> Result<(), AppError> {
+pub(super) fn suppressed(
+    state: &AppState,
+    organization: &str,
+    args: SuppressedArgs,
+) -> Result<(), AppError> {
     match args {
-        SuppressedArgs { add: Some(entry), reason, .. } => print_json(&state.suppress(organization, &entry, reason.as_deref())?),
-        SuppressedArgs { import: Some(path), reason, .. } => {
+        SuppressedArgs {
+            add: Some(entry),
+            reason,
+            ..
+        } => print_json(&state.suppress(organization, &entry, reason.as_deref())?),
+        SuppressedArgs {
+            import: Some(path),
+            reason,
+            ..
+        } => {
             let text = read_body_file(&path, "SUPPRESSION_INVALID")?;
             print_json(&state.import_suppressions(organization, &text, reason.as_deref())?)
         }
-        SuppressedArgs { remove: Some(entry), .. } => print_json(&state.unsuppress(organization, &entry)?),
-        SuppressedArgs { add: None, import: None, remove: None, contains, since, until, export, csv, .. } => {
-            let filter = SuppressionFilter { contains, since, until };
+        SuppressedArgs {
+            remove: Some(entry),
+            ..
+        } => print_json(&state.unsuppress(organization, &entry)?),
+        SuppressedArgs {
+            add: None,
+            import: None,
+            remove: None,
+            contains,
+            since,
+            until,
+            export,
+            csv,
+            ..
+        } => {
+            let filter = SuppressionFilter {
+                contains,
+                since,
+                until,
+            };
             let (path, as_table) = match (export, csv) {
                 (Some(path), _) => (path, false),
                 (None, Some(path)) => (path, true),
-                (None, None) => return print_json(&state.find_suppressions(organization, &filter)?),
+                (None, None) => {
+                    return print_json(&state.find_suppressions(organization, &filter)?)
+                }
             };
-            let file = NewFile { path: &path, exists: "SUPPRESSION_OUTPUT_EXISTS", invalid: "SUPPRESSION_OUTPUT_INVALID" };
+            let file = NewFile {
+                path: &path,
+                exists: "SUPPRESSION_OUTPUT_EXISTS",
+                invalid: "SUPPRESSION_OUTPUT_INVALID",
+            };
             file.refuse_occupied()?;
             let entries = state.find_suppressions(organization, &filter)?;
             let text = match as_table {
@@ -64,7 +119,9 @@ pub(super) fn suppressed(state: &AppState, organization: &str, args: SuppressedA
                 false => state.suppression_text(organization, &filter)?,
             };
             file.write(text.as_bytes())?;
-            print_json(&serde_json::json!({ "path": path, "entries": entries.len(), "size_bytes": text.len() }))
+            print_json(
+                &serde_json::json!({ "path": path, "entries": entries.len(), "size_bytes": text.len() }),
+            )
         }
     }
 }
@@ -78,6 +135,10 @@ pub(super) struct RecipientsArgs {
 }
 
 /// Print how a send would meet each address, in the order given.
-pub(super) fn check_recipients(state: &AppState, organization: &str, args: RecipientsArgs) -> Result<(), AppError> {
+pub(super) fn check_recipients(
+    state: &AppState,
+    organization: &str,
+    args: RecipientsArgs,
+) -> Result<(), AppError> {
     print_json(&state.check_recipients(organization, &args.addresses)?)
 }

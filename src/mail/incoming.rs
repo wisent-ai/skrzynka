@@ -275,11 +275,12 @@ pub fn fetch_message_source(
                     return Err(dependency_error(
                         "IMAP_FETCH_FAILED",
                         format!(
-                            "IMAP fetch at UID {uid} on {}:{} answered the message without its body",
+                            "IMAP fetch at UID {uid} on {}:{} answered the message \
+                             without its body",
                             mailbox.imap_host, mailbox.imap_port
                         ),
                         true,
-                    ))
+                    ));
                 }
             },
         }

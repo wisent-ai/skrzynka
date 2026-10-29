@@ -44,8 +44,9 @@ impl AppState {
                 mailbox,
             });
         }
-        serde_json::to_string_pretty(&rules)
-            .map_err(|error| AppError::internal(format!("the rules could not be written as JSON: {error}")))
+        serde_json::to_string_pretty(&rules).map_err(|error| {
+            AppError::internal(format!("the rules could not be written as JSON: {error}"))
+        })
     }
 
     /// Keep every rule of a document `tag_rule_document` wrote, each as a
@@ -54,7 +55,11 @@ impl AppState {
     /// ID or address, before any is kept: a document that is not such a
     /// list or holds none is `TAG_RULE_INVALID`, and a rule `rule add`
     /// refuses refuses the document with its own code; nothing changes.
-    pub fn import_tag_rules(&self, organization_id: &str, text: &str) -> Result<ImportedRules, AppError> {
+    pub fn import_tag_rules(
+        &self,
+        organization_id: &str,
+        text: &str,
+    ) -> Result<ImportedRules, AppError> {
         let asked: Vec<NewTagRule> = serde_json::from_str(text).map_err(|error| {
             AppError::invalid(
                 "TAG_RULE_INVALID",
@@ -76,7 +81,10 @@ impl AppState {
                     return Err(AppError::new(
                         refusal.status,
                         refusal.code,
-                        format!("the rule tagging {tag:?}: {}; nothing was imported", refusal.message),
+                        format!(
+                            "the rule tagging {tag:?}: {}; nothing was imported",
+                            refusal.message
+                        ),
                         refusal.retryable,
                     ))
                 }

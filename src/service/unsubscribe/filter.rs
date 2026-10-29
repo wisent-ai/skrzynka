@@ -53,7 +53,13 @@ impl SubscriptionFilter {
                 ));
             }
         }
-        Ok(Narrowing { subscribed: self.subscribed, leavable: self.leavable, contains, since, until })
+        Ok(Narrowing {
+            subscribed: self.subscribed,
+            leavable: self.leavable,
+            contains,
+            since,
+            until,
+        })
     }
 }
 
@@ -62,28 +68,41 @@ impl Narrowing {
     pub(super) fn narrow(&self, lists: Vec<Subscription>) -> Result<Vec<Subscription>, AppError> {
         let mut kept = Vec::new();
         for list in lists {
-            if self.subscribed && list.last_attempt.as_ref().is_some_and(|attempt| attempt.status == DeliveryStatus::Sent) {
+            if self.subscribed
+                && list
+                    .last_attempt
+                    .as_ref()
+                    .is_some_and(|attempt| attempt.status == DeliveryStatus::Sent)
+            {
                 continue;
             }
-            let reachable = list.ways_out.iter().any(|way| !matches!(way, UnsubscribeTarget::Page { .. }));
+            let reachable = list
+                .ways_out
+                .iter()
+                .any(|way| !matches!(way, UnsubscribeTarget::Page { .. }));
             if self.leavable && !reachable {
                 continue;
             }
             if let Some(part) = self.contains.as_deref() {
                 let named = list.sender.to_lowercase().contains(part)
-                    || list.list_id.as_deref().is_some_and(|list_id| list_id.to_lowercase().contains(part));
+                    || list
+                        .list_id
+                        .as_deref()
+                        .is_some_and(|list_id| list_id.to_lowercase().contains(part));
                 if !named {
                     continue;
                 }
             }
             if self.since.is_some() || self.until.is_some() {
-                let latest = DateTime::parse_from_rfc3339(&list.latest_received_at).map_err(|error| {
-                    AppError::internal(format!(
+                let latest =
+                    DateTime::parse_from_rfc3339(&list.latest_received_at).map_err(|error| {
+                        AppError::internal(format!(
                         "message {} stores receive instant {:?}, which is not RFC 3339: {error}",
                         list.latest_message_id, list.latest_received_at
                     ))
-                })?;
-                let inside = self.since.is_none_or(|from| latest >= from) && self.until.is_none_or(|to| latest < to);
+                    })?;
+                let inside = self.since.is_none_or(|from| latest >= from)
+                    && self.until.is_none_or(|to| latest < to);
                 if !inside {
                     continue;
                 }

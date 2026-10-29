@@ -42,9 +42,9 @@ impl AppState {
         special: SpecialUse,
     ) -> Result<String, AppError> {
         let folders = self.mailbox_folders(organization_id, mailbox_id).await?;
-        let declared = folders
-            .iter()
-            .find(|folder| folder.selectable && folder.special_use.as_deref() == Some(special.as_str()));
+        let declared = folders.iter().find(|folder| {
+            folder.selectable && folder.special_use.as_deref() == Some(special.as_str())
+        });
         match declared {
             Some(folder) => Ok(folder.name.clone()),
             None => Err(AppError::conflict(
@@ -70,7 +70,9 @@ impl AppState {
         match (folder, to) {
             (Some(folder), None) => Ok(ProviderAction::Move { folder }),
             (None, Some(special)) => Ok(ProviderAction::Move {
-                folder: self.special_folder(organization_id, mailbox_id, special).await?,
+                folder: self
+                    .special_folder(organization_id, mailbox_id, special)
+                    .await?,
             }),
             _ => Err(unnamed_folder()),
         }
@@ -85,9 +87,15 @@ impl AppState {
         folder: Option<String>,
         to: Option<SpecialUse>,
     ) -> Result<MessageAction, AppError> {
-        let mailbox_id = self.database.get_message(organization_id, message_id)?.mailbox_id;
-        let action = self.move_action(organization_id, mailbox_id, folder, to).await?;
-        self.act_on_message(organization_id, message_id, action).await
+        let mailbox_id = self
+            .database
+            .get_message(organization_id, message_id)?
+            .mailbox_id;
+        let action = self
+            .move_action(organization_id, mailbox_id, folder, to)
+            .await?;
+        self.act_on_message(organization_id, message_id, action)
+            .await
     }
 }
 

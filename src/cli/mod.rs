@@ -14,6 +14,7 @@ mod attachment;
 mod auto_replies;
 mod drafts;
 mod export;
+mod follow_ups;
 mod forward;
 mod gmail;
 mod listing;
@@ -22,7 +23,6 @@ mod message;
 mod output;
 mod reading;
 mod rules;
-mod follow_ups;
 mod sending;
 mod suppressed;
 mod templates;
@@ -116,7 +116,13 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (MailProvider::Gmail, AccountCommand::Delegate(gmail::ConnectedAccount { email, display_name })) => {
+            (
+                MailProvider::Gmail,
+                AccountCommand::Delegate(gmail::ConnectedAccount {
+                    email,
+                    display_name,
+                }),
+            ) => {
                 let state = state(None)?;
                 print_json(
                     &state
@@ -124,7 +130,13 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (MailProvider::Gmail, AccountCommand::Password(gmail::ConnectedAccount { email, display_name })) => {
+            (
+                MailProvider::Gmail,
+                AccountCommand::Password(gmail::ConnectedAccount {
+                    email,
+                    display_name,
+                }),
+            ) => {
                 let password = read_gmail_app_password()?;
                 let state = state(None)?;
                 print_json(
@@ -133,9 +145,10 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
                         .await?,
                 )
             }
-            (MailProvider::Gmail, AccountCommand::Disconnect(gmail::DisconnectedAccount { email })) => {
-                print_json(&state(None)?.disconnect_gmail(&email).await?)
-            }
+            (
+                MailProvider::Gmail,
+                AccountCommand::Disconnect(gmail::DisconnectedAccount { email }),
+            ) => print_json(&state(None)?.disconnect_gmail(&email).await?),
         },
         Command::Message { command } => run_message(state(None)?, organization, command).await,
         Command::Sync(mailbox::SyncArgs {

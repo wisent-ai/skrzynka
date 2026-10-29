@@ -22,20 +22,33 @@ impl AppState {
     /// Every template of the organization, in name order, narrowed as
     /// `filter` says. A blank `contains` or `placeholder` is
     /// `MESSAGE_FILTER_INVALID`.
-    pub fn templates(&self, organization_id: &str, filter: &TemplateFilter) -> Result<Vec<MessageTemplate>, AppError> {
+    pub fn templates(
+        &self,
+        organization_id: &str,
+        filter: &TemplateFilter,
+    ) -> Result<Vec<MessageTemplate>, AppError> {
         let contains = filter_value(filter.contains.as_deref(), "contains")?;
         let placeholder = filter_value(filter.placeholder.as_deref(), "placeholder")?;
         let mut templates = self.database.templates(organization_id)?;
         if let Some(part) = contains.as_deref() {
             templates.retain(|template| {
-                [Some(template.name.as_str()), template.subject.as_deref(), Some(template.body.as_str())]
-                    .into_iter()
-                    .flatten()
-                    .any(|text| text.to_lowercase().contains(part))
+                [
+                    Some(template.name.as_str()),
+                    template.subject.as_deref(),
+                    Some(template.body.as_str()),
+                ]
+                .into_iter()
+                .flatten()
+                .any(|text| text.to_lowercase().contains(part))
             });
         }
         if let Some(key) = placeholder.as_deref() {
-            templates.retain(|template| template.placeholders.iter().any(|named| named.to_lowercase() == key));
+            templates.retain(|template| {
+                template
+                    .placeholders
+                    .iter()
+                    .any(|named| named.to_lowercase() == key)
+            });
         }
         Ok(templates)
     }

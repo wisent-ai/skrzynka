@@ -38,7 +38,10 @@ impl Database {
 
 /// Fill in `note` for every message in `messages` that carries one.
 pub(super) fn attach(client: &Client, messages: &mut [Message]) -> Result<(), AppError> {
-    let ids: Vec<String> = messages.iter().map(|message| message.id.to_string()).collect();
+    let ids: Vec<String> = messages
+        .iter()
+        .map(|message| message.id.to_string())
+        .collect();
     if ids.is_empty() {
         return Ok(());
     }
@@ -46,7 +49,10 @@ pub(super) fn attach(client: &Client, messages: &mut [Message]) -> Result<(), Ap
         .prepare("SELECT message_id, body FROM message_notes WHERE message_id = ANY($1::text[])")?;
     let mut by_message: HashMap<String, String> = HashMap::new();
     for row in statement.query_map(params![ids], |row| {
-        Ok((row.get::<_, String>("message_id")?, row.get::<_, String>("body")?))
+        Ok((
+            row.get::<_, String>("message_id")?,
+            row.get::<_, String>("body")?,
+        ))
     })? {
         let (message_id, body) = row?;
         by_message.insert(message_id, body);

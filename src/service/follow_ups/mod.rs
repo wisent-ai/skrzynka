@@ -95,7 +95,11 @@ impl AppState {
     /// Where one sent message's follow-up stands now. An outbound message
     /// the organization does not hold is `NOT_FOUND`; one with no follow-up
     /// is `FOLLOW_UP_NOT_FOUND`.
-    pub fn get_follow_up(&self, organization_id: &str, outbound_id: Uuid) -> Result<FollowUp, AppError> {
+    pub fn get_follow_up(
+        &self,
+        organization_id: &str,
+        outbound_id: Uuid,
+    ) -> Result<FollowUp, AppError> {
         let standing = self
             .follow_ups(organization_id, &FollowUpFilter::default())?
             .into_iter()
@@ -115,9 +119,14 @@ impl AppState {
     }
 
     /// Stop expecting an answer, and answer the follow-up as it stood.
-    pub fn clear_follow_up(&self, organization_id: &str, outbound_id: Uuid) -> Result<FollowUp, AppError> {
+    pub fn clear_follow_up(
+        &self,
+        organization_id: &str,
+        outbound_id: Uuid,
+    ) -> Result<FollowUp, AppError> {
         let standing = self.get_follow_up(organization_id, outbound_id)?;
-        self.database.clear_follow_up(organization_id, outbound_id)?;
+        self.database
+            .clear_follow_up(organization_id, outbound_id)?;
         Ok(standing)
     }
 
@@ -125,7 +134,11 @@ impl AppState {
     /// every answered one, and answer them as they stood. A filter naming
     /// no standing is `FOLLOW_UP_INVALID`: clearing every follow-up at once
     /// is never what a narrowing left out meant.
-    pub fn clear_follow_ups(&self, organization_id: &str, filter: &FollowUpFilter) -> Result<Vec<FollowUp>, AppError> {
+    pub fn clear_follow_ups(
+        &self,
+        organization_id: &str,
+        filter: &FollowUpFilter,
+    ) -> Result<Vec<FollowUp>, AppError> {
         if filter.state.is_none() {
             return Err(AppError::invalid(
                 "FOLLOW_UP_INVALID",
@@ -134,7 +147,8 @@ impl AppState {
         }
         let cleared = self.follow_ups(organization_id, filter)?;
         for follow_up in &cleared {
-            self.database.clear_follow_up(organization_id, follow_up.outbound_id)?;
+            self.database
+                .clear_follow_up(organization_id, follow_up.outbound_id)?;
         }
         Ok(cleared)
     }
@@ -142,7 +156,11 @@ impl AppState {
     /// Every follow-up, earliest due first, narrowed as `filter` says. A
     /// blank `to` or `contains`, or an unreadable `due_by`, is
     /// `MESSAGE_FILTER_INVALID`.
-    pub fn follow_ups(&self, organization_id: &str, filter: &FollowUpFilter) -> Result<Vec<FollowUp>, AppError> {
+    pub fn follow_ups(
+        &self,
+        organization_id: &str,
+        filter: &FollowUpFilter,
+    ) -> Result<Vec<FollowUp>, AppError> {
         let to = super::messages::filter_value(filter.to.as_deref(), "recipient")?;
         let contains = super::messages::filter_value(filter.contains.as_deref(), "contains")?;
         let due_by = due_bound(filter.due_by.as_deref(), "due-by")?;
@@ -160,14 +178,21 @@ impl AppState {
                 }
             }
             let outbound = self.database.get_outbound(organization_id, outbound_id)?;
-            if filter.mailbox_id.is_some_and(|mailbox_id| mailbox_id != outbound.mailbox_id) {
+            if filter
+                .mailbox_id
+                .is_some_and(|mailbox_id| mailbox_id != outbound.mailbox_id)
+            {
                 continue;
             }
-            if to.as_deref().is_some_and(|text| !outbound.recipients.to_lowercase().contains(text)) {
+            if to
+                .as_deref()
+                .is_some_and(|text| !outbound.recipients.to_lowercase().contains(text))
+            {
                 continue;
             }
             let mentions = |text: &str| {
-                outbound.subject.to_lowercase().contains(text) || outbound.body.to_lowercase().contains(text)
+                outbound.subject.to_lowercase().contains(text)
+                    || outbound.body.to_lowercase().contains(text)
             };
             if contains.as_deref().is_some_and(|text| !mentions(text)) {
                 continue;
@@ -232,8 +257,14 @@ pub(super) fn due_instant(by: &str) -> Result<DateTime<Utc>, AppError> {
 /// due before: a span from now such as `+3d`, or anything a listing's
 /// `--until` takes (an RFC 3339 instant, a `YYYY-MM-DD` day, a span back
 /// such as `-1d`). Anything else is `MESSAGE_FILTER_INVALID`.
-pub(in crate::service) fn due_bound(written: Option<&str>, name: &str) -> Result<Option<DateTime<Utc>>, AppError> {
-    let Some(span) = written.map(str::trim).and_then(|value| value.strip_prefix('+')) else {
+pub(in crate::service) fn due_bound(
+    written: Option<&str>,
+    name: &str,
+) -> Result<Option<DateTime<Utc>>, AppError> {
+    let Some(span) = written
+        .map(str::trim)
+        .and_then(|value| value.strip_prefix('+'))
+    else {
         return super::filters::instant(written, name);
     };
     let ahead = super::snoozes::span_from_now(span, '+', "MESSAGE_FILTER_INVALID")?;
@@ -273,9 +304,12 @@ fn standing(outbound: OutboundMessage, due_at: String, stored: &[Message]) -> Fo
 
 /// Whether the message's In-Reply-To or References names `sent`.
 fn names(message: &Message, sent: &str) -> bool {
-    [message.in_reply_to.as_deref(), message.references.as_deref()]
-        .into_iter()
-        .flatten()
-        .flat_map(str::split_whitespace)
-        .any(|named| named == sent)
+    [
+        message.in_reply_to.as_deref(),
+        message.references.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .flat_map(str::split_whitespace)
+    .any(|named| named == sent)
 }

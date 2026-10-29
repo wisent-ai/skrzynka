@@ -33,7 +33,10 @@ pub(in crate::api) async fn list_subscriptions(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<SubscriptionQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.list_subscriptions(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(state.list_subscriptions(
+        &auth.organization_id,
+        &query.filter()?
+    )?)))
 }
 
 /// `GET /v1/subscriptions/csv` with the same parameters: the lists kept as
@@ -44,8 +47,13 @@ pub(in crate::api) async fn subscriptions_csv(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<SubscriptionQuery>,
 ) -> Result<axum::response::Response, AppError> {
-    let lists = state.list_subscriptions(&auth.organization_id, &query.filter()?)?.lists;
-    Ok(super::listing::csv_file("subscriptions.csv", crate::service::subscription_table(&lists)))
+    let lists = state
+        .list_subscriptions(&auth.organization_id, &query.filter()?)?
+        .lists;
+    Ok(super::listing::csv_file(
+        "subscriptions.csv",
+        crate::service::subscription_table(&lists),
+    ))
 }
 
 impl SubscriptionQuery {
@@ -111,7 +119,9 @@ pub(in crate::api) async fn list_contacts(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<ContactsQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.list_contacts(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(
+        state.list_contacts(&auth.organization_id, &query.filter()?)?
+    )))
 }
 
 /// `GET /v1/contacts/vcard?mailbox_id=&contains=&recent=&bounced=`: the same
@@ -163,7 +173,11 @@ pub(in crate::api) async fn suppress_contacts(
     Json(request): Json<SuppressContacts>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    let done = state.suppress_contacts(&auth.organization_id, &query.filter()?, request.reason.as_deref())?;
+    let done = state.suppress_contacts(
+        &auth.organization_id,
+        &query.filter()?,
+        request.reason.as_deref(),
+    )?;
     Ok(Json(json!(done)))
 }
 
@@ -176,7 +190,10 @@ pub(in crate::api) async fn block_contacts(
     Query(query): Query<ContactsQuery>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.block_contacts(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(state.block_contacts(
+        &auth.organization_id,
+        &query.filter()?
+    )?)))
 }
 
 pub(in crate::api) async fn unsubscribe(
@@ -214,7 +231,9 @@ pub(in crate::api) async fn unsubscribe_list(
         Some(selector) => Some(state.resolve_mailbox(&auth.organization_id, selector)?.id),
         None => None,
     };
-    let key = UnsubscribeRequest { idempotency_key: request.idempotency_key };
+    let key = UnsubscribeRequest {
+        idempotency_key: request.idempotency_key,
+    };
     Ok(Json(json!(
         state
             .unsubscribe_list(&auth.organization_id, &request.list_id, mailbox_id, key)
@@ -233,5 +252,9 @@ pub(in crate::api) async fn leave_listed(
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
     let filter = query.filter()?;
-    Ok(Json(json!(state.unsubscribe_listed(&auth.organization_id, &filter, &request.idempotency_key).await?)))
+    Ok(Json(json!(
+        state
+            .unsubscribe_listed(&auth.organization_id, &filter, &request.idempotency_key)
+            .await?
+    )))
 }

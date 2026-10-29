@@ -57,9 +57,15 @@ impl AppState {
         idempotency_key: &str,
     ) -> Result<SentAgain, AppError> {
         let key = checked_key(idempotency_key)?.to_string();
-        let narrowed = [&filters.to, &filters.contains, &filters.attachment, &filters.since, &filters.until]
-            .iter()
-            .any(|filter| filter.is_some());
+        let narrowed = [
+            &filters.to,
+            &filters.contains,
+            &filters.attachment,
+            &filters.since,
+            &filters.until,
+        ]
+        .iter()
+        .any(|filter| filter.is_some());
         if mailbox_id.is_none() && !narrowed {
             return Err(AppError::invalid(
                 "OUTBOUND_RESEND_INVALID",
@@ -74,19 +80,31 @@ impl AppState {
         if failed.is_empty() {
             return Err(AppError::not_found("failed outbound message"));
         }
-        let mut outcome = SentAgain { sent: Vec::new(), refused: Vec::new() };
+        let mut outcome = SentAgain {
+            sent: Vec::new(),
+            refused: Vec::new(),
+        };
         for row in failed {
             let id = row.id;
             match self.send_again(organization_id, &key, row).await {
                 Ok(sent) => outcome.sent.push(sent),
-                Err(error) => outcome.refused.push(RefusedResend { outbound_id: id, code: error.code, message: error.message }),
+                Err(error) => outcome.refused.push(RefusedResend {
+                    outbound_id: id,
+                    code: error.code,
+                    message: error.message,
+                }),
             }
         }
         Ok(outcome)
     }
 
     /// Originate one failed row again under `<key>-<its id>`.
-    async fn send_again(&self, organization_id: &str, key: &str, row: OutboundMessage) -> Result<OutboundMessage, AppError> {
+    async fn send_again(
+        &self,
+        organization_id: &str,
+        key: &str,
+        row: OutboundMessage,
+    ) -> Result<OutboundMessage, AppError> {
         if !row.attachments.is_empty() {
             return Err(AppError::invalid(
                 "OUTBOUND_RESEND_INVALID",
@@ -99,14 +117,27 @@ impl AppState {
         let request = CreateOutboundRequest {
             idempotency_key: format!("{key}-{}", row.id),
             to: stored_addresses(&row.recipients),
-            cc: row.cc.as_deref().map(stored_addresses).into_iter().flatten().collect(),
-            bcc: row.bcc.as_deref().map(stored_addresses).into_iter().flatten().collect(),
+            cc: row
+                .cc
+                .as_deref()
+                .map(stored_addresses)
+                .into_iter()
+                .flatten()
+                .collect(),
+            bcc: row
+                .bcc
+                .as_deref()
+                .map(stored_addresses)
+                .into_iter()
+                .flatten()
+                .collect(),
             subject: row.subject,
             body: row.body,
             attachments: Vec::new(),
             allow_bounced: false,
             follow_up: None,
         };
-        self.send_outbound(organization_id, row.mailbox_id, request).await
+        self.send_outbound(organization_id, row.mailbox_id, request)
+            .await
     }
 }

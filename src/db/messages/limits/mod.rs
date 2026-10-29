@@ -13,8 +13,8 @@ use std::num::NonZeroU32;
 use uuid::Uuid;
 
 mod ramp;
-pub use ramp::{LimitRow, Ramp};
 use ramp::stored_count;
+pub use ramp::{LimitRow, Ramp};
 
 /// The sends of one mailbox claimed since `$2` that count against its limit:
 /// every one not recorded `failed`. An unsubscribe counts only when it sends
@@ -54,7 +54,10 @@ impl Database {
         let id = mailbox_id.to_string();
         let limit = limit_of(&transaction, &id, false)?;
         let day = today();
-        let in_force = limit.as_ref().map(|row| row.in_force(&id, &day)).transpose()?;
+        let in_force = limit
+            .as_ref()
+            .map(|row| row.in_force(&id, &day))
+            .transpose()?;
         let sent_today = sends_since(&transaction, &id, &day)?;
         transaction.commit()?;
         Ok(StoredSendLimit {

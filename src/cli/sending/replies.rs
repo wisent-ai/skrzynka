@@ -15,7 +15,16 @@ use uuid::Uuid;
 #[derive(clap::Args)]
 pub(in crate::cli) struct RepliesArgs {
     /// Message ID, as `skrzynka message list` prints it; without it, every message's replies.
-    #[arg(conflicts_with = "mailbox", conflicts_with = "status", conflicts_with = "since", conflicts_with = "until", conflicts_with = "contains", conflicts_with = "attachment", conflicts_with = "oldest_first", conflicts_with = "resend_failed")]
+    #[arg(
+        conflicts_with = "mailbox",
+        conflicts_with = "status",
+        conflicts_with = "since",
+        conflicts_with = "until",
+        conflicts_with = "contains",
+        conflicts_with = "attachment",
+        conflicts_with = "oldest_first",
+        conflicts_with = "resend_failed"
+    )]
     id: Option<Uuid>,
     /// Only the replies to this mailbox's messages, by ID or address.
     #[arg(long)]
@@ -52,16 +61,51 @@ pub(in crate::cli) struct RepliesArgs {
 /// Print one message's reply attempts or every reply the flags keep, write
 /// those as a CSV table to a new file and print what was written, or send
 /// the failed ones again.
-pub(in crate::cli) async fn replies(state: &AppState, organization: &str, args: RepliesArgs) -> Result<(), AppError> {
-    let RepliesArgs { id, mailbox, status, since, until, contains, attachment, oldest_first, csv, resend_failed, idempotency_key } = args;
+pub(in crate::cli) async fn replies(
+    state: &AppState,
+    organization: &str,
+    args: RepliesArgs,
+) -> Result<(), AppError> {
+    let RepliesArgs {
+        id,
+        mailbox,
+        status,
+        since,
+        until,
+        contains,
+        attachment,
+        oldest_first,
+        csv,
+        resend_failed,
+        idempotency_key,
+    } = args;
     if resend_failed {
-        let key = super::super::message::required_key(idempotency_key, "message replies --resend-failed")?;
+        let key = super::super::message::required_key(
+            idempotency_key,
+            "message replies --resend-failed",
+        )?;
         let mailbox_id = super::super::reading::chosen_mailbox(state, organization, mailbox)?;
-        let filter = ReplyFilter { mailbox_id, status, since, until, contains, attachment, oldest_first };
-        return print_json(&state.resend_failed_replies(organization, &filter, &key).await?);
+        let filter = ReplyFilter {
+            mailbox_id,
+            status,
+            since,
+            until,
+            contains,
+            attachment,
+            oldest_first,
+        };
+        return print_json(
+            &state
+                .resend_failed_replies(organization, &filter, &key)
+                .await?,
+        );
     }
     let file = match &csv {
-        Some(path) => Some(NewFile { path: path.as_path(), exists: "REPLY_OUTPUT_EXISTS", invalid: "REPLY_OUTPUT_INVALID" }),
+        Some(path) => Some(NewFile {
+            path: path.as_path(),
+            exists: "REPLY_OUTPUT_EXISTS",
+            invalid: "REPLY_OUTPUT_INVALID",
+        }),
         None => None,
     };
     if let Some(file) = &file {
@@ -71,7 +115,18 @@ pub(in crate::cli) async fn replies(state: &AppState, organization: &str, args: 
         Some(id) => state.list_replies(organization, id)?,
         None => {
             let mailbox_id = super::super::reading::chosen_mailbox(state, organization, mailbox)?;
-            state.all_replies(organization, &ReplyFilter { mailbox_id, status, since, until, contains, attachment, oldest_first })?
+            state.all_replies(
+                organization,
+                &ReplyFilter {
+                    mailbox_id,
+                    status,
+                    since,
+                    until,
+                    contains,
+                    attachment,
+                    oldest_first,
+                },
+            )?
         }
     };
     let Some(file) = file else {
@@ -79,5 +134,7 @@ pub(in crate::cli) async fn replies(state: &AppState, organization: &str, args: 
     };
     let table = reply_table(&replies);
     file.write(table.as_bytes())?;
-    print_json(&serde_json::json!({ "path": file.path, "replies": replies.len(), "size_bytes": table.len() }))
+    print_json(
+        &serde_json::json!({ "path": file.path, "replies": replies.len(), "size_bytes": table.len() }),
+    )
 }

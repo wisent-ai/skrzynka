@@ -30,7 +30,9 @@ pub(super) async fn list_mailboxes(
     Query(query): Query<MailboxesQuery>,
 ) -> Result<Json<Value>, AppError> {
     Ok(Json(json!(
-        state.list_mailboxes(&auth.organization_id, query.state).await?
+        state
+            .list_mailboxes(&auth.organization_id, query.state)
+            .await?
     )))
 }
 
@@ -41,8 +43,13 @@ pub(super) async fn mailboxes_csv(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<MailboxesQuery>,
 ) -> Result<axum::response::Response, AppError> {
-    let mailboxes = state.list_mailboxes(&auth.organization_id, query.state).await?;
-    Ok(super::listing::csv_file("mailboxes.csv", crate::models::Mailbox::table(&mailboxes)))
+    let mailboxes = state
+        .list_mailboxes(&auth.organization_id, query.state)
+        .await?;
+    Ok(super::listing::csv_file(
+        "mailboxes.csv",
+        crate::models::Mailbox::table(&mailboxes),
+    ))
 }
 
 pub(super) async fn declare_mailbox(
@@ -142,13 +149,21 @@ pub(super) async fn mailbox_delivery(
     Query(window): Query<DeliveryWindow>,
 ) -> Result<Json<Value>, AppError> {
     let id = parse_uuid(&id)?;
-    Ok(Json(json!(state.mailbox_delivery(&auth.organization_id, id, window.since.as_deref(), window.until.as_deref())?)))
+    Ok(Json(json!(state.mailbox_delivery(
+        &auth.organization_id,
+        id,
+        window.since.as_deref(),
+        window.until.as_deref()
+    )?)))
 }
 
 /// Which table of the delivery report `GET /v1/mailboxes/:id/delivery/:table/csv` answers.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum DeliveryTable { Days, Domains }
+pub(super) enum DeliveryTable {
+    Days,
+    Domains,
+}
 
 /// The report's days or recipient domains as the CSV table `mailbox delivery --days-csv|--domains-csv` writes.
 pub(super) async fn mailbox_delivery_csv(
@@ -157,10 +172,17 @@ pub(super) async fn mailbox_delivery_csv(
     Path((id, table)): Path<(String, DeliveryTable)>,
     Query(window): Query<DeliveryWindow>,
 ) -> Result<axum::response::Response, AppError> {
-    let report = state.mailbox_delivery(&auth.organization_id, parse_uuid(&id)?, window.since.as_deref(), window.until.as_deref())?;
+    let report = state.mailbox_delivery(
+        &auth.organization_id,
+        parse_uuid(&id)?,
+        window.since.as_deref(),
+        window.until.as_deref(),
+    )?;
     Ok(match table {
         DeliveryTable::Days => super::listing::csv_file("delivery-days.csv", report.day_table()),
-        DeliveryTable::Domains => super::listing::csv_file("delivery-domains.csv", report.domain_table()),
+        DeliveryTable::Domains => {
+            super::listing::csv_file("delivery-domains.csv", report.domain_table())
+        }
     })
 }
 
@@ -173,7 +195,12 @@ pub(super) async fn mailbox_summary(
     Query(window): Query<DeliveryWindow>,
 ) -> Result<Json<Value>, AppError> {
     let id = parse_uuid(&id)?;
-    Ok(Json(json!(state.mailbox_summary(&auth.organization_id, id, window.since.as_deref(), window.until.as_deref())?)))
+    Ok(Json(json!(state.mailbox_summary(
+        &auth.organization_id,
+        id,
+        window.since.as_deref(),
+        window.until.as_deref()
+    )?)))
 }
 
 /// `GET /v1/mailboxes/:id/summary/days/csv?since=&until=`: the summary's days as the CSV table `mailbox summary --days-csv` writes.
@@ -183,8 +210,16 @@ pub(super) async fn mailbox_summary_csv(
     Path(id): Path<String>,
     Query(window): Query<DeliveryWindow>,
 ) -> Result<axum::response::Response, AppError> {
-    let summary = state.mailbox_summary(&auth.organization_id, parse_uuid(&id)?, window.since.as_deref(), window.until.as_deref())?;
-    Ok(super::listing::csv_file("summary-days.csv", summary.day_table()))
+    let summary = state.mailbox_summary(
+        &auth.organization_id,
+        parse_uuid(&id)?,
+        window.since.as_deref(),
+        window.until.as_deref(),
+    )?;
+    Ok(super::listing::csv_file(
+        "summary-days.csv",
+        summary.day_table(),
+    ))
 }
 
 /// `GET /v1/mailboxes/:id/folders`: the provider's folders, read now.
@@ -193,7 +228,11 @@ pub(super) async fn mailbox_folders(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.mailbox_folders(&auth.organization_id, parse_uuid(&id)?).await?)))
+    Ok(Json(json!(
+        state
+            .mailbox_folders(&auth.organization_id, parse_uuid(&id)?)
+            .await?
+    )))
 }
 
 /// `POST /v1/mailboxes/:id/append` with `{folder, content_base64}`: put one
@@ -213,15 +252,22 @@ pub(super) async fn append_message(
 ) -> Result<Json<Value>, AppError> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     auth.require_role(OrganizationRole::Member)?;
-    let source = STANDARD.decode(request.content_base64.trim()).map_err(|error| {
-        AppError::invalid(
-            "MESSAGE_APPEND_INVALID",
-            format!("content_base64 is not base64 (RFC 4648, standard alphabet): {error}"),
-        )
-    })?;
+    let source = STANDARD
+        .decode(request.content_base64.trim())
+        .map_err(|error| {
+            AppError::invalid(
+                "MESSAGE_APPEND_INVALID",
+                format!("content_base64 is not base64 (RFC 4648, standard alphabet): {error}"),
+            )
+        })?;
     Ok(Json(json!(
         state
-            .append_message(&auth.organization_id, parse_uuid(&id)?, &request.folder, source)
+            .append_message(
+                &auth.organization_id,
+                parse_uuid(&id)?,
+                &request.folder,
+                source
+            )
             .await?
     )))
 }
@@ -242,9 +288,10 @@ pub(super) async fn mailbox_send_limit(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(
-        state.mailbox_send_limit(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.mailbox_send_limit(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 pub(super) async fn set_mailbox_send_limit(
@@ -277,9 +324,10 @@ pub(super) async fn mailbox_signature(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(
-        state.mailbox_signature(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.mailbox_signature(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `PUT /v1/mailboxes/:id/signature`: `signature` sets it, `null` removes it.

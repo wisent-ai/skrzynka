@@ -22,12 +22,9 @@ impl AppState {
         id: Uuid,
     ) -> Result<Vec<Message>, AppError> {
         let message = self.database.get_message(organization_id, id)?;
-        let stored = self.database.list_messages(
-            organization_id,
-            Some(message.mailbox_id),
-            None,
-            None,
-        )?;
+        let stored =
+            self.database
+                .list_messages(organization_id, Some(message.mailbox_id), None, None)?;
         let mut known: HashSet<String> = identities(&message).collect();
         let mut members: HashSet<Uuid> = HashSet::from([message.id]);
         loop {

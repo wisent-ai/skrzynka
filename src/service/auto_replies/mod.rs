@@ -72,7 +72,11 @@ fn reply_address(sender: &str, reply_to: Option<&str>) -> String {
 }
 
 impl AppState {
-    pub fn mailbox_auto_reply(&self, organization_id: &str, mailbox_id: Uuid) -> Result<MailboxAutoReply, AppError> {
+    pub fn mailbox_auto_reply(
+        &self,
+        organization_id: &str,
+        mailbox_id: Uuid,
+    ) -> Result<MailboxAutoReply, AppError> {
         Ok(MailboxAutoReply {
             mailbox_id,
             auto_reply: self.database.auto_reply(organization_id, mailbox_id)?,
@@ -91,7 +95,9 @@ impl AppState {
         let Some(request) = request else {
             return Ok(MailboxAutoReply {
                 mailbox_id,
-                auto_reply: self.database.set_auto_reply(organization_id, mailbox_id, None)?,
+                auto_reply: self
+                    .database
+                    .set_auto_reply(organization_id, mailbox_id, None)?,
             });
         };
         let body = request.body.trim_end();
@@ -100,7 +106,13 @@ impl AppState {
         }
         let every = span_from_now(request.every.trim().trim_start_matches('+'), '+', INVALID)?;
         if every <= chrono::TimeDelta::zero() {
-            return Err(AppError::invalid(INVALID, format!("every {} is no span: answering one sender again needs a time that passes", request.every.trim())));
+            return Err(AppError::invalid(
+                INVALID,
+                format!(
+                    "every {} is no span: answering one sender again needs a time that passes",
+                    request.every.trim()
+                ),
+            ));
         }
         let starts = match request.from.as_deref() {
             Some(from) => when(from, "from")?,
@@ -112,7 +124,14 @@ impl AppState {
         };
         if let Some(ends) = ends {
             if ends <= starts {
-                return Err(AppError::invalid(INVALID, format!("until {} is not after from {}; the reply would answer nothing", instant(ends), instant(starts))));
+                return Err(AppError::invalid(
+                    INVALID,
+                    format!(
+                        "until {} is not after from {}; the reply would answer nothing",
+                        instant(ends),
+                        instant(starts)
+                    ),
+                ));
             }
         }
         let ends = ends.map(instant);
@@ -121,17 +140,28 @@ impl AppState {
             mailbox_id,
             Some((body, &instant(starts), ends.as_deref(), every.num_seconds())),
         )?;
-        Ok(MailboxAutoReply { mailbox_id, auto_reply: stored })
+        Ok(MailboxAutoReply {
+            mailbox_id,
+            auto_reply: stored,
+        })
     }
 
-    pub fn auto_reply_decisions(&self, organization_id: &str, mailbox_id: Uuid) -> Result<Vec<AutoReplyDecision>, AppError> {
-        self.database.auto_reply_decisions(organization_id, mailbox_id)
+    pub fn auto_reply_decisions(
+        &self,
+        organization_id: &str,
+        mailbox_id: Uuid,
+    ) -> Result<Vec<AutoReplyDecision>, AppError> {
+        self.database
+            .auto_reply_decisions(organization_id, mailbox_id)
     }
 
     /// Answer every message the responder has not decided on, of every
     /// mailbox with an automatic reply (of one organization when named);
     /// answers the decisions it made.
-    pub async fn answer_automatically(&self, organization_id: Option<&str>) -> Result<Vec<AutoReplyDecision>, AppError> {
+    pub async fn answer_automatically(
+        &self,
+        organization_id: Option<&str>,
+    ) -> Result<Vec<AutoReplyDecision>, AppError> {
         let mut decided = Vec::new();
         for reply in self.database.auto_replies()? {
             let mailbox = self.database.get_mailbox_internal(reply.mailbox_id)?;
@@ -140,11 +170,20 @@ impl AppState {
             }
             for candidate in self.database.auto_reply_candidates(&reply)? {
                 let address = reply_address(&candidate.sender, candidate.reply_to.as_deref());
-                if !self.database.claim_auto_reply(mailbox.id, candidate.message_id, &address)? {
+                if !self
+                    .database
+                    .claim_auto_reply(mailbox.id, candidate.message_id, &address)?
+                {
                     continue;
                 }
                 let skipped = self
-                    .why_not_answer(&mailbox.organization_id, &mailbox.email, &reply, candidate.message_id, &address)
+                    .why_not_answer(
+                        &mailbox.organization_id,
+                        &mailbox.email,
+                        &reply,
+                        candidate.message_id,
+                        &address,
+                    )
                     .await?;
                 let attempt = match skipped {
                     Some(_) => None,
@@ -168,10 +207,20 @@ impl AppState {
                 };
                 let (attempt_id, why) = match (attempt, skipped) {
                     (Some(Ok(attempt)), _) => (Some(attempt.id), None),
-                    (Some(Err(error)), _) => (None, Some(format!("the reply was refused: {}: {}", error.code, error.message))),
+                    (Some(Err(error)), _) => (
+                        None,
+                        Some(format!(
+                            "the reply was refused: {}: {}",
+                            error.code, error.message
+                        )),
+                    ),
                     (None, why) => (None, why),
                 };
-                self.database.record_auto_reply(candidate.message_id, attempt_id, why.as_deref())?;
+                self.database.record_auto_reply(
+                    candidate.message_id,
+                    attempt_id,
+                    why.as_deref(),
+                )?;
                 decided.push(AutoReplyDecision {
                     message_id: candidate.message_id,
                     sender: address,
@@ -194,28 +243,44 @@ impl AppState {
         address: &str,
     ) -> Result<Option<String>, AppError> {
         if address == own.trim().to_lowercase() {
-            return Ok(Some("it was sent from this mailbox's own address".to_string()));
+            return Ok(Some(
+                "it was sent from this mailbox's own address".to_string(),
+            ));
         }
         let span = chrono::TimeDelta::try_seconds(reply.resend_after_seconds).ok_or_else(|| {
-            AppError::internal(format!("the stored span of {} seconds between answers is not a span", reply.resend_after_seconds))
+            AppError::internal(format!(
+                "the stored span of {} seconds between answers is not a span",
+                reply.resend_after_seconds
+            ))
         })?;
         let since = Utc::now().checked_sub_signed(span).ok_or_else(|| {
-            AppError::internal(format!("{} seconds back from now is before the first instant Skrzynka can store", reply.resend_after_seconds))
+            AppError::internal(format!(
+                "{} seconds back from now is before the first instant Skrzynka can store",
+                reply.resend_after_seconds
+            ))
         })?;
-        if let Some(answered) = self.database.answered_since(reply.mailbox_id, address, &instant(since))? {
+        if let Some(answered) =
+            self.database
+                .answered_since(reply.mailbox_id, address, &instant(since))?
+        {
             return Ok(Some(format!(
                 "{address} was answered automatically at {answered}, within the {} seconds between answers",
                 reply.resend_after_seconds
             )));
         }
-        Ok(match self.message_source(organization_id, message_id).await {
-            Err(error) => Some(format!("its headers could not be read from the provider: {}: {}", error.code, error.message)),
-            Ok(source) => match mail::machine_sent(&source) {
-                Err(why) => Some(why),
-                Ok(Some(why)) => Some(format!("a machine sent it: {why}")),
-                Ok(None) => None,
+        Ok(
+            match self.message_source(organization_id, message_id).await {
+                Err(error) => Some(format!(
+                    "its headers could not be read from the provider: {}: {}",
+                    error.code, error.message
+                )),
+                Ok(source) => match mail::machine_sent(&source) {
+                    Err(why) => Some(why),
+                    Ok(Some(why)) => Some(format!("a machine sent it: {why}")),
+                    Ok(None) => None,
+                },
             },
-        })
+        )
     }
 
     /// Answer received mail for as long as the service runs: once at start,
@@ -232,7 +297,8 @@ impl AppState {
                     tracing::error!(code = error.code, message = %error.message, "received mail could not be answered automatically");
                 }
                 let database = state.database.clone();
-                let waited = tokio::task::spawn_blocking(move || database.next_received(subscription)).await;
+                let waited =
+                    tokio::task::spawn_blocking(move || database.next_received(subscription)).await;
                 subscription = match waited {
                     Ok(Ok(subscription)) => subscription,
                     Ok(Err(ended)) => match state.database.subscribe_received() {

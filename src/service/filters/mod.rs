@@ -118,7 +118,9 @@ impl MessageFilters<'_> {
         if let (Some(tag), true) = (&matcher.tag, matcher.untagged) {
             return Err(AppError::invalid(
                 "MESSAGE_FILTER_INVALID",
-                format!("the tag filter {tag:?} and untagged exclude each other; give one or the other"),
+                format!(
+                    "the tag filter {tag:?} and untagged exclude each other; give one or the other"
+                ),
             ));
         }
         if self.answered && self.unanswered {
@@ -211,11 +213,25 @@ impl Matcher {
         let bare = !self.untagged || message.tags.is_empty();
         // Files whose size was not recorded weigh nothing here.
         let heavy = self.files_over.is_none_or(|least| {
-            let sizes = message.attachments.iter().flatten().filter_map(|file| file.size_bytes);
+            let sizes = message
+                .attachments
+                .iter()
+                .flatten()
+                .filter_map(|file| file.size_bytes);
             sizes.sum::<u64>() >= least
         });
         let headers = addressed && copied && from && mentions;
-        if !(headers && tagged && listed && attached && named && bounce && doubted && annotated && bare && heavy) {
+        if !(headers
+            && tagged
+            && listed
+            && attached
+            && named
+            && bounce
+            && doubted
+            && annotated
+            && bare
+            && heavy)
+        {
             return Ok(false);
         }
         if self.since.is_none() && self.until.is_none() {
@@ -230,7 +246,10 @@ impl Matcher {
 /// Whether the import recorded at least one file of `message`. A message
 /// imported before attachments were recorded is not known to carry any.
 pub(crate) fn carries_files(message: &Message) -> bool {
-    message.attachments.as_ref().is_some_and(|attachments| !attachments.is_empty())
+    message
+        .attachments
+        .as_ref()
+        .is_some_and(|attachments| !attachments.is_empty())
 }
 
 /// Whether the receiving provider wrote a verdict on the sender as
@@ -238,9 +257,9 @@ pub(crate) fn carries_files(message: &Message) -> bool {
 /// message with no recorded verdicts, say nothing either way.
 pub(crate) fn doubts_sender(message: &Message) -> bool {
     message.authentication.as_ref().is_some_and(|verdicts| {
-        verdicts
-            .iter()
-            .any(|verdict| !verdict.result.is_empty() && !verdict.result.eq_ignore_ascii_case("pass"))
+        verdicts.iter().any(|verdict| {
+            !verdict.result.is_empty() && !verdict.result.eq_ignore_ascii_case("pass")
+        })
     })
 }
 

@@ -56,7 +56,11 @@ impl AppState {
         refuse_delete(&action)?;
         let messages = self.list_view(organization_id, view, None, None)?;
         let (actions, refused) = self.act_on_each(organization_id, messages, action).await;
-        Ok(ViewActions { view: view.trim().to_string(), actions, refused })
+        Ok(ViewActions {
+            view: view.trim().to_string(),
+            actions,
+            refused,
+        })
     }
 
     /// Move every message the saved view lists to the folder `folder`
@@ -71,8 +75,14 @@ impl AppState {
         to: Option<SpecialUse>,
     ) -> Result<ViewActions, AppError> {
         let messages = self.list_view(organization_id, view, None, None)?;
-        let (actions, refused) = self.move_each(organization_id, messages, folder, to).await?;
-        Ok(ViewActions { view: view.trim().to_string(), actions, refused })
+        let (actions, refused) = self
+            .move_each(organization_id, messages, folder, to)
+            .await?;
+        Ok(ViewActions {
+            view: view.trim().to_string(),
+            actions,
+            refused,
+        })
     }
 
     /// Ask the provider to apply `action` to every message of the
@@ -87,7 +97,11 @@ impl AppState {
         refuse_delete(&action)?;
         let messages = self.message_thread(organization_id, id)?;
         let (actions, refused) = self.act_on_each(organization_id, messages, action).await;
-        Ok(ThreadActions { thread: id, actions, refused })
+        Ok(ThreadActions {
+            thread: id,
+            actions,
+            refused,
+        })
     }
 
     /// Move every message of the conversation `id` belongs to, as
@@ -100,17 +114,35 @@ impl AppState {
         to: Option<SpecialUse>,
     ) -> Result<ThreadActions, AppError> {
         let messages = self.message_thread(organization_id, id)?;
-        let (actions, refused) = self.move_each(organization_id, messages, folder, to).await?;
-        Ok(ThreadActions { thread: id, actions, refused })
+        let (actions, refused) = self
+            .move_each(organization_id, messages, folder, to)
+            .await?;
+        Ok(ThreadActions {
+            thread: id,
+            actions,
+            refused,
+        })
     }
 
     /// `action` asked of each message, each recorded or refused on its own.
-    async fn act_on_each(&self, organization_id: &str, messages: Vec<Message>, action: ProviderAction) -> Outcomes {
+    async fn act_on_each(
+        &self,
+        organization_id: &str,
+        messages: Vec<Message>,
+        action: ProviderAction,
+    ) -> Outcomes {
         let mut done: Outcomes = (Vec::new(), Vec::new());
         for message in messages {
-            match self.act_on_message(organization_id, message.id, action.clone()).await {
+            match self
+                .act_on_message(organization_id, message.id, action.clone())
+                .await
+            {
                 Ok(recorded) => done.0.push(recorded),
-                Err(error) => done.1.push(RefusedAction { message_id: message.id, code: error.code, message: error.message }),
+                Err(error) => done.1.push(RefusedAction {
+                    message_id: message.id,
+                    code: error.code,
+                    message: error.message,
+                }),
             }
         }
         done
@@ -127,7 +159,9 @@ impl AppState {
     ) -> Result<Outcomes, AppError> {
         let special = match (folder, to) {
             (Some(folder), None) => {
-                return Ok(self.act_on_each(organization_id, messages, ProviderAction::Move { folder }).await);
+                return Ok(self
+                    .act_on_each(organization_id, messages, ProviderAction::Move { folder })
+                    .await);
             }
             (None, Some(special)) => special,
             _ => return Err(unnamed_folder()),
@@ -145,14 +179,24 @@ impl AppState {
             }
             let outcome = match &folders[&message.mailbox_id] {
                 Ok(folder) => self
-                    .act_on_message(organization_id, message.id, ProviderAction::Move { folder: folder.clone() })
+                    .act_on_message(
+                        organization_id,
+                        message.id,
+                        ProviderAction::Move {
+                            folder: folder.clone(),
+                        },
+                    )
                     .await
                     .map_err(|error| (error.code, error.message)),
                 Err(refusal) => Err(refusal.clone()),
             };
             match outcome {
                 Ok(recorded) => done.0.push(recorded),
-                Err((code, said)) => done.1.push(RefusedAction { message_id: message.id, code, message: said }),
+                Err((code, said)) => done.1.push(RefusedAction {
+                    message_id: message.id,
+                    code,
+                    message: said,
+                }),
             }
         }
         Ok(done)

@@ -3,7 +3,10 @@
 //! down, sent again to the same message as written, each claimed by its own
 //! key so the same request again sends nothing twice.
 
-use super::super::{outbound::{checked_key, stored_addresses}, AppState, ReplyFilter};
+use super::super::{
+    outbound::{checked_key, stored_addresses},
+    AppState, ReplyFilter,
+};
 use crate::{
     error::AppError,
     models::{CreateReplyRequest, DeliveryStatus, ReplyAttempt},
@@ -47,7 +50,14 @@ impl AppState {
         idempotency_key: &str,
     ) -> Result<RepliedAgain, AppError> {
         let key = checked_key(idempotency_key)?.to_string();
-        let narrowed = [&filter.since, &filter.until, &filter.contains, &filter.attachment].iter().any(|bound| bound.is_some());
+        let narrowed = [
+            &filter.since,
+            &filter.until,
+            &filter.contains,
+            &filter.attachment,
+        ]
+        .iter()
+        .any(|bound| bound.is_some());
         if filter.mailbox_id.is_none() && !narrowed {
             return Err(AppError::invalid(
                 "OUTBOUND_RESEND_INVALID",
@@ -62,12 +72,19 @@ impl AppState {
         if failed.is_empty() {
             return Err(AppError::not_found("failed reply"));
         }
-        let mut outcome = RepliedAgain { sent: Vec::new(), refused: Vec::new() };
+        let mut outcome = RepliedAgain {
+            sent: Vec::new(),
+            refused: Vec::new(),
+        };
         for attempt in failed {
             let id = attempt.id;
             match self.reply_again(organization_id, &key, attempt).await {
                 Ok(sent) => outcome.sent.push(sent),
-                Err(error) => outcome.refused.push(RefusedReply { reply_id: id, code: error.code, message: error.message }),
+                Err(error) => outcome.refused.push(RefusedReply {
+                    reply_id: id,
+                    code: error.code,
+                    message: error.message,
+                }),
             }
         }
         Ok(outcome)
@@ -75,7 +92,12 @@ impl AppState {
 
     /// Send one failed reply again under `<key>-<its id>`, unless it carried
     /// files or its message was answered since.
-    async fn reply_again(&self, organization_id: &str, key: &str, attempt: ReplyAttempt) -> Result<ReplyAttempt, AppError> {
+    async fn reply_again(
+        &self,
+        organization_id: &str,
+        key: &str,
+        attempt: ReplyAttempt,
+    ) -> Result<ReplyAttempt, AppError> {
         if !attempt.attachments.is_empty() {
             return Err(AppError::invalid(
                 "OUTBOUND_RESEND_INVALID",
@@ -98,10 +120,23 @@ impl AppState {
             attachments: Vec::new(),
             reply_all: attempt.reply_all,
             quote: false,
-            cc: attempt.cc.as_deref().map(stored_addresses).into_iter().flatten().collect(),
-            bcc: attempt.bcc.as_deref().map(stored_addresses).into_iter().flatten().collect(),
+            cc: attempt
+                .cc
+                .as_deref()
+                .map(stored_addresses)
+                .into_iter()
+                .flatten()
+                .collect(),
+            bcc: attempt
+                .bcc
+                .as_deref()
+                .map(stored_addresses)
+                .into_iter()
+                .flatten()
+                .collect(),
             automatic: false,
         };
-        self.reply(organization_id, attempt.message_id, request).await
+        self.reply(organization_id, attempt.message_id, request)
+            .await
     }
 }

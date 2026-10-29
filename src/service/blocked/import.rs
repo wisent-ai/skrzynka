@@ -22,7 +22,11 @@ impl AppState {
     /// read before any is kept, so one unreadable entry is
     /// `BLOCKED_SENDER_INVALID` quoting its line and nothing changes; a text
     /// with no entry is refused the same way.
-    pub fn import_blocked(&self, organization_id: &str, text: &str) -> Result<ImportedBlocks, AppError> {
+    pub fn import_blocked(
+        &self,
+        organization_id: &str,
+        text: &str,
+    ) -> Result<ImportedBlocks, AppError> {
         let mut imported: Vec<String> = Vec::new();
         for line in text.lines().map(str::trim) {
             if line.is_empty() || line.starts_with('#') {
@@ -35,7 +39,10 @@ impl AppState {
             let entry = blocked_entry(written).map_err(|refusal| {
                 AppError::invalid(
                     "BLOCKED_SENDER_INVALID",
-                    format!("the import line {line:?}: {}; nothing was imported", refusal.message),
+                    format!(
+                        "the import line {line:?}: {}; nothing was imported",
+                        refusal.message
+                    ),
                 )
             })?;
             if !imported.contains(&entry) {
@@ -52,13 +59,20 @@ impl AppState {
         for entry in imported.iter().filter(|entry| !already.contains(entry)) {
             self.database.block_sender(organization_id, entry)?;
         }
-        Ok(ImportedBlocks { imported, blocked: self.database.blocked_senders(organization_id)? })
+        Ok(ImportedBlocks {
+            imported,
+            blocked: self.database.blocked_senders(organization_id)?,
+        })
     }
 
     /// Every blocked entry, or those holding `contains`, as the text
     /// `import_blocked` reads: one per line in address order, under a `#`
     /// line saying what the file is.
-    pub fn blocked_text(&self, organization_id: &str, contains: Option<&str>) -> Result<String, AppError> {
+    pub fn blocked_text(
+        &self,
+        organization_id: &str,
+        contains: Option<&str>,
+    ) -> Result<String, AppError> {
         let mut text = String::from("# Skrzynka blocked senders: an address or @domain per line\n");
         for entry in self.blocked_senders(organization_id, contains)?.blocked {
             text.push_str(&entry);

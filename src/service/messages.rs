@@ -1,7 +1,11 @@
 //! Stored messages and the replies sent to them.
 
 use super::{
-    blocked::is_blocked, filters::MessageFilters, snoozes::{self, is_snoozed}, threads::mutes::is_muted, AppState,
+    blocked::is_blocked,
+    filters::MessageFilters,
+    snoozes::{self, is_snoozed},
+    threads::mutes::is_muted,
+    AppState,
 };
 use crate::{
     error::AppError,
@@ -45,7 +49,12 @@ impl AppState {
             false => self.database.muted_identities(organization_id)?,
         };
         let quiet = matcher.is_none() && blocked.is_empty() && !snoozing && muted.is_empty();
-        if quiet && answered.is_none() && !filters.oldest_first && !filters.snoozed && !filters.muted {
+        if quiet
+            && answered.is_none()
+            && !filters.oldest_first
+            && !filters.snoozed
+            && !filters.muted
+        {
             return self
                 .database
                 .list_messages(organization_id, mailbox_id, limit, offset);
@@ -59,10 +68,16 @@ impl AppState {
         {
             // A muted conversation is left out, unless it is all that is asked for.
             let muting = is_muted(&message, &muted);
-            if is_blocked(&message, &blocked) || (snoozing && is_snoozed(&message, &now)) || muting != filters.muted {
+            if is_blocked(&message, &blocked)
+                || (snoozing && is_snoozed(&message, &now))
+                || muting != filters.muted
+            {
                 continue;
             }
-            if answered.as_ref().is_some_and(|answered| answered.contains(&message.id) != filters.answered) {
+            if answered
+                .as_ref()
+                .is_some_and(|answered| answered.contains(&message.id) != filters.answered)
+            {
                 continue;
             }
             if filters.snoozed && !is_snoozed(&message, &now) {
@@ -184,7 +199,15 @@ impl AppState {
         let body = mail::signed(&body, attempt.signature.as_deref());
         let automatic = request.automatic;
         let result = tokio::task::spawn_blocking(move || {
-            mail::send_reply(&mailbox, &credentials, &message, &body, &files, &copies, automatic)
+            mail::send_reply(
+                &mailbox,
+                &credentials,
+                &message,
+                &body,
+                &files,
+                &copies,
+                automatic,
+            )
         })
         .await;
         match result {

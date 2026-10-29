@@ -11,8 +11,17 @@ use uuid::Uuid;
 
 /// The table's header: the fields of a mailbox an inventory reads.
 const TABLE_HEADER: &[&str] = &[
-    "id", "email", "display_name", "enabled", "imap_host", "smtp_host", "last_uid", "last_sync_at", "last_error_code",
-    "last_error_message", "created_at",
+    "id",
+    "email",
+    "display_name",
+    "enabled",
+    "imap_host",
+    "smtp_host",
+    "last_uid",
+    "last_sync_at",
+    "last_error_code",
+    "last_error_message",
+    "created_at",
 ];
 
 impl Mailbox {
@@ -43,7 +52,11 @@ impl Mailbox {
 impl AppState {
     /// Every mailbox of the organization, or with `state` only those in it,
     /// each with its recovery command and observed credential source.
-    pub async fn list_mailboxes(&self, organization_id: &str, state: Option<MailboxState>) -> Result<Vec<Mailbox>, AppError> {
+    pub async fn list_mailboxes(
+        &self,
+        organization_id: &str,
+        state: Option<MailboxState>,
+    ) -> Result<Vec<Mailbox>, AppError> {
         self.reconcile_mailboxes(Some(organization_id)).await?;
         let mut mailboxes: Vec<Mailbox> = self
             .database

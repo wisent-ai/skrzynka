@@ -54,7 +54,11 @@ pub fn contact_table(contacts: &[Contact]) -> String {
 impl AppState {
     /// The correspondents `list_contacts` answers for `filter`, as the CSV
     /// table `contact_table` writes.
-    pub fn contacts_csv(&self, organization_id: &str, filter: &ContactFilter) -> Result<String, AppError> {
+    pub fn contacts_csv(
+        &self,
+        organization_id: &str,
+        filter: &ContactFilter,
+    ) -> Result<String, AppError> {
         Ok(contact_table(&self.list_contacts(organization_id, filter)?))
     }
 }

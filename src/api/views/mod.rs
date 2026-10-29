@@ -70,7 +70,9 @@ pub(in crate::api) async fn import_views(
     Json(request): Json<ImportViews>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.import_views(&auth.organization_id, &request.text)?)))
+    Ok(Json(json!(
+        state.import_views(&auth.organization_id, &request.text)?
+    )))
 }
 
 /// `GET /v1/views/:name`: the name URL-encoded.
@@ -92,9 +94,11 @@ pub(in crate::api) async fn save_view(
     Json(filters): Json<SavedFilters>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.save_view(&auth.organization_id, &name, &filters)?
-    )))
+    Ok(Json(json!(state.save_view(
+        &auth.organization_id,
+        &name,
+        &filters
+    )?)))
 }
 
 pub(in crate::api) async fn delete_view(
@@ -103,7 +107,9 @@ pub(in crate::api) async fn delete_view(
     Path(name): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.delete_view(&auth.organization_id, &name)?)))
+    Ok(Json(
+        json!(state.delete_view(&auth.organization_id, &name)?),
+    ))
 }
 
 /// `POST /v1/views/:name/rename` with `{"to": "<NAME>"}`.
@@ -119,9 +125,11 @@ pub(in crate::api) async fn rename_view(
     Json(request): Json<RenameView>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.rename_view(&auth.organization_id, &name, &request.to)?
-    )))
+    Ok(Json(json!(state.rename_view(
+        &auth.organization_id,
+        &name,
+        &request.to
+    )?)))
 }
 
 /// `POST /v1/views/:name/copy` with `{"to": "<NAME>"}`: the copy kept under
@@ -133,7 +141,11 @@ pub(in crate::api) async fn copy_view(
     Json(request): Json<RenameView>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.copy_view(&auth.organization_id, &name, &request.to)?)))
+    Ok(Json(json!(state.copy_view(
+        &auth.organization_id,
+        &name,
+        &request.to
+    )?)))
 }
 
 /// `POST /v1/views/:name/forward` with `{to, cc, bcc, body | template,
@@ -147,7 +159,11 @@ pub(in crate::api) async fn forward_view(
     Json(request): Json<crate::service::ForwardViewRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.forward_view(&auth.organization_id, &name, request).await?)))
+    Ok(Json(json!(
+        state
+            .forward_view(&auth.organization_id, &name, request)
+            .await?
+    )))
 }
 
 /// `POST /v1/views/:name/replies` with `{body | template, values,
@@ -161,5 +177,9 @@ pub(in crate::api) async fn reply_view(
     Json(request): Json<crate::service::ReplyViewRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.reply_view(&auth.organization_id, &name, request).await?)))
+    Ok(Json(json!(
+        state
+            .reply_view(&auth.organization_id, &name, request)
+            .await?
+    )))
 }

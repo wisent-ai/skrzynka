@@ -38,9 +38,11 @@ pub(in crate::api) async fn retag_view(
     Json(request): Json<RetagRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.retag_view(&auth.organization_id, &name, request)?
-    )))
+    Ok(Json(json!(state.retag_view(
+        &auth.organization_id,
+        &name,
+        request
+    )?)))
 }
 
 /// `POST /v1/messages/:id/thread/tags` with `{add, remove}`: change the tags
@@ -52,7 +54,11 @@ pub(in crate::api) async fn retag_thread(
     Json(request): Json<RetagRequest>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.retag_thread(&auth.organization_id, parse_uuid(&id)?, request)?)))
+    Ok(Json(json!(state.retag_thread(
+        &auth.organization_id,
+        parse_uuid(&id)?,
+        request
+    )?)))
 }
 
 /// `GET /v1/tags?mailbox_id=&contains=&since=&until=`: what `message tags
@@ -72,7 +78,9 @@ pub(in crate::api) async fn list_tags(
     Extension(auth): Extension<AuthContext>,
     axum::extract::Query(query): axum::extract::Query<TagsQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.list_tags(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(
+        state.list_tags(&auth.organization_id, &query.filter()?)?
+    )))
 }
 
 /// `GET /v1/tag-counts/csv` with the parameters of `GET /v1/tags`: the tags
@@ -84,14 +92,22 @@ pub(in crate::api) async fn tags_csv(
     axum::extract::Query(query): axum::extract::Query<TagsQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let tags = state.list_tags(&auth.organization_id, &query.filter()?)?;
-    Ok(super::listing::csv_file("tags.csv", crate::service::tag_table(&tags)))
+    Ok(super::listing::csv_file(
+        "tags.csv",
+        crate::service::tag_table(&tags),
+    ))
 }
 
 impl TagsQuery {
     /// The tags these parameters ask for, as `message tags` takes them.
     fn filter(self) -> Result<TagFilter, AppError> {
         let mailbox_id = self.mailbox_id.as_deref().map(parse_uuid).transpose()?;
-        Ok(TagFilter { mailbox_id, contains: self.contains, since: self.since, until: self.until })
+        Ok(TagFilter {
+            mailbox_id,
+            contains: self.contains,
+            since: self.since,
+            until: self.until,
+        })
     }
 }
 
@@ -109,9 +125,11 @@ pub(in crate::api) async fn rename_tag(
     Json(request): Json<RenameTag>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.rename_tag(&auth.organization_id, &tag, &request.to)?
-    )))
+    Ok(Json(json!(state.rename_tag(
+        &auth.organization_id,
+        &tag,
+        &request.to
+    )?)))
 }
 
 /// `DELETE /v1/tags/:tag`: take the tag off every message; answers

@@ -71,7 +71,12 @@ struct OutboundListing {
     #[arg(long, conflicts_with = "csv")]
     follow_up: Option<String>,
     /// Send every failed message listed again, as written, each claimed by <KEY>-<outbound id>; needs --idempotency-key.
-    #[arg(long, conflicts_with = "csv", conflicts_with = "follow_up", requires = "idempotency_key")]
+    #[arg(
+        long,
+        conflicts_with = "csv",
+        conflicts_with = "follow_up",
+        requires = "idempotency_key"
+    )]
     resend_failed: bool,
     /// With --resend-failed: the key each new send is claimed by; required, never drawn.
     #[arg(long, requires = "resend_failed")]
@@ -80,7 +85,11 @@ struct OutboundListing {
 
 /// Print one outbound message, the listing, write the listing as a CSV table
 /// to a new file and print what was written, or act on every message of it.
-pub(in crate::cli) async fn outbound(state: &AppState, organization: &str, args: OutboundArgs) -> Result<(), AppError> {
+pub(in crate::cli) async fn outbound(
+    state: &AppState,
+    organization: &str,
+    args: OutboundArgs,
+) -> Result<(), AppError> {
     if let Some(id) = args.id {
         return print_json(&state.get_outbound(organization, id)?);
     }
@@ -98,19 +107,51 @@ pub(in crate::cli) async fn outbound(state: &AppState, organization: &str, args:
         oldest_first: listing.oldest_first,
     };
     if let Some(by) = listing.follow_up {
-        return print_json(&state.expect_answers(organization, mailbox_id, &filters, listing.limit, listing.offset, &by)?);
+        return print_json(&state.expect_answers(
+            organization,
+            mailbox_id,
+            &filters,
+            listing.limit,
+            listing.offset,
+            &by,
+        )?);
     }
     if listing.resend_failed {
-        let key = super::super::message::required_key(listing.idempotency_key, "message outbound --resend-failed")?;
-        return print_json(&state.resend_failed(organization, mailbox_id, &filters, &key).await?);
+        let key = super::super::message::required_key(
+            listing.idempotency_key,
+            "message outbound --resend-failed",
+        )?;
+        return print_json(
+            &state
+                .resend_failed(organization, mailbox_id, &filters, &key)
+                .await?,
+        );
     }
     let Some(path) = listing.csv else {
-        return print_json(&state.search_outbound(organization, mailbox_id, &filters, listing.limit, listing.offset)?);
+        return print_json(&state.search_outbound(
+            organization,
+            mailbox_id,
+            &filters,
+            listing.limit,
+            listing.offset,
+        )?);
     };
-    let file = NewFile { path: &path, exists: "OUTBOUND_OUTPUT_EXISTS", invalid: "OUTBOUND_OUTPUT_INVALID" };
+    let file = NewFile {
+        path: &path,
+        exists: "OUTBOUND_OUTPUT_EXISTS",
+        invalid: "OUTBOUND_OUTPUT_INVALID",
+    };
     file.refuse_occupied()?;
-    let messages = state.search_outbound(organization, mailbox_id, &filters, listing.limit, listing.offset)?;
+    let messages = state.search_outbound(
+        organization,
+        mailbox_id,
+        &filters,
+        listing.limit,
+        listing.offset,
+    )?;
     let table = outbound_table(&messages);
     file.write(table.as_bytes())?;
-    print_json(&serde_json::json!({ "path": path, "messages": messages.len(), "size_bytes": table.len() }))
+    print_json(
+        &serde_json::json!({ "path": path, "messages": messages.len(), "size_bytes": table.len() }),
+    )
 }

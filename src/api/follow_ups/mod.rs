@@ -34,7 +34,9 @@ pub(in crate::api) async fn list_follow_ups(
     Extension(auth): Extension<AuthContext>,
     Query(query): Query<FollowUpQuery>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.follow_ups(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(
+        state.follow_ups(&auth.organization_id, &query.filter()?)?
+    )))
 }
 
 /// `GET /v1/follow-ups/csv` with the listing's parameters: the follow-ups it
@@ -46,14 +48,27 @@ pub(in crate::api) async fn follow_ups_csv(
     Query(query): Query<FollowUpQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let follow_ups = state.follow_ups(&auth.organization_id, &query.filter()?)?;
-    Ok(super::listing::csv_file("follow-ups.csv", crate::service::follow_up_table(&follow_ups)))
+    Ok(super::listing::csv_file(
+        "follow-ups.csv",
+        crate::service::follow_up_table(&follow_ups),
+    ))
 }
 
 impl FollowUpQuery {
     /// The listing these parameters ask for, as `message followup list` takes it.
     fn filter(self) -> Result<FollowUpFilter, AppError> {
-        let mailbox_id = self.mailbox_id.as_deref().map(super::parse_uuid).transpose()?;
-        Ok(FollowUpFilter { state: self.state, mailbox_id, to: self.to, contains: self.contains, due_by: self.due_by })
+        let mailbox_id = self
+            .mailbox_id
+            .as_deref()
+            .map(super::parse_uuid)
+            .transpose()?;
+        Ok(FollowUpFilter {
+            state: self.state,
+            mailbox_id,
+            to: self.to,
+            contains: self.contains,
+            due_by: self.due_by,
+        })
     }
 }
 
@@ -78,7 +93,9 @@ pub(in crate::api) async fn show_follow_up(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    Ok(Json(json!(state.get_follow_up(&auth.organization_id, parse_uuid(&id)?)?)))
+    Ok(Json(json!(
+        state.get_follow_up(&auth.organization_id, parse_uuid(&id)?)?
+    )))
 }
 
 pub(in crate::api) async fn clear_follow_up(
@@ -87,9 +104,10 @@ pub(in crate::api) async fn clear_follow_up(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(
-        state.clear_follow_up(&auth.organization_id, parse_uuid(&id)?)?
-    )))
+    Ok(Json(json!(state.clear_follow_up(
+        &auth.organization_id,
+        parse_uuid(&id)?
+    )?)))
 }
 
 /// `DELETE /v1/follow-ups?state=&mailbox_id=&to=&contains=`: stop expecting
@@ -101,7 +119,10 @@ pub(in crate::api) async fn clear_follow_ups(
     Query(query): Query<FollowUpQuery>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    Ok(Json(json!(state.clear_follow_ups(&auth.organization_id, &query.filter()?)?)))
+    Ok(Json(json!(state.clear_follow_ups(
+        &auth.organization_id,
+        &query.filter()?
+    )?)))
 }
 
 /// `POST /v1/follow-ups/nudge` with the listing's parameters and
@@ -119,6 +140,7 @@ pub(in crate::api) async fn nudge_follow_ups(
     Json(request): Json<NudgeFollowUps>,
 ) -> Result<Json<Value>, AppError> {
     auth.require_role(OrganizationRole::Member)?;
-    let drafts = state.nudge_follow_ups(&auth.organization_id, &query.filter()?, &request.template)?;
+    let drafts =
+        state.nudge_follow_ups(&auth.organization_id, &query.filter()?, &request.template)?;
     Ok(Json(json!(drafts)))
 }

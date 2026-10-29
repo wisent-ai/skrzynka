@@ -47,9 +47,15 @@ impl AppState {
         by: &str,
     ) -> Result<FollowUpsSet, AppError> {
         let due_at = instant(due_instant(by)?);
-        let narrowed = [&filters.to, &filters.contains, &filters.attachment, &filters.since, &filters.until]
-            .iter()
-            .any(|filter| filter.is_some());
+        let narrowed = [
+            &filters.to,
+            &filters.contains,
+            &filters.attachment,
+            &filters.since,
+            &filters.until,
+        ]
+        .iter()
+        .any(|filter| filter.is_some());
         if mailbox_id.is_none() && !narrowed && !filters.bounced {
             return Err(AppError::invalid(
                 "FOLLOW_UP_INVALID",
@@ -61,19 +67,32 @@ impl AppState {
             return Err(AppError::not_found("outbound message"));
         }
         let mut stored_by_mailbox: HashMap<Uuid, Vec<Message>> = HashMap::new();
-        let mut set = FollowUpsSet { follow_ups: Vec::new(), skipped: Vec::new() };
+        let mut set = FollowUpsSet {
+            follow_ups: Vec::new(),
+            skipped: Vec::new(),
+        };
         for outbound in listed {
             if outbound.status != DeliveryStatus::Sent || outbound.provider_message_id.is_none() {
-                set.skipped.push(SkippedOutbound { outbound_id: outbound.id, status: outbound.status.as_str().to_string() });
+                set.skipped.push(SkippedOutbound {
+                    outbound_id: outbound.id,
+                    status: outbound.status.as_str().to_string(),
+                });
                 continue;
             }
-            self.database.set_follow_up(organization_id, outbound.id, &due_at)?;
+            self.database
+                .set_follow_up(organization_id, outbound.id, &due_at)?;
             if !stored_by_mailbox.contains_key(&outbound.mailbox_id) {
-                let stored = self.database.list_messages(organization_id, Some(outbound.mailbox_id), None, None)?;
+                let stored = self.database.list_messages(
+                    organization_id,
+                    Some(outbound.mailbox_id),
+                    None,
+                    None,
+                )?;
                 stored_by_mailbox.insert(outbound.mailbox_id, stored);
             }
             let stored = &stored_by_mailbox[&outbound.mailbox_id];
-            set.follow_ups.push(standing(outbound, due_at.clone(), stored));
+            set.follow_ups
+                .push(standing(outbound, due_at.clone(), stored));
         }
         Ok(set)
     }

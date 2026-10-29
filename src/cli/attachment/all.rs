@@ -49,7 +49,10 @@ impl SavedFiles {
         }
         Err(AppError::invalid(
             "ATTACHMENT_SAVE_INCOMPLETE",
-            format!("{} of the files could not be saved; each is listed under refused", self.refused.len()),
+            format!(
+                "{} of the files could not be saved; each is listed under refused",
+                self.refused.len()
+            ),
         ))
     }
 }
@@ -65,7 +68,12 @@ struct SavedAll<'a> {
 /// Create `output` and write every attachment of `message` into it as
 /// `<index>-<name>`. One that cannot be read does not stop the others; any
 /// refused ends with `ATTACHMENT_SAVE_INCOMPLETE` after printing.
-pub(super) async fn save_all(state: &AppState, organization: &str, message: Uuid, output: PathBuf) -> Result<(), AppError> {
+pub(super) async fn save_all(
+    state: &AppState,
+    organization: &str,
+    message: Uuid,
+    output: PathBuf,
+) -> Result<(), AppError> {
     let attachments = state.list_attachments(organization, message).await?;
     create(&output)?;
     let wanted = attachments
@@ -77,7 +85,10 @@ pub(super) async fn save_all(state: &AppState, organization: &str, message: Uuid
         })
         .collect();
     let files = save(state, organization, output, wanted).await;
-    print_json(&SavedAll { message_id: message, files: &files })?;
+    print_json(&SavedAll {
+        message_id: message,
+        files: &files,
+    })?;
     files.outcome()
 }
 
@@ -86,7 +97,12 @@ pub(super) async fn save_all(state: &AppState, organization: &str, message: Uuid
 /// None kept is `NOT_FOUND` before the directory is created; one that
 /// cannot be read does not stop the others, and any refused ends with
 /// `ATTACHMENT_SAVE_INCOMPLETE` after printing.
-pub(super) async fn save_found(state: &AppState, organization: &str, found: Vec<StoredFile>, output: PathBuf) -> Result<(), AppError> {
+pub(super) async fn save_found(
+    state: &AppState,
+    organization: &str,
+    found: Vec<StoredFile>,
+    output: PathBuf,
+) -> Result<(), AppError> {
     if found.is_empty() {
         return Err(AppError::not_found("attachment"));
     }
@@ -96,7 +112,11 @@ pub(super) async fn save_found(state: &AppState, organization: &str, found: Vec<
         .map(|file| Wanted {
             message_id: file.message_id,
             index: file.index,
-            path: output.join(format!("{}-{}", file.message_id, file_name(file.index, file.filename.as_deref()))),
+            path: output.join(format!(
+                "{}-{}",
+                file.message_id,
+                file_name(file.index, file.filename.as_deref())
+            )),
         })
         .collect();
     let files = save(state, organization, output, wanted).await;
@@ -116,13 +136,31 @@ fn create(output: &Path) -> Result<(), AppError> {
 }
 
 /// Read each wanted file from the provider and write it to its path.
-async fn save(state: &AppState, organization: &str, directory: PathBuf, wanted: Vec<Wanted>) -> SavedFiles {
-    let mut done = SavedFiles { directory, saved: Vec::new(), refused: Vec::new() };
-    for Wanted { message_id, index, path } in wanted {
+async fn save(
+    state: &AppState,
+    organization: &str,
+    directory: PathBuf,
+    wanted: Vec<Wanted>,
+) -> SavedFiles {
+    let mut done = SavedFiles {
+        directory,
+        saved: Vec::new(),
+        refused: Vec::new(),
+    };
+    for Wanted {
+        message_id,
+        index,
+        path,
+    } in wanted
+    {
         let written = match state.read_attachment(organization, message_id, index).await {
-            Ok(content) => NewFile { path: &path, exists: "ATTACHMENT_OUTPUT_EXISTS", invalid: "ATTACHMENT_OUTPUT_INVALID" }
-                .write(&content.bytes)
-                .map(|()| content),
+            Ok(content) => NewFile {
+                path: &path,
+                exists: "ATTACHMENT_OUTPUT_EXISTS",
+                invalid: "ATTACHMENT_OUTPUT_INVALID",
+            }
+            .write(&content.bytes)
+            .map(|()| content),
             Err(error) => Err(error),
         };
         match written {
@@ -135,7 +173,12 @@ async fn save(state: &AppState, organization: &str, directory: PathBuf, wanted: 
                 sha256: format!("{:x}", Sha256::digest(&content.bytes)),
                 path,
             }),
-            Err(error) => done.refused.push(NotSaved { message_id, index, code: error.code, message: error.message }),
+            Err(error) => done.refused.push(NotSaved {
+                message_id,
+                index,
+                code: error.code,
+                message: error.message,
+            }),
         }
     }
     done

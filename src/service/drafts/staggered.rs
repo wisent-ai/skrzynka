@@ -30,28 +30,47 @@ impl AppState {
         every: Option<&str>,
         idempotency_key: &str,
     ) -> Result<Vec<Draft>, AppError> {
-        let refused = |message: String| AppError::invalid("DRAFT_SCHEDULE_INVALID", format!("{message}; nothing was scheduled"));
+        let refused = |message: String| {
+            AppError::invalid(
+                "DRAFT_SCHEDULE_INVALID",
+                format!("{message}; nothing was scheduled"),
+            )
+        };
         let key = super::super::outbound::checked_key(idempotency_key)?;
-        let mut at = instant(send_at).map_err(|error| refused(format!("{send_at:?} is not an RFC 3339 instant: {error}")))?;
+        let mut at = instant(send_at)
+            .map_err(|error| refused(format!("{send_at:?} is not an RFC 3339 instant: {error}")))?;
         let gap = match every {
             Some(span) => span_from_now(span.trim(), '+', "DRAFT_SCHEDULE_INVALID")?,
             None => TimeDelta::zero(),
         };
-        let mut drafts: Vec<Draft> =
-            self.list_drafts(organization_id, filter)?.into_iter().filter(|draft| draft.send_at.is_none()).collect();
+        let mut drafts: Vec<Draft> = self
+            .list_drafts(organization_id, filter)?
+            .into_iter()
+            .filter(|draft| draft.send_at.is_none())
+            .collect();
         if drafts.is_empty() {
-            return Err(refused("no draft these filters list is waiting to be scheduled".to_string()));
+            return Err(refused(
+                "no draft these filters list is waiting to be scheduled".to_string(),
+            ));
         }
         drafts.reverse();
         let mut scheduled = Vec::new();
         for draft in drafts {
-            match self.schedule_draft(organization_id, draft.id, &at.to_rfc3339(), &format!("{key}-{}", draft.id)) {
+            match self.schedule_draft(
+                organization_id,
+                draft.id,
+                &at.to_rfc3339(),
+                &format!("{key}-{}", draft.id),
+            ) {
                 Ok(done) => scheduled.push(done),
                 Err(error) => {
                     for done in &scheduled {
                         self.unschedule_draft(organization_id, done.id)?;
                     }
-                    let message = format!("{}; the drafts scheduled before it were unscheduled", error.message);
+                    let message = format!(
+                        "{}; the drafts scheduled before it were unscheduled",
+                        error.message
+                    );
                     return Err(AppError { message, ..error });
                 }
             }

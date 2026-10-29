@@ -23,7 +23,11 @@ pub(super) mod mutes;
 /// --mailbox` takes it; none when the flag is absent. An unknown one is
 /// `NOT_FOUND`, an address more than one mailbox has
 /// `MAILBOX_SELECTOR_AMBIGUOUS`.
-pub(super) fn chosen_mailbox(state: &AppState, organization: &str, selector: Option<String>) -> Result<Option<Uuid>, AppError> {
+pub(super) fn chosen_mailbox(
+    state: &AppState,
+    organization: &str,
+    selector: Option<String>,
+) -> Result<Option<Uuid>, AppError> {
     match selector {
         Some(written) => Ok(Some(state.resolve_mailbox(organization, &written)?.id)),
         None => Ok(None),
@@ -72,23 +76,54 @@ pub(super) struct SubscriptionsArgs {
 
 /// Print the mailing lists the filters keep, write them as a CSV table to a
 /// new file and print what was written, or ask each to stop sending.
-pub(super) async fn subscriptions(state: &AppState, organization: &str, args: SubscriptionsArgs) -> Result<(), AppError> {
-    let SubscriptionsArgs { mailbox, subscribed, contains, since, until, leavable, csv, leave, idempotency_key } = args;
+pub(super) async fn subscriptions(
+    state: &AppState,
+    organization: &str,
+    args: SubscriptionsArgs,
+) -> Result<(), AppError> {
+    let SubscriptionsArgs {
+        mailbox,
+        subscribed,
+        contains,
+        since,
+        until,
+        leavable,
+        csv,
+        leave,
+        idempotency_key,
+    } = args;
     let mailbox_id = chosen_mailbox(state, organization, mailbox)?;
-    let filter = SubscriptionFilter { mailbox_id, subscribed, contains, since, until, leavable };
+    let filter = SubscriptionFilter {
+        mailbox_id,
+        subscribed,
+        contains,
+        since,
+        until,
+        leavable,
+    };
     if leave {
         let key = super::message::required_key(idempotency_key, "message subscriptions --leave")?;
-        return print_json(&state.unsubscribe_listed(organization, &filter, &key).await?);
+        return print_json(
+            &state
+                .unsubscribe_listed(organization, &filter, &key)
+                .await?,
+        );
     }
     let Some(path) = csv else {
         return print_json(&state.list_subscriptions(organization, &filter)?);
     };
-    let file = NewFile { path: &path, exists: "SUBSCRIPTION_OUTPUT_EXISTS", invalid: "SUBSCRIPTION_OUTPUT_INVALID" };
+    let file = NewFile {
+        path: &path,
+        exists: "SUBSCRIPTION_OUTPUT_EXISTS",
+        invalid: "SUBSCRIPTION_OUTPUT_INVALID",
+    };
     file.refuse_occupied()?;
     let lists = state.list_subscriptions(organization, &filter)?.lists;
     let table = subscription_table(&lists);
     file.write(table.as_bytes())?;
-    print_json(&serde_json::json!({ "path": path, "lists": lists.len(), "size_bytes": table.len() }))
+    print_json(
+        &serde_json::json!({ "path": path, "lists": lists.len(), "size_bytes": table.len() }),
+    )
 }
 
 /// What `message unsubscribe` leaves: the list a stored message came from,
@@ -122,7 +157,12 @@ pub(super) struct SenderArg {
 #[derive(clap::Args)]
 pub(super) struct SnoozeArgs {
     /// Message ID, as `skrzynka message list` prints it.
-    #[arg(required_unless_present = "view", required_unless_present = "thread", conflicts_with = "view", conflicts_with = "thread")]
+    #[arg(
+        required_unless_present = "view",
+        required_unless_present = "thread",
+        conflicts_with = "view",
+        conflicts_with = "thread"
+    )]
     pub(super) id: Option<Uuid>,
     /// Snooze every message this saved view lists instead of one.
     #[arg(long, conflicts_with = "thread")]
@@ -140,7 +180,12 @@ pub(super) struct SnoozeArgs {
 #[derive(clap::Args)]
 pub(super) struct WakeArgs {
     /// Message ID, as `skrzynka message list` prints it.
-    #[arg(required_unless_present = "view", required_unless_present = "thread", conflicts_with = "view", conflicts_with = "thread")]
+    #[arg(
+        required_unless_present = "view",
+        required_unless_present = "thread",
+        conflicts_with = "view",
+        conflicts_with = "thread"
+    )]
     pub(super) id: Option<Uuid>,
     /// Wake every snoozed message this saved view keeps instead of one.
     #[arg(long, conflicts_with = "thread")]
@@ -181,7 +226,12 @@ pub(super) struct SourceArgs {
 #[derive(clap::Args)]
 pub(super) struct TagArgs {
     /// Message ID, as `skrzynka message list` prints it.
-    #[arg(required_unless_present = "view", required_unless_present = "thread", conflicts_with = "view", conflicts_with = "thread")]
+    #[arg(
+        required_unless_present = "view",
+        required_unless_present = "thread",
+        conflicts_with = "view",
+        conflicts_with = "thread"
+    )]
     pub(super) id: Option<Uuid>,
     /// Change every message this saved view lists instead of one.
     #[arg(long, conflicts_with = "thread")]
@@ -216,10 +266,20 @@ pub(super) struct TagsArgs {
     #[arg(long, conflicts_with = "rename", conflicts_with = "remove")]
     pub(super) contains: Option<String>,
     /// Count only messages received at or after an RFC 3339 instant, YYYY-MM-DD day or span back such as -30d.
-    #[arg(long, conflicts_with = "rename", conflicts_with = "remove", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        conflicts_with = "rename",
+        conflicts_with = "remove",
+        allow_hyphen_values = true
+    )]
     pub(super) since: Option<String>,
     /// Count only messages received before this.
-    #[arg(long, conflicts_with = "rename", conflicts_with = "remove", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        conflicts_with = "rename",
+        conflicts_with = "remove",
+        allow_hyphen_values = true
+    )]
     pub(super) until: Option<String>,
     /// Write the tags listed as a CSV table (tag, messages) to this new file.
     #[arg(long, conflicts_with = "rename", conflicts_with = "remove")]
@@ -228,13 +288,26 @@ pub(super) struct TagsArgs {
 
 /// Print the tags `message tags` lists, or write them as a CSV table to a
 /// new file and print what was written.
-pub(super) fn list_tags(state: &AppState, organization: &str, args: TagsArgs) -> Result<(), AppError> {
+pub(super) fn list_tags(
+    state: &AppState,
+    organization: &str,
+    args: TagsArgs,
+) -> Result<(), AppError> {
     let mailbox_id = chosen_mailbox(state, organization, args.mailbox)?;
-    let filter = TagFilter { mailbox_id, contains: args.contains, since: args.since, until: args.until };
+    let filter = TagFilter {
+        mailbox_id,
+        contains: args.contains,
+        since: args.since,
+        until: args.until,
+    };
     let Some(path) = args.csv else {
         return print_json(&state.list_tags(organization, &filter)?);
     };
-    let file = NewFile { path: &path, exists: "TAG_OUTPUT_EXISTS", invalid: "TAG_OUTPUT_INVALID" };
+    let file = NewFile {
+        path: &path,
+        exists: "TAG_OUTPUT_EXISTS",
+        invalid: "TAG_OUTPUT_INVALID",
+    };
     file.refuse_occupied()?;
     let tags = state.list_tags(organization, &filter)?;
     let table = tag_table(&tags);

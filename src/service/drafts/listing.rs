@@ -42,8 +42,13 @@ impl AppState {
     /// as `filter` says; scheduled ones soonest first. A blank `contains`, an
     /// unreadable instant or bound, or a window whose start is not before its
     /// end is `MESSAGE_FILTER_INVALID`.
-    pub fn list_drafts(&self, organization_id: &str, filter: &DraftFilter) -> Result<Vec<Draft>, AppError> {
-        let contains = super::super::messages::filter_value(filter.contains.as_deref(), "contains")?;
+    pub fn list_drafts(
+        &self,
+        organization_id: &str,
+        filter: &DraftFilter,
+    ) -> Result<Vec<Draft>, AppError> {
+        let contains =
+            super::super::messages::filter_value(filter.contains.as_deref(), "contains")?;
         let since = super::super::filters::instant(filter.since.as_deref(), "since")?;
         let until = super::super::filters::instant(filter.until.as_deref(), "until")?;
         let send_by = super::super::follow_ups::due_bound(filter.send_by.as_deref(), "send-by")?;
@@ -57,7 +62,11 @@ impl AppState {
         }
         let scheduled = filter.scheduled || send_by.is_some();
         let bounced: BTreeSet<String> = match filter.bounced {
-            true => self.bounced_addresses(organization_id)?.into_iter().map(|entry| entry.address).collect(),
+            true => self
+                .bounced_addresses(organization_id)?
+                .into_iter()
+                .map(|entry| entry.address)
+                .collect(),
             false => BTreeSet::new(),
         };
         let suppressed = match filter.suppressed {
@@ -72,20 +81,32 @@ impl AppState {
             .filter(|draft| !filter.with_attachments || !draft.attachments.is_empty())
             .filter(|draft| {
                 contains.as_deref().is_none_or(|part| {
-                    [&draft.recipients, &draft.cc, &draft.bcc, &draft.subject, &draft.body]
-                        .iter()
-                        .any(|field| field.to_lowercase().contains(part))
+                    [
+                        &draft.recipients,
+                        &draft.cc,
+                        &draft.bcc,
+                        &draft.subject,
+                        &draft.body,
+                    ]
+                    .iter()
+                    .any(|field| field.to_lowercase().contains(part))
                 })
             })
-            .filter(|draft| !filter.bounced || addressed(draft).any(|address| bounced.contains(&address)))
             .filter(|draft| {
-                !filter.suppressed || addressed(draft).any(|address| suppressed.iter().any(|kept| kept.covers(&address)))
+                !filter.bounced || addressed(draft).any(|address| bounced.contains(&address))
+            })
+            .filter(|draft| {
+                !filter.suppressed
+                    || addressed(draft)
+                        .any(|address| suppressed.iter().any(|kept| kept.covers(&address)))
             });
         let mut drafts = Vec::new();
         for draft in candidates {
             if since.is_some() || until.is_some() {
                 let changed = stored_instant(&draft, &draft.updated_at, "change")?;
-                if !(since.is_none_or(|from| changed >= from) && until.is_none_or(|to| changed < to)) {
+                if !(since.is_none_or(|from| changed >= from)
+                    && until.is_none_or(|to| changed < to))
+                {
                     continue;
                 }
             }
@@ -105,7 +126,11 @@ impl AppState {
 
 /// An instant the draft stores, read back; one that is not RFC 3339 is an
 /// internal error naming the draft and which instant it is.
-fn stored_instant(draft: &Draft, written: &str, which: &str) -> Result<DateTime<FixedOffset>, AppError> {
+fn stored_instant(
+    draft: &Draft,
+    written: &str,
+    which: &str,
+) -> Result<DateTime<FixedOffset>, AppError> {
     DateTime::parse_from_rfc3339(written).map_err(|error| {
         AppError::internal(format!(
             "draft {} stores the {which} instant {written:?}, which is not RFC 3339: {error}",

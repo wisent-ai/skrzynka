@@ -92,7 +92,9 @@ fn draft_announcements_unavailable(error: stado_database::Error) -> AppError {
     AppError::new(
         StatusCode::SERVICE_UNAVAILABLE,
         "DRAFT_ANNOUNCEMENTS_UNAVAILABLE",
-        format!("draft schedule announcements on the fleet database channel {DRAFT_CHANNEL}: {error}"),
+        format!(
+            "draft schedule announcements on the fleet database channel {DRAFT_CHANNEL}: {error}"
+        ),
         true,
     )
 }
