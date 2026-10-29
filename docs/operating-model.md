@@ -25,13 +25,13 @@ JSON object, is refused as `SKARBIEC_UNAVAILABLE` with the path and the reason.
 
 ## Organizations
 
-The CLI acts for one organization, named by `--organization <ID>`; every command except `serve`, `version` and `onboarding` needs it, and a command without it is refused with `ORGANIZATION_REQUIRED` rather than assuming one. A command that names its organization reconciles only that organization's mailboxes against the Skarbiec declarations it reads; only the background poll of `skrzynka serve` reconciles every organization, against the vault of the host it runs on. Rows written before organizations existed carry the stored namespace `legacy-local`.
+The CLI acts for one organization, named by `--organization <ID>`; every command except `serve`, `version` and `onboarding` needs it, and a command without it is refused with `ORGANIZATION_REQUIRED` rather than assuming one. A command that names its organization reconciles only that organization's mailboxes against the Skarbiec declarations it reads; only the watcher rounds of `skrzynka serve`, run on the fleet database's mailbox announcements, reconcile every organization, against the vault of the host it runs on. Rows written before organizations existed carry the stored namespace `legacy-local`.
 
 ## Source layout
 
 The source is one module per concern, each a folder of files under 300 lines:
 `cli` (arguments and subcommands), `api` (router and handlers), `service`
-(the `AppState` methods, grouped by Gmail connection, mailboxes, polling,
+(the `AppState` methods, grouped by Gmail connection, mailboxes, mail reception,
 messages and outbound mail), `db` (schema and one file per table), `skarbiec`
 (the vault transport, items, mailbox resolution and Google tokens), `gmail`
 (the OAuth broker and its diagnosis), `onboarding`, `models`, `mail`, `auth`

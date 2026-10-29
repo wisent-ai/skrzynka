@@ -189,9 +189,9 @@ skarbiec retag team-inbox --tags skrzynka:mailbox
 cargo run -- sync
 ```
 
-Every `mailbox list`, `sync`, and background poll first reads which items
+Every `mailbox list`, `sync`, and watcher round of `serve` first reads which items
 Skarbiec declares. It creates a mailbox for a newly declared item, adopts
-profile changes of a declared one, and stops polling a mailbox whose item no
+profile changes of a declared one, and stops watching a mailbox whose item no
 longer carries the tag: that mailbox keeps its mail, is shown with
 `enabled: false` and `last_error_code: MAILBOX_NOT_DECLARED`. `sync` reports
 what this changed under `reconciliation`: `declared`, `created`, `updated`,
