@@ -120,8 +120,8 @@ try {
   };
   const people = [decisionOf('first'), decisionOf('second')];
   const answered = people.filter(decision => decision.reply_attempt_id);
-  assert.equal(answered.length, Math.sign(Infinity), `The sender's two messages were answered ${answered.length} times`);
-  const [reply] = answered;
+  const [reply, ...repeated] = answered;
+  assert(reply && !repeated.length, `The sender's two messages were answered ${answered.length} times`);
   const attempts = skrzynka('message', 'replies', reply.message_id);
   const attempt = attempts.find(each => each.id === reply.reply_attempt_id);
   assert(attempt, 'The decision names a reply attempt the message does not hold');
