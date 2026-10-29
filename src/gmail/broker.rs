@@ -134,10 +134,10 @@ impl GmailOAuthBroker {
                 )
             })
             .and_then(|state| {
-                Uuid::parse_str(state).map_err(|_| {
+                Uuid::parse_str(state).map_err(|cause| {
                     AppError::invalid(
                         "GMAIL_OAUTH_STATE_INVALID",
-                        "Google returned an invalid OAuth state",
+                        format!("Google returned the OAuth state '{state}', which names no authorization this service started: {cause}"),
                     )
                 })
             })?;

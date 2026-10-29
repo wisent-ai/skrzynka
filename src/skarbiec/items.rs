@@ -122,7 +122,7 @@ impl SkarbiecResolver {
     ) -> Result<String, AppError> {
         validate_item_id(source_item_id)?;
         Address::from_str(email)
-            .map_err(|_| invalid_item("authorized Google identity is not an email address"))?;
+            .map_err(|cause| invalid_item(format!("authorized Google identity '{email}' is not an email address: {cause}")))?;
         let item_id = self.address_item(GMAIL_ITEM_PREFIX, email).await?;
         let payload = json!({
             "schema": "skarbiec.item.v2",
@@ -158,7 +158,7 @@ impl SkarbiecResolver {
         display_name: Option<&str>,
     ) -> Result<String, AppError> {
         Address::from_str(email)
-            .map_err(|_| invalid_item("delegated Google identity is not an email address"))?;
+            .map_err(|cause| invalid_item(format!("delegated Google identity '{email}' is not an email address: {cause}")))?;
         let item_id = self.address_item(GMAIL_ITEM_PREFIX, email).await?;
         let payload = json!({
             "schema": "skarbiec.item.v2",
