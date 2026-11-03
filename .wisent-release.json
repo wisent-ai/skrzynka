@@ -10,8 +10,25 @@
   "platforms": {
     "darwin-arm64": {
       "runner_platform": "darwin-arm64",
-      "quality": [{"name": "fmt", "argv": ["cargo", "fmt", "--all", "--", "--check"], "kind": "format"}],
-      "build": {"argv": ["bash", "release/build.sh"]},
+      "quality": [
+        {
+          "name": "fmt",
+          "argv": [
+            "cargo",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ],
+          "kind": "format"
+        }
+      ],
+      "build": {
+        "argv": [
+          "bash",
+          "release/build.sh"
+        ]
+      },
       "stage": {
         "bin/skrzynka": "bin/skrzynka",
         "evidence/build.jsonl": "evidence/build.jsonl",
@@ -20,8 +37,25 @@
     },
     "linux-amd64": {
       "runner_platform": "linux-amd64",
-      "quality": [{"name": "fmt", "argv": ["cargo", "fmt", "--all", "--", "--check"], "kind": "format"}],
-      "build": {"argv": ["bash", "release/build.sh"]},
+      "quality": [
+        {
+          "name": "fmt",
+          "argv": [
+            "cargo",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ],
+          "kind": "format"
+        }
+      ],
+      "build": {
+        "argv": [
+          "bash",
+          "release/build.sh"
+        ]
+      },
       "stage": {
         "bin/skrzynka": "bin/skrzynka",
         "evidence/build.jsonl": "evidence/build.jsonl",
@@ -29,5 +63,18 @@
       }
     }
   },
-  "promotion": {"channels": ["candidate"], "reconcile": false}
+  "promotion": {
+    "channels": [
+      "candidate"
+    ],
+    "reconcile": false
+  },
+  "inputs": {
+    "private-cargo-sources": {
+      "uri": "stado://sources/skrzynka/dependencies/private-cargo-sources/sha256/61feeeec850940054aa713a9114b013b490c75be32054e80f3cc29b2de271f0d/source.tar.gz",
+      "sha256": "61feeeec850940054aa713a9114b013b490c75be32054e80f3cc29b2de271f0d",
+      "mount": "private-cargo-sources",
+      "extract": true
+    }
+  }
 }
