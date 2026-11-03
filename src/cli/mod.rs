@@ -24,6 +24,7 @@ mod output;
 mod reading;
 mod rules;
 mod sending;
+mod star;
 mod suppressed;
 mod templates;
 mod views;
@@ -78,6 +79,11 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
     if let Command::Onboarding { reset } = &cli.command {
         onboarding::run(*reset)?;
         return Ok(());
+    }
+    // The star request is kept per person, not per organization, and
+    // touches no database.
+    if let Command::Star { command } = &cli.command {
+        return star::run(command);
     }
     let database = Database::open()?;
     let resolver = SkarbiecResolver::new(cli.skarbiec_bin);
@@ -167,6 +173,7 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         }
         Command::Version => unreachable!(),
         Command::Onboarding { .. } => unreachable!(),
+        Command::Star { .. } => unreachable!(),
     }
 }
 

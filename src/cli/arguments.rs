@@ -25,6 +25,11 @@ pub(super) enum Command {
     },
     /// Print the binary's version.
     Version,
+    /// Read, dismiss or reset the GitHub star request made once after a person's fifth message sent.
+    Star {
+        #[command(subcommand)]
+        command: super::star::StarCommand,
+    },
     /// Declare, list, show, undeclare and remove mailboxes.
     Mailbox {
         #[command(subcommand)]

@@ -247,7 +247,10 @@ pub(super) async fn run_message(
             super::follow_ups::run_follow_up(&state, organization, command)
         }
         MessageCommand::View { command } => super::views::run_view(&state, organization, command),
-        MessageCommand::Reply(args) => sending::reply(&state, organization, args).await,
+        // Mail a person sent counts toward the GitHub star request.
+        MessageCommand::Reply(args) => sending::reply(&state, organization, args)
+            .await
+            .map(|()| super::star::observe()),
         MessageCommand::Attachment { command } => {
             run_attachment(state, organization, command).await
         }
@@ -292,7 +295,9 @@ pub(super) async fn run_message(
         MessageCommand::Actions(MessageRef { id }) => {
             run_provider(state, organization, ProviderCommand::Actions(id)).await
         }
-        MessageCommand::Send(args) => sending::send(&state, organization, args).await,
+        MessageCommand::Send(args) => sending::send(&state, organization, args)
+            .await
+            .map(|()| super::star::observe()),
         MessageCommand::Outbound(args) => sending::outbound(&state, organization, args).await,
     }
 }

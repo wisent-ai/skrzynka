@@ -36,6 +36,9 @@ stado-database = { git = "https://github.com/wisent-ai/stado", package = "stado-
 # The one way a Wisent program waits: every child process Skrzynka waits on
 # (the vault, Stado) says on stderr what it waits for and since when.
 stado-wait = { git = "https://github.com/wisent-ai/stado", package = "stado-wait" }
+# The GitHub star request every Wisent product makes (`skrzynka star`); only
+# the offline request, so no HTTP client of its own comes with it.
+wisent-onboarding-client = { git = "https://github.com/wisent-ai/echo-web", rev = "c602dcbef20c9bab4176a0ba1f276fd604e71496", package = "wisent-onboarding-client", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

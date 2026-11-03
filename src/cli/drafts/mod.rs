@@ -337,7 +337,9 @@ pub(super) async fn run_draft(
                 allow_bounced,
                 follow_up,
             };
-            print_json(&state.send_draft(organization, id, request).await?)
+            print_json(&state.send_draft(organization, id, request).await?)?;
+            super::star::observe();
+            Ok(())
         }
         DraftCommand::Send(SendArgs {
             chosen:
@@ -367,7 +369,9 @@ pub(super) async fn run_draft(
                         follow_up.as_deref(),
                     )
                     .await?,
-            )
+            )?;
+            super::star::observe();
+            Ok(())
         }
         DraftCommand::Schedule(ScheduleArgs {
             id,

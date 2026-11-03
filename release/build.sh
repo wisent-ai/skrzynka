@@ -29,9 +29,19 @@ if [[ "$(uname -s)" != "$expected_os" || "$(uname -m)" != "$expected_arch" ]]; t
 fi
 
 mkdir -p "$output_dir/bin" "$output_dir/evidence"
-cargo build --locked --release --bin skrzynka --manifest-path "$source_dir/Cargo.toml" \
-  --message-format=json-render-diagnostics | tee "$output_dir/evidence/build.jsonl"
-binary=$(jq -er 'select(.reason == "compiler-artifact" and .target.name == "skrzynka" and .executable != null) | .executable' "$output_dir/evidence/build.jsonl")
+# Through Stado's Cargo executor, which replaces the locked private Git
+# package (the onboarding runtime the GitHub star request runs on) with the
+# manifest's private-cargo-sources input: a worker holds no Git credential.
+# The executor reads Cargo's diagnostics itself and keeps them in its
+# evidence, so the binary is read where Cargo places it under the
+# builder-owned target directory.
+stado product cargo --manifest-path "$source_dir/Cargo.toml" build --locked --release --bin skrzynka \
+  | tee "$output_dir/evidence/build.log"
+binary="$CARGO_TARGET_DIR/release/skrzynka"
+[[ -x "$binary" ]] || {
+  printf 'the build placed no executable at %s\n' "$binary" >&2
+  exit 1
+}
 observed_version=$("$binary" --version)
 if [[ "$observed_version" != "skrzynka $version" ]]; then
   printf 'built version %s does not match declared version %s\n' "$observed_version" "$version" >&2
