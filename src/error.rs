@@ -112,8 +112,10 @@ impl IntoResponse for AppError {
 
 impl From<crate::db::sql::Error> for AppError {
     fn from(error: crate::db::sql::Error) -> Self {
-        tracing::error!(error = %error, "database operation failed");
-        Self::internal(format!("fleet database operation failed: {error}"))
+        tracing::error!(error = %error, "the fleet database refused or did not answer a query");
+        Self::internal(format!(
+            "the fleet database refused or did not answer a query Skrzynka sent it, so the request was not carried out: {error}; `stado database list` shows whether its database is declared and placed"
+        ))
     }
 }
 
