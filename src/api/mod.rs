@@ -73,7 +73,11 @@ use unsubscribe::{
     contacts_csv, contacts_vcard, list_contacts, list_subscriptions, unsubscribe, unsubscribe_list,
 };
 
-pub fn router(state: AppState) -> Router {
+/// The loopback API: every route but the health answer and Google's callback
+/// needs a bearer `auth_verifier` accepts. Only a process that serves the API
+/// builds a verifier, so a command that only reads the fleet database never
+/// needs the identity authority's address.
+pub fn router(state: AppState, auth_verifier: crate::auth::AuthVerifier) -> Router {
     let protected = Router::new()
         .route("/v1/status", get(status))
         .route("/v1/skarbiec/items", get(list_skarbiec_items))
@@ -330,10 +334,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/v1/inbound/domains/:id/sync", post(sync_inbound_domain))
         .route("/v1/inbound/messages", get(read_inbound))
-        .route_layer(middleware::from_fn_with_state(
-            state.auth_verifier.clone(),
-            require_auth,
-        ));
+        .route_layer(middleware::from_fn_with_state(auth_verifier, require_auth));
 
     Router::new()
         .route("/healthz", get(health))

@@ -46,6 +46,7 @@ pub(super) async fn authorize_gmail(
 ) -> Result<(), AppError> {
     let callback_base_url = loopback_callback(bind)?;
     let state = AppState::new(database, resolver, Some(&callback_base_url))?;
+    let auth_verifier = crate::auth::AuthVerifier::from_environment()?;
     let listener = tokio::net::TcpListener::bind(bind).await.map_err(|error| {
         AppError::internal(format!(
             "binding loopback OAuth callback at {bind} failed: {error}"
@@ -62,10 +63,9 @@ pub(super) async fn authorize_gmail(
     print_json(&flow)?;
 
     let callback_state = state.clone();
-    let mut server =
-        tokio::spawn(
-            async move { axum::serve(listener, crate::api::router(callback_state)).await },
-        );
+    let mut server = tokio::spawn(async move {
+        axum::serve(listener, crate::api::router(callback_state, auth_verifier)).await
+    });
     let completion = async {
         tokio::select! {
             settled = state.gmail_oauth_settled(organization, flow.flow_id) => settled,

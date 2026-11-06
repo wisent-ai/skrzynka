@@ -193,6 +193,7 @@ async fn serve(
 ) -> Result<(), AppError> {
     let callback_base_url = loopback_callback(args.bind)?;
     let state = AppState::new(database, resolver, Some(&callback_base_url))?;
+    let auth_verifier = crate::auth::AuthVerifier::from_environment()?;
     state.clone().start_watching()?;
     let listener = tokio::net::TcpListener::bind(args.bind)
         .await
@@ -203,7 +204,7 @@ async fn serve(
             ))
         })?;
     tracing::info!(address = %args.bind, "Skrzynka API ready");
-    axum::serve(listener, crate::api::router(state))
+    axum::serve(listener, crate::api::router(state, auth_verifier))
         .with_graceful_shutdown(async {
             // Ctrl-C stops the server gracefully. A listener that cannot be
             // installed is said, and the server keeps serving until its

@@ -2,7 +2,6 @@
 //! sub-modules (Gmail connection, mailboxes, mail reception, messages, outbound mail).
 
 use crate::{
-    auth::AuthVerifier,
     db::Database,
     error::AppError,
     gmail::{GmailOAuthBroker, GmailProfile},
@@ -70,7 +69,6 @@ pub use unsubscribe::{subscription_table, SubscriptionFilter};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub auth_verifier: AuthVerifier,
     pub database: Database,
     resolver: SkarbiecResolver,
     /// Present only in a process that listens for Google's callback: the
@@ -140,9 +138,7 @@ impl AppState {
         let gmail_oauth = callback_base_url
             .map(|url| GmailOAuthBroker::new(resolver.clone(), url))
             .transpose()?;
-        let auth_verifier = AuthVerifier::from_environment()?;
         Ok(Self {
-            auth_verifier,
             database,
             resolver,
             gmail_oauth,

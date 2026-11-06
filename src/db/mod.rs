@@ -75,13 +75,19 @@ impl Database {
                     ));
                 }
             }
-            session.execute_batch(SCHEMA)?;
-            session.execute_batch(INBOUND_SCHEMA)?;
-            session.execute(
-                "INSERT INTO schema_meta (key, value) VALUES ('schema_version', $1)
-                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                [i64::from(SCHEMA_VERSION)],
-            )?;
+            // The service and a command can open an empty database at once;
+            // two `CREATE TABLE IF NOT EXISTS` of the same table then race
+            // in the catalog and one fails on a duplicate type. The schema is
+            // laid out as one batch, which runs on one connection as one
+            // transaction, and takes a transaction-scoped lock first: the
+            // second opener waits for the first to commit and finds its
+            // tables. A session lock would be taken on one pooled connection
+            // and released on another.
+            session.execute_batch(&format!(
+                "BEGIN;\nSELECT pg_advisory_xact_lock(hashtext('skrzynka_schema'));\n{SCHEMA}\n{INBOUND_SCHEMA}\n\
+                 INSERT INTO schema_meta (key, value) VALUES ('schema_version', {SCHEMA_VERSION})\n\
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value;\nCOMMIT;"
+            ))?;
         }
         database.recover_interrupted_sends()?;
         Ok(database)
